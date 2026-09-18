@@ -8,7 +8,7 @@ import app.modelos  # noqa: F401  -> registra los modelos para que se creen las 
 from app.core import security
 from app.core.auth import router as router_auth
 from app.core.config import Configuracion
-from app.core.database import SessionLocal, crear_tablas, obtener_sesion
+from app.core.database import SessionLocal, crear_tablas, obtener_sesion, sincronizar_esquema
 from app.modelos.usuario import RolUsuario, Usuario
 
 
@@ -23,7 +23,7 @@ def crear_admin_inicial():
                 nombre="Administrador Principal",
                 rol=RolUsuario.ADMIN_PRINCIPAL,
                 activo=True,
-                requiere_2fa=False,  # Se activa cuando configure su 2FA
+                requiere_2fa=False,
             )
             sesion.add(admin)
             sesion.commit()
@@ -33,8 +33,9 @@ def crear_admin_inicial():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Al arrancar: crea tablas si faltan y asegura el admin inicial.
+    # Al arrancar: crea tablas nuevas, sincroniza columnas y asegura el admin.
     crear_tablas()
+    sincronizar_esquema()
     crear_admin_inicial()
     yield
 
