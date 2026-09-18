@@ -24,7 +24,8 @@ class DatosLoginOk(BaseModel):
 
 @router.post("/login", response_model=DatosLoginOk)
 def login(datos: DatosLogin, sesion: Session = Depends(obtener_sesion)):
-    """Inicio de sesion con usuario, contrasenia y 2FA opcional."""
+    """Inicio de sesion con usuario y contrasenia.
+    El 2FA se exige solo si el usuario ya lo configuro."""
     usuario = sesion.query(Usuario).filter(Usuario.usuario == datos.usuario).first()
     if usuario is None or not security.verificar_password(datos.password, usuario.password_hash):
         auditoria.registrar(sesion, "LOGIN_FALLIDO", detalle=f"usuario intentado: {datos.usuario}")
@@ -37,10 +38,11 @@ def login(datos: DatosLogin, sesion: Session = Depends(obtener_sesion)):
         raise HTTPException(status_code=403, detail="Usuario desactivado")
 
     es_admin = usuario.rol in (RolUsuario.ADMIN_PRINCIPAL, RolUsuario.ADMIN)
-    if es_admin or usuario.requiere_2fa:
+    necesita_2fa = (es_admin or usuario.requiere_2fa) and usuario.secreto_2fa
+    if necesita_2fa:
         if not datos.codigo_2fa:
             raise HTTPException(status_code=400, detail="Se requiere codigo 2FA")
-        if not usuario.secreto_2fa or not security.verificar_2fa(usuario.secreto_2fa, datos.codigo_2fa):
+        if not security.verificar_2fa(usuario.secreto_2fa, datos.codigo_2fa):
             auditoria.registrar(sesion, "LOGIN_2FA_FALLIDO", usuario=usuario)
             sesion.commit()
             raise HTTPException(status_code=401, detail="Codigo 2FA incorrecto")
