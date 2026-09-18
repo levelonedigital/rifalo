@@ -4,14 +4,38 @@ from fastapi import Depends, FastAPI
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+import app.modelos  # noqa: F401  -> registra los modelos para que se creen las tablas
+from app.core import security
+from app.core.auth import router as router_auth
 from app.core.config import Configuracion
-from app.core.database import crear_tablas, obtener_sesion
+from app.core.database import SessionLocal, crear_tablas, obtener_sesion
+from app.modelos.usuario import RolUsuario, Usuario
+
+
+def crear_admin_inicial():
+    """Crea el administrador principal solo si no existe ningun usuario."""
+    sesion = SessionLocal()
+    try:
+        if sesion.query(Usuario).count() == 0:
+            admin = Usuario(
+                usuario=Configuracion.ADMIN_INICIAL_USUARIO,
+                password_hash=security.hash_password(Configuracion.ADMIN_INICIAL_PASSWORD),
+                nombre="Administrador Principal",
+                rol=RolUsuario.ADMIN_PRINCIPAL,
+                activo=True,
+                requiere_2fa=False,  # Se activa cuando configure su 2FA
+            )
+            sesion.add(admin)
+            sesion.commit()
+    finally:
+        sesion.close()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Al arrancar la aplicacion, crea las tablas si no existen.
+    # Al arrancar: crea tablas si faltan y asegura el admin inicial.
     crear_tablas()
+    crear_admin_inicial()
     yield
 
 
@@ -20,6 +44,7 @@ app = FastAPI(
     version=Configuracion.VERSION,
     lifespan=lifespan,
 )
+app.include_router(router_auth)
 
 
 @app.get("/")
