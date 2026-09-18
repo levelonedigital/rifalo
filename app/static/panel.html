@@ -35,7 +35,7 @@
   <!-- LOGIN -->
   <div id="zona-login" class="tarjeta">
     <h1>RIFALO</h1>
-    <p class="chico">Ingreso de administradores</p>
+    <p class="chico">Ingreso de administradores y revendedores</p>
     <label>Usuario</label><input id="login-usuario">
     <label>Contrasenia</label><input id="login-password" type="password">
     <label>Codigo 2FA (solo si lo tenes activado)</label><input id="login-2fa">
@@ -47,16 +47,19 @@
   <div id="zona-panel" style="display:none">
     <h1>RIFALO <span class="chico" id="panel-usuario"></span></h1>
     <div class="tabs">
-      <button id="tab-sorteos" class="activa" onclick="irTab('sorteos')">Sorteos</button>
+      <button id="tab-sorteos" onclick="irTab('sorteos')">Sorteos</button>
       <button id="tab-jugadas" onclick="irTab('jugadas')">Jugadas pendientes</button>
       <button id="tab-revendedores" onclick="irTab('revendedores')">Revendedores</button>
       <button id="tab-auditoria" onclick="irTab('auditoria')">Auditoria</button>
+      <button id="tab-rsorteos" onclick="irTab('rsorteos')">Sorteos abiertos</button>
+      <button id="tab-rjugada" onclick="irTab('rjugada')">Cargar jugada</button>
+      <button id="tab-rmisjugadas" onclick="irTab('rmisjugadas')">Mis jugadas</button>
       <button class="peligro" onclick="salir()">Salir</button>
     </div>
     <div id="mensaje" class="mensaje"></div>
 
-    <!-- SORTEOS -->
-    <div id="seccion-sorteos" class="tarjeta">
+    <!-- ADMIN: SORTEOS -->
+    <div id="seccion-sorteos" class="tarjeta" style="display:none">
       <h2>Crear sorteo</h2>
       <label>Modulo</label>
       <select id="sorteo-modulo">
@@ -73,14 +76,14 @@
       <div id="lista-sorteos"></div>
     </div>
 
-    <!-- JUGADAS -->
+    <!-- ADMIN: JUGADAS PENDIENTES -->
     <div id="seccion-jugadas" class="tarjeta" style="display:none">
       <h2>Jugadas pendientes de aprobacion</h2>
       <button class="secundario" onclick="cargarJugadas()">Actualizar</button>
       <div id="lista-jugadas"></div>
     </div>
 
-    <!-- REVENDEDORES -->
+    <!-- ADMIN: REVENDEDORES -->
     <div id="seccion-revendedores" class="tarjeta" style="display:none">
       <h2>Crear revendedor</h2>
       <label>Usuario</label><input id="rev-usuario">
@@ -95,11 +98,39 @@
       <div id="lista-revendedores"></div>
     </div>
 
-    <!-- AUDITORIA -->
+    <!-- ADMIN: AUDITORIA -->
     <div id="seccion-auditoria" class="tarjeta" style="display:none">
       <h2>Ultimos movimientos</h2>
       <button class="secundario" onclick="cargarAuditoria()">Actualizar</button>
       <div id="lista-auditoria"></div>
+    </div>
+
+    <!-- REVENDEDOR: SORTEOS ABIERTOS -->
+    <div id="seccion-rsorteos" class="tarjeta" style="display:none">
+      <h2>Sorteos disponibles para cargar</h2>
+      <button class="secundario" onclick="cargarSorteosAbiertos()">Actualizar</button>
+      <div id="lista-rsorteos"></div>
+    </div>
+
+    <!-- REVENDEDOR: CARGAR JUGADA -->
+    <div id="seccion-rjugada" class="tarjeta" style="display:none">
+      <h2>Nueva jugada</h2>
+      <label>Sorteo</label>
+      <select id="jugada-sorteo"></select>
+      <label>Numero apostado (0-99)</label>
+      <input id="jugada-numero" type="number" min="0" max="99">
+      <label>Monto</label>
+      <input id="jugada-monto" type="number" min="1">
+      <label>Nombre del jugador (opcional)</label>
+      <input id="jugada-nombre">
+      <button onclick="cargarJugada()">Cargar jugada</button>
+    </div>
+
+    <!-- REVENDEDOR: MIS JUGADAS -->
+    <div id="seccion-rmisjugadas" class="tarjeta" style="display:none">
+      <h2>Mis jugadas</h2>
+      <button class="secundario" onclick="cargarMisJugadas()">Actualizar</button>
+      <div id="lista-rmisjugadas"></div>
     </div>
   </div>
 </div>
@@ -107,6 +138,10 @@
 <script>
 const BASE = "";
 let token = localStorage.getItem("rifalo_token") || null;
+let rol = localStorage.getItem("rifalo_rol") || null;
+
+const TABS_ADMIN = ["sorteos", "jugadas", "revendedores", "auditoria"];
+const TABS_REV = ["rsorteos", "rjugada", "rmisjugadas"];
 
 function cabeceras() {
   return { "Content-Type": "application/json", "Authorization": "Bearer " + token };
@@ -146,7 +181,9 @@ async function login() {
     }).then(r => r.json());
     if (!datos.token) throw new Error(datos.detail || "Credenciales incorrectas");
     token = datos.token;
+    rol = datos.rol;
     localStorage.setItem("rifalo_token", token);
+    localStorage.setItem("rifalo_rol", rol);
     localStorage.setItem("rifalo_nombre", datos.nombre);
     mostrarPanel();
   } catch (e) {
@@ -158,7 +195,9 @@ async function login() {
 
 function salir() {
   token = null;
+  rol = null;
   localStorage.removeItem("rifalo_token");
+  localStorage.removeItem("rifalo_rol");
   document.getElementById("zona-panel").style.display = "none";
   document.getElementById("zona-login").style.display = "block";
 }
@@ -166,12 +205,15 @@ function salir() {
 function mostrarPanel() {
   document.getElementById("zona-login").style.display = "none";
   document.getElementById("zona-panel").style.display = "block";
-  document.getElementById("panel-usuario").textContent = "- " + (localStorage.getItem("rifalo_nombre") || "");
-  irTab("sorteos");
+  document.getElementById("panel-usuario").textContent =
+    "- " + (localStorage.getItem("rifalo_nombre") || "") + " (" + rol + ")";
+  TABS_ADMIN.forEach(t => { document.getElementById("tab-" + t).style.display = rol === "revendedor" ? "none" : ""; });
+  TABS_REV.forEach(t => { document.getElementById("tab-" + t).style.display = rol === "revendedor" ? "" : "none"; });
+  irTab(rol === "revendedor" ? "rsorteos" : "sorteos");
 }
 
 function irTab(nombre) {
-  ["sorteos", "jugadas", "revendedores", "auditoria"].forEach(s => {
+  TABS_ADMIN.concat(TABS_REV).forEach(s => {
     document.getElementById("seccion-" + s).style.display = s === nombre ? "block" : "none";
     document.getElementById("tab-" + s).className = s === nombre ? "activa" : "";
   });
@@ -179,9 +221,12 @@ function irTab(nombre) {
   if (nombre === "jugadas") cargarJugadas();
   if (nombre === "revendedores") cargarRevendedores();
   if (nombre === "auditoria") cargarAuditoria();
+  if (nombre === "rsorteos") cargarSorteosAbiertos();
+  if (nombre === "rjugada") llenarSelectSorteos();
+  if (nombre === "rmisjugadas") cargarMisJugadas();
 }
 
-// ---------- SORTEOS ----------
+// ---------- ADMIN: SORTEOS ----------
 async function crearSorteo() {
   const cuerpo = {
     modulo: document.getElementById("sorteo-modulo").value,
@@ -239,7 +284,7 @@ async function verResumen(id) {
   } catch (e) { aviso(e.message, true); }
 }
 
-// ---------- JUGADAS ----------
+// ---------- ADMIN: JUGADAS ----------
 async function cargarJugadas() {
   try {
     const jugadas = await api("/admin/jugadas/pendientes", "GET");
@@ -262,7 +307,7 @@ async function rechazarJugada(id) {
   catch (e) { aviso(e.message, true); }
 }
 
-// ---------- REVENDEDORES ----------
+// ---------- ADMIN: REVENDEDORES ----------
 async function crearRevendedor() {
   const cuerpo = {
     usuario: document.getElementById("rev-usuario").value,
@@ -303,7 +348,7 @@ async function alternarActivo(id, activo) {
   catch (e) { aviso(e.message, true); }
 }
 
-// ---------- AUDITORIA ----------
+// ---------- ADMIN: AUDITORIA ----------
 async function cargarAuditoria() {
   try {
     const logs = await api("/admin/auditoria", "GET");
@@ -312,6 +357,55 @@ async function cargarAuditoria() {
       html += "<tr><td>" + l.fecha.slice(0, 19).replace("T", " ") + "</td><td>" + (l.nombre_usuario || "-") + "</td><td>" + l.accion + "</td><td>" + (l.detalle || "") + "</td></tr>";
     });
     document.getElementById("lista-auditoria").innerHTML = html + "</table>";
+  } catch (e) { aviso(e.message, true); }
+}
+
+// ---------- REVENDEDOR ----------
+async function cargarSorteosAbiertos() {
+  try {
+    const sorteos = await api("/revendedor/sorteos", "GET");
+    if (!sorteos.length) { document.getElementById("lista-rsorteos").innerHTML = "<p class='chico'>No hay sorteos abiertos ahora.</p>"; return; }
+    let html = "<table><tr><th>Id</th><th>Modulo</th><th>Fecha</th><th>Pozo</th></tr>";
+    sorteos.forEach(s => {
+      html += "<tr><td>" + s.id + "</td><td>" + s.modulo + "</td><td>" + s.fecha_sorteo.slice(0, 16).replace("T", " ") + "</td><td>$" + (s.pozo_acumulado || 0) + "</td></tr>";
+    });
+    document.getElementById("lista-rsorteos").innerHTML = html + "</table>";
+  } catch (e) { aviso(e.message, true); }
+}
+
+async function llenarSelectSorteos() {
+  try {
+    const sorteos = await api("/revendedor/sorteos", "GET");
+    const select = document.getElementById("jugada-sorteo");
+    select.innerHTML = sorteos.map(s => "<option value='" + s.id + "'>Sorteo " + s.id + " - " + s.modulo + " - " + s.fecha_sorteo.slice(0, 16).replace("T", " ") + "</option>").join("");
+  } catch (e) { aviso(e.message, true); }
+}
+
+async function cargarJugada() {
+  const cuerpo = {
+    sorteo_id: parseInt(document.getElementById("jugada-sorteo").value),
+    numero: parseInt(document.getElementById("jugada-numero").value),
+    monto: parseFloat(document.getElementById("jugada-monto").value),
+    jugador_nombre: document.getElementById("jugada-nombre").value || null,
+  };
+  try {
+    const datos = await api("/revendedor/jugadas", "POST", cuerpo);
+    aviso("Jugada " + datos.id + " cargada, queda pendiente de aprobacion");
+    document.getElementById("jugada-numero").value = "";
+    document.getElementById("jugada-monto").value = "";
+    document.getElementById("jugada-nombre").value = "";
+  } catch (e) { aviso(e.message, true); }
+}
+
+async function cargarMisJugadas() {
+  try {
+    const jugadas = await api("/revendedor/jugadas", "GET");
+    if (!jugadas.length) { document.getElementById("lista-rmisjugadas").innerHTML = "<p class='chico'>Todavia no cargaste jugadas.</p>"; return; }
+    let html = "<table><tr><th>Id</th><th>Sorteo</th><th>Numero</th><th>Monto</th><th>Estado</th><th>Premio</th></tr>";
+    jugadas.forEach(j => {
+      html += "<tr><td>" + j.id + "</td><td>" + j.sorteo_id + "</td><td>" + j.numero + "</td><td>$" + j.monto + "</td><td>" + j.estado + "</td><td>$" + (j.premio ?? "-") + "</td></tr>";
+    });
+    document.getElementById("lista-rmisjugadas").innerHTML = html + "</table>";
   } catch (e) { aviso(e.message, true); }
 }
 
