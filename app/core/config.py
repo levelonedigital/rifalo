@@ -2,15 +2,11 @@ import os
 
 
 class Configuracion:
-    """Configuracion central de RIFALO.
-
-    Los valores que dependen del entorno (como la base de datos)
-    se leen de variables de entorno. Los demas quedan fijos aca.
-    """
+    """Configuracion central de RIFALO."""
 
     # Identidad del sistema
     NOMBRE_APP = "RIFALO"
-    VERSION = "0.1.0"
+    VERSION = "0.3.0"
 
     # Zona horaria oficial del sistema (horario de Buenos Aires)
     ZONA_HORARIA = "America/Argentina/Buenos_Aires"
@@ -24,14 +20,15 @@ class Configuracion:
     # Retencion de backups en Google Drive (en dias)
     BACKUP_RETENCION_DIAS = 30
 
-    # Base de datos: en Railway usa la variable DATABASE_URL.
-    # Si no existe (pruebas locales), usa una base SQLite temporal.
+    # Reglas de pago del modulo clasico: multiplicador del pleno al numero
+    PAGO_PLENO_NUMERO = 70.0
+
+    # Base de datos
     DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///rifalo_local.db")
 
-    # Clave secreta para sesiones y seguridad.
+    # Clave secreta para sesiones y seguridad
     SECRET_KEY = os.getenv("SECRET_KEY", "clave-de-desarrollo-cambiar-en-produccion")
 
-    # Admin inicial: se crea solo si la base esta vacia.
-    # En Railway conviene definir estas variables con tus propios valores.
+    # Admin inicial: se crea solo si la base esta vacia
     ADMIN_INICIAL_USUARIO = os.getenv("ADMIN_INICIAL_USUARIO", "admin")
     ADMIN_INICIAL_PASSWORD = os.getenv("ADMIN_INICIAL_PASSWORD", "Rifalo2026!")
