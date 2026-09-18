@@ -9,6 +9,7 @@ from app.core import security
 from app.core.auth import router as router_auth
 from app.core.config import Configuracion
 from app.core.database import SessionLocal, crear_tablas, obtener_sesion, sincronizar_esquema
+from app.modulos_roles.administrador.router import router as router_admin
 from app.modelos.usuario import RolUsuario, Usuario
 
 
@@ -33,7 +34,6 @@ def crear_admin_inicial():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Al arrancar: crea tablas nuevas, sincroniza columnas y asegura el admin.
     crear_tablas()
     sincronizar_esquema()
     crear_admin_inicial()
@@ -46,6 +46,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 app.include_router(router_auth)
+app.include_router(router_admin)
 
 
 @app.get("/")
