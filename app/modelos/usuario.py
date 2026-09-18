@@ -25,4 +25,5 @@ class Usuario(Base):
     rol = Column(Enum(RolUsuario, name="rol_usuario"), nullable=False)
     activo = Column(Boolean, default=True)
     requiere_2fa = Column(Boolean, default=False)  # Solo para administradores
+    secreto_2fa = Column(String(64), nullable=True)  # Clave TOTP del autenticador
     creado_en = Column(DateTime(timezone=True), server_default=func.now())
