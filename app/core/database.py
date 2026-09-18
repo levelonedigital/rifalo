@@ -16,7 +16,8 @@ motor = create_engine(
 )
 
 # Fabrica de sesiones: cada peticion usa una sesion y la cierra al terminar.
-SesionLocal = sessionmaker(autocommit=False, autoflush=False, bind=motor)
+# Se exporta como SessionLocal para seguir la convencion de SQLAlchemy.
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=motor)
 
 # Base declarativa: de aca heredan todos los modelos de tablas.
 Base = declarative_base()
@@ -24,7 +25,7 @@ Base = declarative_base()
 
 def obtener_sesion():
     """Dependencia de FastAPI: entrega una sesion y la cierra al finalizar."""
-    sesion = SesionLocal()
+    sesion = SessionLocal()
     try:
         yield sesion
     finally:
