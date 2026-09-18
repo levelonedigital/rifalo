@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI
+from fastapi.responses import FileResponse
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -61,6 +62,12 @@ def raiz():
         "estado": "ok",
         "mensaje": "Fundaciones activas",
     }
+
+
+@app.get("/panel")
+def panel():
+    """Panel visual de administracion."""
+    return FileResponse("app/static/panel.html")
 
 
 @app.get("/salud")
