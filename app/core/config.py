@@ -29,5 +29,9 @@ class Configuracion:
     DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///rifalo_local.db")
 
     # Clave secreta para sesiones y seguridad.
-    # En Railway se configura como variable de entorno propia.
     SECRET_KEY = os.getenv("SECRET_KEY", "clave-de-desarrollo-cambiar-en-produccion")
+
+    # Admin inicial: se crea solo si la base esta vacia.
+    # En Railway conviene definir estas variables con tus propios valores.
+    ADMIN_INICIAL_USUARIO = os.getenv("ADMIN_INICIAL_USUARIO", "admin")
+    ADMIN_INICIAL_PASSWORD = os.getenv("ADMIN_INICIAL_PASSWORD", "Rifalo2026!")
