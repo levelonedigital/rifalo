@@ -30,3 +30,16 @@ def requerir_rol(*roles: RolUsuario):
             raise HTTPException(status_code=403, detail="Permisos insuficientes")
         return usuario
     return dependencia
+
+
+def requerir_permiso(permiso: str):
+    """Restringe una ruta a un permiso concreto. El admin principal siempre puede."""
+    def dependencia(usuario: Usuario = Depends(obtener_usuario_actual)) -> Usuario:
+        if usuario.rol == RolUsuario.ADMIN_PRINCIPAL:
+            return usuario
+        if usuario.rol != RolUsuario.ADMIN:
+            raise HTTPException(status_code=403, detail="Permisos insuficientes")
+        if permiso not in usuario.lista_permisos():
+            raise HTTPException(status_code=403, detail=f"Permiso requerido: {permiso}")
+        return usuario
+    return dependencia
