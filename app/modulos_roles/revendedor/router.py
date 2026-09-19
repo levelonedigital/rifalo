@@ -1,102 +1,70 @@
-from datetime import datetime
-
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.core import auditoria
 from app.core.database import obtener_sesion
 from app.core.dependencias import requerir_rol
-from app.modelos.juegos import EstadoSorteo, Jugada, Sorteo
+from app.modulos_juegos.jugadas_core import crear_jugada
+from app.modulos_juegos.motor import obtener_reglas
+from app.modelos.juegos import EstadoJugada, EstadoSorteo, Jugada, Sorteo
 from app.modelos.usuario import RolUsuario, Usuario
 
 router = APIRouter(prefix="/revendedor", tags=["revendedor"])
 
+rev_dep = Depends(requerir_rol(RolUsuario.REVENDEDOR))
+
 
 class JugadaCrear(BaseModel):
     sorteo_id: int
-    numero: int = Field(ge=0, le=99)
-    monto: float = Field(gt=0)
+    numeros: list[int]
     jugador_nombre: str | None = None
 
 
-class JugadaOut(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    id: int
-    sorteo_id: int
-    numero: int
-    monto: float
-    jugador_nombre: str | None
-    estado: str
-    premio: float | None
+@router.get("/sorteos")
+def sorteos_abiertos(sesion: Session = Depends(obtener_sesion), rev: Usuario = rev_dep):
+    sorteos = sesion.query(Sorteo).filter(Sorteo.estado == EstadoSorteo.PROGRAMADO).order_by(Sorteo.fecha).all()
+    return [
+        {"id": s.id, "modulo": s.modulo.value, "horario": s.horario, "fecha": s.fecha.isoformat(), "pozo": s.pozo_actual, "solo_participantes": s.solo_participantes}
+        for s in sorteos
+    ]
 
 
-class SorteoOut(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    id: int
-    modulo: str
-    fecha_sorteo: datetime
-    estado: str
-    premio_fijo: float | None
-    pozo_acumulado: float | None
-
-
-@router.get("/sorteos", response_model=list[SorteoOut])
-def ver_sorteos_abiertos(
-    sesion: Session = Depends(obtener_sesion),
-    revendedor: Usuario = Depends(requerir_rol(RolUsuario.REVENDEDOR)),
-):
-    """Sorteos disponibles para cargar jugadas."""
-    return (
-        sesion.query(Sorteo)
-        .filter(Sorteo.estado == EstadoSorteo.PROGRAMADO)
-        .order_by(Sorteo.fecha_sorteo)
-        .all()
-    )
-
-
-@router.post("/jugadas", response_model=JugadaOut)
-def cargar_jugada(
-    datos: JugadaCrear,
-    sesion: Session = Depends(obtener_sesion),
-    revendedor: Usuario = Depends(requerir_rol(RolUsuario.REVENDEDOR)),
-):
-    """El revendedor carga una jugada. Queda pendiente de aprobacion."""
+@router.post("/jugadas")
+def cargar_jugada(datos: JugadaCrear, sesion: Session = Depends(obtener_sesion), rev: Usuario = rev_dep):
+    vendedor = sesion.get(Usuario, rev.padre_id) if rev.padre_id else None
+    if vendedor is None or not vendedor.activo:
+        raise HTTPException(status_code=403, detail="Tu vendedor duenio no esta activo")
     sorteo = sesion.get(Sorteo, datos.sorteo_id)
-    if sorteo is None or sorteo.estado != EstadoSorteo.PROGRAMADO:
-        raise HTTPException(status_code=400, detail="El sorteo no esta disponible para cargar jugadas")
-    jugada = Jugada(
-        sorteo_id=sorteo.id,
-        revendedor_id=revendedor.id,
-        numero=datos.numero,
-        monto=datos.monto,
-        jugador_nombre=datos.jugador_nombre,
-    )
-    sesion.add(jugada)
-    sesion.commit()
-    sesion.refresh(jugada)
-    auditoria.registrar(
-        sesion,
-        "JUGADA_CARGADA",
-        detalle=f"sorteo={sorteo.id} numero={jugada.numero} monto={jugada.monto}",
-        usuario=revendedor,
-    )
-    sesion.commit()
-    return jugada
+    if sorteo is None:
+        raise HTTPException(status_code=404, detail="Sorteo no encontrado")
+    reglas = obtener_reglas(sesion)
+    try:
+        jugada = crear_jugada(sesion, sorteo, datos.numeros, vendedor, reglas, revendedor_id=rev.id, jugador_nombre=datos.jugador_nombre)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"id": jugada.id, "numeros": jugada.numeros, "precio": jugada.precio, "estado": jugada.estado.value}
 
 
-@router.get("/jugadas", response_model=list[JugadaOut])
-def mis_jugadas(
-    sesion: Session = Depends(obtener_sesion),
-    revendedor: Usuario = Depends(requerir_rol(RolUsuario.REVENDEDOR)),
-):
-    """Historial de jugadas del revendedor."""
-    return (
+@router.get("/jugadas")
+def mis_jugadas(sesion: Session = Depends(obtener_sesion), rev: Usuario = rev_dep):
+    jugadas = (
         sesion.query(Jugada)
-        .filter(Jugada.revendedor_id == revendedor.id)
+        .filter(Jugada.revendedor_id == rev.id)
         .order_by(Jugada.creada_en.desc())
-        .limit(200)
+        .limit(300)
         .all()
     )
+    return [
+        {"id": j.id, "sorteo_id": j.sorteo_id, "numeros": j.numeros, "precio": j.precio, "estado": j.estado.value, "premio": j.premio, "mi_comision": j.monto_revendedor}
+        for j in jugadas
+    ]
+
+
+@router.get("/resumen")
+def resumen(sesion: Session = Depends(obtener_sesion), rev: Usuario = rev_dep):
+    jugadas = sesion.query(Jugada).filter(Jugada.revendedor_id == rev.id, Jugada.estado == EstadoJugada.APROBADA).all()
+    return {
+        "jugadas_aprobadas": len(jugadas),
+        "vendido": round(sum(j.precio for j in jugadas), 2),
+        "mi_comision": round(sum(j.monto_revendedor or 0 for j in jugadas), 2),
+    }
