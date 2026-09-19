@@ -1,9 +1,8 @@
-from sqlalchemy import create_engine, inspect, text
+from sqlalchemy import Enum as SaEnum, create_engine, inspect, text
 from sqlalchemy.orm import sessionmaker, declarative_base
 
 from app.core.config import Configuracion
 
-# Motor de conexion a la base de datos.
 _args_extra = {}
 if Configuracion.DATABASE_URL.startswith("sqlite"):
     _args_extra["check_same_thread"] = False
@@ -20,7 +19,6 @@ Base = declarative_base()
 
 
 def obtener_sesion():
-    """Dependencia de FastAPI: entrega una sesion y la cierra al finalizar."""
     sesion = SessionLocal()
     try:
         yield sesion
@@ -29,16 +27,35 @@ def obtener_sesion():
 
 
 def crear_tablas():
-    """Crea todas las tablas definidas en los modelos (si no existen)."""
     Base.metadata.create_all(bind=motor)
 
 
-def sincronizar_esquema():
-    """Agrega columnas nuevas que falten en tablas ya existentes.
+def asegurar_enums():
+    """Agrega valores nuevos a los tipos enum de PostgreSQL (ej: nuevo rol vendedor)."""
+    if motor.dialect.name != "postgresql":
+        return
+    with motor.begin() as conexion:
+        for tabla in Base.metadata.sorted_tables:
+            for columna in tabla.columns:
+                if not isinstance(columna.type, SaEnum):
+                    continue
+                nombre = columna.type.name
+                existentes = conexion.execute(
+                    text(
+                        "SELECT e.enumlabel FROM pg_enum e "
+                        "JOIN pg_type t ON t.oid = e.enumtypid WHERE t.typname = :n"
+                    ),
+                    {"n": nombre},
+                ).scalars().all()
+                for valor in columna.type.enums:
+                    if valor not in existentes:
+                        conexion.execute(
+                            text(f"ALTER TYPE {nombre} ADD VALUE IF NOT EXISTS '{valor}'")
+                        )
 
-    En desarrollo nos permite iterar sin migraciones complejas.
-    Al lanzamiento oficial se hace base limpia, asi que esto es solo para iterar.
-    """
+
+def sincronizar_esquema():
+    """Agrega columnas nuevas que falten en tablas ya existentes (solo desarrollo)."""
     inspector = inspect(motor)
     with motor.begin() as conexion:
         for tabla in Base.metadata.sorted_tables:
