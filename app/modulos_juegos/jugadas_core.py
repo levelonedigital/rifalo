@@ -5,12 +5,15 @@ from app.modelos.usuario import Usuario
 CANTIDADES = {ModuloJuego.CLASICO: 3, ModuloJuego.SEMANAL: 10, ModuloJuego.RIFA: 1}
 
 
-def precio_de(modulo: ModuloJuego, reglas) -> float:
+def precio_de(sorteo: Sorteo, reglas) -> float:
+    """Precio de la jugada: el del sorteo si esta configurado, si no el de las reglas."""
+    if sorteo.precio_jugada is not None:
+        return sorteo.precio_jugada
     return {
         ModuloJuego.CLASICO: reglas.precio_clasico,
         ModuloJuego.SEMANAL: reglas.precio_semanal,
         ModuloJuego.RIFA: reglas.precio_rifa,
-    }[modulo]
+    }[sorteo.modulo]
 
 
 def validar_numeros(modulo: ModuloJuego, numeros) -> str | None:
@@ -55,7 +58,7 @@ def crear_jugada(
         jugador_id=jugador_id,
         jugador_nombre=jugador_nombre,
         numeros=",".join(f"{n:02d}" for n in numeros),
-        precio=precio_de(sorteo.modulo, reglas),
+        precio=precio_de(sorteo, reglas),
     )
     sesion.add(jugada)
     sesion.commit()
