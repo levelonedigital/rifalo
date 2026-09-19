@@ -10,7 +10,7 @@ from app.core.dependencias import requerir_permiso, requerir_rol
 from app.core.security import hash_password
 from app.modulos_juegos import motor
 from app.modulos_juegos.buscador import _actualizar_semanal
-from app.modelos.juegos import EstadoJugada, EstadoSorteo, Jugada, ModuloJuego, ReglasSistema, Sorteo
+from app.modelos.juegos import EstadoJugada, EstadoSorteo, Jugada, ModuloJuego, Sorteo
 from app.modelos.usuario import RolUsuario, Usuario
 
 router = APIRouter(prefix="/admin", tags=["juegos"])
@@ -24,6 +24,10 @@ class SorteoCrear(BaseModel):
     fecha: datetime
     premio_fijo: float | None = Field(default=None, gt=0)
     pozo_inicial: float | None = Field(default=None, ge=0)
+    precio_jugada: float | None = Field(default=None, gt=0)
+    pozo_base: float | None = Field(default=None, ge=0)
+    casa_pct: float | None = Field(default=None, ge=0, le=100)
+    vendedor_pct: float | None = Field(default=None, ge=0, le=100)
 
 
 class ResultadoCargar(BaseModel):
@@ -82,6 +86,7 @@ def ver_reglas(sesion: Session = Depends(obtener_sesion), admin: Usuario = admin
         "pozo_base_semanal": reglas.pozo_base_semanal,
         "pozo_pct": reglas.pozo_pct,
         "vendedor_pct": reglas.vendedor_pct,
+        "casa_pct": reglas.casa_pct_por_defecto,
         "horarios": reglas.dict_horarios(),
         "semanal_horario": reglas.semanal_horario,
         "semanal_dia_inicio": reglas.semanal_dia_inicio,
@@ -112,8 +117,12 @@ def crear_sorteo(datos: SorteoCrear, sesion: Session = Depends(obtener_sesion), 
     reglas = motor.obtener_reglas(sesion)
     if datos.horario not in reglas.dict_horarios():
         raise HTTPException(status_code=400, detail="Horario inexistente en las reglas")
+    if datos.casa_pct is not None and datos.vendedor_pct is not None and datos.casa_pct + datos.vendedor_pct > 100:
+        raise HTTPException(status_code=400, detail="Casa + vendedores no puede superar el 100%")
     if datos.pozo_inicial is not None:
         pozo = datos.pozo_inicial
+    elif datos.pozo_base is not None:
+        pozo = datos.pozo_base
     elif datos.modulo == ModuloJuego.CLASICO:
         pozo = reglas.pozo_base_clasico
     elif datos.modulo == ModuloJuego.SEMANAL:
@@ -126,6 +135,10 @@ def crear_sorteo(datos: SorteoCrear, sesion: Session = Depends(obtener_sesion), 
         fecha=datos.fecha,
         premio_fijo=datos.premio_fijo,
         pozo_inicial=pozo,
+        precio_jugada=datos.precio_jugada,
+        pozo_base=datos.pozo_base,
+        casa_pct=datos.casa_pct,
+        vendedor_pct=datos.vendedor_pct,
     )
     sesion.add(sorteo)
     sesion.commit()
@@ -150,6 +163,10 @@ def listar_sorteos(sesion: Session = Depends(obtener_sesion), admin: Usuario = D
             "recaudado": s.recaudado,
             "solo_participantes": s.solo_participantes,
             "busqueda_agotada": s.busqueda_agotada,
+            "precio_jugada": s.precio_jugada,
+            "pozo_base": s.pozo_base,
+            "casa_pct": s.casa_pct,
+            "vendedor_pct": s.vendedor_pct,
         }
         for s in sorteos
     ]
