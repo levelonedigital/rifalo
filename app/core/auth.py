@@ -22,10 +22,17 @@ class DatosLoginOk(BaseModel):
     nombre: str
 
 
+class RegistroJugador(BaseModel):
+    usuario: str
+    password: str
+    nombre: str
+    codigo_vendedor: str
+    telefono: str | None = None
+
+
 @router.post("/login", response_model=DatosLoginOk)
 def login(datos: DatosLogin, sesion: Session = Depends(obtener_sesion)):
-    """Inicio de sesion con usuario y contrasenia.
-    El 2FA se exige solo si el usuario ya lo configuro."""
+    """Inicio de sesion. El 2FA se exige solo si el usuario ya lo configuro."""
     usuario = sesion.query(Usuario).filter(Usuario.usuario == datos.usuario).first()
     if usuario is None or not security.verificar_password(datos.password, usuario.password_hash):
         auditoria.registrar(sesion, "LOGIN_FALLIDO", detalle=f"usuario intentado: {datos.usuario}")
@@ -53,13 +60,42 @@ def login(datos: DatosLogin, sesion: Session = Depends(obtener_sesion)):
     return DatosLoginOk(token=token, rol=usuario.rol.value, nombre=usuario.nombre)
 
 
+@router.post("/registro-jugador")
+def registro_jugador(datos: RegistroJugador, sesion: Session = Depends(obtener_sesion)):
+    """Un jugador se registra con el codigo de su vendedor."""
+    vendedor = (
+        sesion.query(Usuario)
+        .filter(Usuario.codigo == datos.codigo_vendedor.upper(), Usuario.rol == RolUsuario.VENDEDOR)
+        .first()
+    )
+    if vendedor is None or not vendedor.activo:
+        raise HTTPException(status_code=400, detail="Codigo de vendedor invalido")
+    if sesion.query(Usuario).filter(Usuario.usuario == datos.usuario).first():
+        raise HTTPException(status_code=400, detail="El nombre de usuario ya existe")
+    jugador = Usuario(
+        usuario=datos.usuario,
+        password_hash=security.hash_password(datos.password),
+        nombre=datos.nombre,
+        telefono=datos.telefono,
+        rol=RolUsuario.JUGADOR,
+        padre_id=vendedor.id,
+        activo=True,
+    )
+    sesion.add(jugador)
+    sesion.commit()
+    auditoria.registrar(sesion, "REGISTRO_JUGADOR", detalle=f"jugador={jugador.usuario} vendedor={vendedor.usuario}", usuario=vendedor)
+    sesion.commit()
+    return {"ok": True, "detalle": f"Jugador registrado con el vendedor {vendedor.nombre}"}
+
+
 @router.get("/me")
 def yo(usuario: Usuario = Depends(obtener_usuario_actual)):
-    """Devuelve los datos del usuario autenticado."""
     return {
         "id": usuario.id,
         "usuario": usuario.usuario,
         "nombre": usuario.nombre,
         "rol": usuario.rol.value,
         "telefono": usuario.telefono,
+        "codigo": usuario.codigo,
+        "comision_pct": usuario.comision_pct,
     }
