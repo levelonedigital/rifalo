@@ -7,7 +7,7 @@
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: Arial, sans-serif; background: #0f172a; color: #e2e8f0; }
-  .contenedor { max-width: 1000px; margin: 0 auto; padding: 16px; }
+  .contenedor { max-width: 1050px; margin: 0 auto; padding: 16px; }
   h1 { color: #22c55e; margin-bottom: 8px; }
   h2 { margin: 16px 0 8px; color: #93c5fd; }
   .tarjeta { background: #1e293b; border-radius: 10px; padding: 16px; margin-bottom: 16px; }
@@ -16,10 +16,9 @@
   button { margin: 6px 4px 0 0; padding: 8px 14px; border: none; border-radius: 6px; background: #22c55e; color: #052e16; font-weight: bold; cursor: pointer; }
   button.secundario { background: #334155; color: #e2e8f0; }
   button.peligro { background: #dc2626; color: #fff; }
-  table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 14px; }
-  th, td { padding: 6px 8px; border-bottom: 1px solid #334155; text-align: left; }
+  table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 13px; }
+  th, td { padding: 6px 6px; border-bottom: 1px solid #334155; text-align: left; }
   th { color: #93c5fd; }
-  .fila-botones { display: flex; flex-wrap: wrap; gap: 4px; }
   .mensaje { padding: 10px; border-radius: 6px; margin: 8px 0; display: none; }
   .mensaje.ok { display: block; background: #14532d; }
   .mensaje.error { display: block; background: #7f1d1d; }
@@ -27,6 +26,8 @@
   .tabs button { background: #334155; color: #e2e8f0; }
   .tabs button.activa { background: #22c55e; color: #052e16; }
   .chico { font-size: 12px; color: #94a3b8; }
+  .grilla { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  @media (max-width: 700px) { .grilla { grid-template-columns: 1fr; } }
 </style>
 </head>
 <body>
@@ -35,169 +36,276 @@
   <!-- LOGIN -->
   <div id="zona-login" class="tarjeta">
     <h1>RIFALO</h1>
-    <p class="chico">Ingreso de administradores y revendedores</p>
+    <p class="chico">Ingreso por rol: admin, vendedor, revendedor o jugador</p>
     <label>Usuario</label><input id="login-usuario">
     <label>Contrasenia</label><input id="login-password" type="password">
     <label>Codigo 2FA (solo si lo tenes activado)</label><input id="login-2fa">
     <button onclick="login()">Entrar</button>
+    <button class="secundario" onclick="mostrarRegistro()">Soy jugador: registrarme</button>
     <div id="login-error" class="mensaje error"></div>
+
+    <div id="form-registro" style="display:none; margin-top:14px">
+      <h2>Registro de jugador</h2>
+      <label>Usuario</label><input id="reg-usuario">
+      <label>Contrasenia</label><input id="reg-password" type="password">
+      <label>Nombre y apellido</label><input id="reg-nombre">
+      <label>Codigo de tu vendedor (ej: R1)</label><input id="reg-codigo">
+      <button onclick="registrarJugador()">Registrarme</button>
+    </div>
   </div>
 
   <!-- PANEL -->
   <div id="zona-panel" style="display:none">
     <h1>RIFALO <span class="chico" id="panel-usuario"></span></h1>
-    <div class="tabs">
-      <button id="tab-sorteos" onclick="irTab('sorteos')">Sorteos</button>
-      <button id="tab-jugadas" onclick="irTab('jugadas')">Jugadas pendientes</button>
-      <button id="tab-revendedores" onclick="irTab('revendedores')">Revendedores</button>
-      <button id="tab-auditoria" onclick="irTab('auditoria')">Auditoria</button>
-      <button id="tab-rsorteos" onclick="irTab('rsorteos')">Sorteos abiertos</button>
-      <button id="tab-rjugada" onclick="irTab('rjugada')">Cargar jugada</button>
-      <button id="tab-rmisjugadas" onclick="irTab('rmisjugadas')">Mis jugadas</button>
-      <button class="peligro" onclick="salir()">Salir</button>
-    </div>
+    <div class="tabs" id="barra-tabs"></div>
     <div id="mensaje" class="mensaje"></div>
 
     <!-- ADMIN: SORTEOS -->
     <div id="seccion-sorteos" class="tarjeta" style="display:none">
       <h2>Crear sorteo</h2>
-      <label>Modulo</label>
-      <select id="sorteo-modulo">
-        <option value="clasico">Clasico</option>
-        <option value="rifa">Rifa</option>
-        <option value="semanal">Semanal</option>
-      </select>
-      <label>Fecha y hora del sorteo</label>
-      <input id="sorteo-fecha" type="datetime-local">
-      <label>Premio fijo (solo rifa)</label>
-      <input id="sorteo-premio" type="number">
-      <button onclick="crearSorteo()">Crear</button>
-      <h2>Sorteos existentes</h2>
+      <div class="grilla">
+        <div><label>Modulo</label><select id="sorteo-modulo"><option value="clasico">Clasico (3 num)</option><option value="semanal">Semanal (10 num)</option><option value="rifa">Rifa (1 num)</option></select></div>
+        <div><label>Horario</label><select id="sorteo-horario"></select></div>
+        <div><label>Fecha</label><input id="sorteo-fecha" type="datetime-local"></div>
+        <div><label>Premio fijo (solo rifa)</label><input id="sorteo-premio" type="number"></div>
+        <div><label>Pozo inicial (vacio = base de reglas)</label><input id="sorteo-pozo" type="number"></div>
+      </div>
+      <button onclick="crearSorteo()">Crear sorteo</button>
+      <h2>Sorteos</h2>
       <div id="lista-sorteos"></div>
     </div>
 
-    <!-- ADMIN: JUGADAS PENDIENTES -->
-    <div id="seccion-jugadas" class="tarjeta" style="display:none">
-      <h2>Jugadas pendientes de aprobacion</h2>
-      <button class="secundario" onclick="cargarJugadas()">Actualizar</button>
-      <div id="lista-jugadas"></div>
+    <!-- ADMIN: REGLAS -->
+    <div id="seccion-reglas" class="tarjeta" style="display:none">
+      <h2>Reglas del sistema</h2>
+      <div class="grilla">
+        <div><label>Precio jugada clasico</label><input id="regla-precio-clasico" type="number"></div>
+        <div><label>Precio jugada semanal</label><input id="regla-precio-semanal" type="number"></div>
+        <div><label>Precio jugada rifa</label><input id="regla-precio-rifa" type="number"></div>
+        <div><label>Pozo base clasico</label><input id="regla-pozo-clasico" type="number"></div>
+        <div><label>Pozo base semanal</label><input id="regla-pozo-semanal" type="number"></div>
+        <div><label>% de cada jugada al pozo (post-congelamiento)</label><input id="regla-pozo-pct" type="number"></div>
+        <div><label>% comision por defecto de vendedores</label><input id="regla-vendedor-pct" type="number"></div>
+        <div><label>Horario del semanal</label><input id="regla-semanal-horario"></div>
+        <div><label>Semanal: dia inicio (0=lunes)</label><input id="regla-semanal-inicio" type="number"></div>
+        <div><label>Semanal: dia fin (4=viernes)</label><input id="regla-semanal-fin" type="number"></div>
+        <div><label>Busqueda: minutos para empezar</label><input id="regla-bus-inicio" type="number"></div>
+        <div><label>Busqueda: intervalo de reintento</label><input id="regla-bus-intervalo" type="number"></div>
+        <div><label>Busqueda: duracion maxima</label><input id="regla-bus-duracion" type="number"></div>
+      </div>
+      <label>Horarios oficiales (JSON)</label><input id="regla-horarios">
+      <button onclick="guardarReglas()">Guardar reglas</button>
     </div>
 
-    <!-- ADMIN: REVENDEDORES -->
-    <div id="seccion-revendedores" class="tarjeta" style="display:none">
-      <h2>Crear revendedor</h2>
-      <label>Usuario</label><input id="rev-usuario">
-      <label>Contrasenia</label><input id="rev-password" type="password">
-      <label>Nombre</label><input id="rev-nombre">
-      <label>Telefono</label><input id="rev-telefono">
-      <label>Codigo (ej: R1)</label><input id="rev-codigo">
-      <label>Comision %</label><input id="rev-comision" type="number" value="10">
-      <label>Datos de transferencia</label><input id="rev-transferencia">
-      <button onclick="crearRevendedor()">Crear</button>
-      <h2>Revendedores existentes</h2>
-      <div id="lista-revendedores"></div>
+    <!-- ADMIN: VENDEDORES -->
+    <div id="seccion-vendedores" class="tarjeta" style="display:none">
+      <h2>Crear vendedor</h2>
+      <div class="grilla">
+        <div><label>Usuario</label><input id="vend-usuario"></div>
+        <div><label>Contrasenia</label><input id="vend-password" type="password"></div>
+        <div><label>Nombre</label><input id="vend-nombre"></div>
+        <div><label>Telefono</label><input id="vend-telefono"></div>
+        <div><label>Codigo (ej: V1)</label><input id="vend-codigo"></div>
+        <div><label>Comision %</label><input id="vend-comision" type="number" value="20"></div>
+      </div>
+      <label>Datos de transferencia</label><input id="vend-transferencia">
+      <button onclick="crearVendedor()">Crear vendedor</button>
+      <h2>Vendedores</h2>
+      <div id="lista-vendedores"></div>
+    </div>
+
+    <!-- ADMIN: JUGADAS -->
+    <div id="seccion-jugadas" class="tarjeta" style="display:none">
+      <h2>Todas las jugadas</h2>
+      <label>Filtrar por estado</label>
+      <select id="jugadas-filtro" onchange="cargarJugadasAdmin()">
+        <option value="">Todas</option><option value="pendiente">Pendientes</option><option value="aprobada">Aprobadas</option><option value="ganadora">Ganadoras</option><option value="perdedora">Perdedoras</option><option value="rechazada">Rechazadas</option>
+      </select>
+      <div id="lista-jugadas-admin"></div>
+    </div>
+
+    <!-- ADMIN: RESUMEN -->
+    <div id="seccion-resumen" class="tarjeta" style="display:none">
+      <h2>Resumen general</h2>
+      <button class="secundario" onclick="cargarResumenGeneral()">Actualizar</button>
+      <div id="caja-resumen"></div>
     </div>
 
     <!-- ADMIN: AUDITORIA -->
     <div id="seccion-auditoria" class="tarjeta" style="display:none">
-      <h2>Ultimos movimientos</h2>
+      <h2>Auditoria</h2>
       <button class="secundario" onclick="cargarAuditoria()">Actualizar</button>
       <div id="lista-auditoria"></div>
     </div>
 
-    <!-- REVENDEDOR: SORTEOS ABIERTOS -->
+    <!-- VENDEDOR: RESUMEN -->
+    <div id="seccion-vresumen" class="tarjeta" style="display:none">
+      <h2>Mi resumen</h2>
+      <button class="secundario" onclick="cargarVResumen()">Actualizar</button>
+      <div id="caja-vresumen"></div>
+    </div>
+
+    <!-- VENDEDOR: CARGAR JUGADA -->
+    <div id="seccion-vcargar" class="tarjeta" style="display:none">
+      <h2>Cargar jugada</h2>
+      <label>Sorteo</label><select id="v-sorteo"></select>
+      <label>Numeros (separados por coma: 07,15,42)</label><input id="v-numeros">
+      <label>Nombre del jugador</label><input id="v-jugador">
+      <button onclick="vCargarJugada()">Cargar</button>
+    </div>
+
+    <!-- VENDEDOR: PENDIENTES -->
+    <div id="seccion-vpendientes" class="tarjeta" style="display:none">
+      <h2>Jugadas pendientes de mi aprobacion</h2>
+      <button class="secundario" onclick="cargarVPendientes()">Actualizar</button>
+      <div id="lista-vpendientes"></div>
+    </div>
+
+    <!-- VENDEDOR: MIS JUGADAS -->
+    <div id="seccion-vjugadas" class="tarjeta" style="display:none">
+      <h2>Mis jugadas</h2>
+      <button class="secundario" onclick="cargarVJugadas()">Actualizar</button>
+      <div id="lista-vjugadas"></div>
+    </div>
+
+    <!-- VENDEDOR: MIS REVENDEDORES -->
+    <div id="seccion-vrevendedores" class="tarjeta" style="display:none">
+      <h2>Crear revendedor (se paga de tu comision)</h2>
+      <div class="grilla">
+        <div><label>Usuario</label><input id="vrev-usuario"></div>
+        <div><label>Contrasenia</label><input id="vrev-password" type="password"></div>
+        <div><label>Nombre</label><input id="vrev-nombre"></div>
+        <div><label>Codigo</label><input id="vrev-codigo"></div>
+        <div><label>Comision % (menor o igual a la tuya)</label><input id="vrev-comision" type="number"></div>
+      </div>
+      <button onclick="crearVRevendedor()">Crear revendedor</button>
+      <h2>Mis revendedores</h2>
+      <div id="lista-vrevendedores"></div>
+    </div>
+
+    <!-- VENDEDOR: MIS JUGADORES -->
+    <div id="seccion-vjugadores" class="tarjeta" style="display:none">
+      <h2>Jugadores registrados conmigo</h2>
+      <button class="secundario" onclick="cargarVJugadores()">Actualizar</button>
+      <div id="lista-vjugadores"></div>
+    </div>
+
+    <!-- REVENDEDOR -->
     <div id="seccion-rsorteos" class="tarjeta" style="display:none">
-      <h2>Sorteos disponibles para cargar</h2>
-      <button class="secundario" onclick="cargarSorteosAbiertos()">Actualizar</button>
+      <h2>Sorteos abiertos</h2>
       <div id="lista-rsorteos"></div>
     </div>
-
-    <!-- REVENDEDOR: CARGAR JUGADA -->
-    <div id="seccion-rjugada" class="tarjeta" style="display:none">
-      <h2>Nueva jugada</h2>
-      <label>Sorteo</label>
-      <select id="jugada-sorteo"></select>
-      <label>Numero apostado (0-99)</label>
-      <input id="jugada-numero" type="number" min="0" max="99">
-      <label>Monto</label>
-      <input id="jugada-monto" type="number" min="1">
-      <label>Nombre del jugador (opcional)</label>
-      <input id="jugada-nombre">
-      <button onclick="cargarJugada()">Cargar jugada</button>
+    <div id="seccion-rcargar" class="tarjeta" style="display:none">
+      <h2>Cargar jugada</h2>
+      <label>Sorteo</label><select id="r-sorteo"></select>
+      <label>Numeros (separados por coma)</label><input id="r-numeros">
+      <label>Nombre del jugador</label><input id="r-jugador">
+      <button onclick="rCargarJugada()">Cargar</button>
+    </div>
+    <div id="seccion-rjugadas" class="tarjeta" style="display:none">
+      <h2>Mis jugadas</h2>
+      <button class="secundario" onclick="cargarRJugadas()">Actualizar</button>
+      <div id="lista-rjugadas"></div>
+    </div>
+    <div id="seccion-rresumen" class="tarjeta" style="display:none">
+      <h2>Mi resumen</h2>
+      <button class="secundario" onclick="cargarRResumen()">Actualizar</button>
+      <div id="caja-rresumen"></div>
     </div>
 
-    <!-- REVENDEDOR: MIS JUGADAS -->
-    <div id="seccion-rmisjugadas" class="tarjeta" style="display:none">
+    <!-- JUGADOR -->
+    <div id="seccion-jsorteos" class="tarjeta" style="display:none">
+      <h2>Sorteos abiertos</h2>
+      <div id="lista-jsorteos"></div>
+    </div>
+    <div id="seccion-jcargar" class="tarjeta" style="display:none">
+      <h2>Mi jugada</h2>
+      <label>Sorteo</label><select id="j-sorteo"></select>
+      <label>Numeros (separados por coma)</label><input id="j-numeros">
+      <button onclick="jCargarJugada()">Cargar (queda pendiente de aprobacion de tu vendedor)</button>
+    </div>
+    <div id="seccion-jjugadas" class="tarjeta" style="display:none">
       <h2>Mis jugadas</h2>
-      <button class="secundario" onclick="cargarMisJugadas()">Actualizar</button>
-      <div id="lista-rmisjugadas"></div>
+      <button class="secundario" onclick="cargarJJugadas()">Actualizar</button>
+      <div id="lista-jjugadas"></div>
     </div>
   </div>
 </div>
 
 <script>
-const BASE = "";
 let token = localStorage.getItem("rifalo_token") || null;
 let rol = localStorage.getItem("rifalo_rol") || null;
 
-const TABS_ADMIN = ["sorteos", "jugadas", "revendedores", "auditoria"];
-const TABS_REV = ["rsorteos", "rjugada", "rmisjugadas"];
+const TABS_POR_ROL = {
+  admin_principal: [["sorteos","Sorteos"],["reglas","Reglas"],["vendedores","Vendedores"],["jugadas","Jugadas"],["resumen","Resumen"],["auditoria","Auditoria"]],
+  admin: [["sorteos","Sorteos"],["jugadas","Jugadas"],["resumen","Resumen"],["auditoria","Auditoria"]],
+  vendedor: [["vresumen","Mi resumen"],["vcargar","Cargar jugada"],["vpendientes","Aprobar"],["vjugadas","Mis jugadas"],["vrevendedores","Mis revendedores"],["vjugadores","Mis jugadores"]],
+  revendedor: [["rsorteos","Sorteos"],["rcargar","Cargar jugada"],["rjugadas","Mis jugadas"],["rresumen","Mi resumen"]],
+  jugador: [["jsorteos","Sorteos"],["jcargar","Mi jugada"],["jjugadas","Mis jugadas"]],
+};
 
-function cabeceras() {
-  return { "Content-Type": "application/json", "Authorization": "Bearer " + token };
-}
+function cabeceras() { return { "Content-Type": "application/json", "Authorization": "Bearer " + token }; }
 
 async function api(ruta, metodo, cuerpo) {
-  const respuesta = await fetch(BASE + ruta, {
-    method: metodo,
-    headers: cabeceras(),
-    body: cuerpo ? JSON.stringify(cuerpo) : undefined,
-  });
-  if (respuesta.status === 401) { salir(); throw new Error("Sesion expirada, entra de nuevo"); }
-  const datos = await respuesta.json().catch(() => ({}));
-  if (!respuesta.ok) throw new Error(datos.detail || "Error " + respuesta.status);
-  return datos;
+  const r = await fetch(ruta, { method: metodo, headers: cabeceras(), body: cuerpo ? JSON.stringify(cuerpo) : undefined });
+  if (r.status === 401) { salir(); throw new Error("Sesion expirada, entra de nuevo"); }
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(d.detail || ("Error " + r.status));
+  return d;
 }
 
-function aviso(texto, esError) {
-  const caja = document.getElementById("mensaje");
-  caja.className = "mensaje " + (esError ? "error" : "ok");
-  caja.textContent = texto;
-  setTimeout(() => { caja.className = "mensaje"; }, 4000);
+function aviso(t, err) {
+  const c = document.getElementById("mensaje");
+  c.className = "mensaje " + (err ? "error" : "ok");
+  c.textContent = t;
+  setTimeout(() => { c.className = "mensaje"; }, 4000);
 }
 
+function parseNumeros(texto) {
+  return texto.split(/[,\s]+/).filter(x => x).map(x => parseInt(x, 10));
+}
+
+// ---------- SESION ----------
 async function login() {
-  const cuerpo = {
-    usuario: document.getElementById("login-usuario").value,
-    password: document.getElementById("login-password").value,
-  };
-  const dosfa = document.getElementById("login-2fa").value;
-  if (dosfa) cuerpo.codigo_2fa = dosfa;
+  const cuerpo = { usuario: document.getElementById("login-usuario").value, password: document.getElementById("login-password").value };
+  const f = document.getElementById("login-2fa").value;
+  if (f) cuerpo.codigo_2fa = f;
   try {
-    const datos = await fetch(BASE + "/auth/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(cuerpo),
-    }).then(r => r.json());
-    if (!datos.token) throw new Error(datos.detail || "Credenciales incorrectas");
-    token = datos.token;
-    rol = datos.rol;
+    const r = await fetch("/auth/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(cuerpo) });
+    const d = await r.json();
+    if (!d.token) throw new Error(d.detail || "Credenciales incorrectas");
+    token = d.token; rol = d.rol;
     localStorage.setItem("rifalo_token", token);
     localStorage.setItem("rifalo_rol", rol);
-    localStorage.setItem("rifalo_nombre", datos.nombre);
+    localStorage.setItem("rifalo_nombre", d.nombre);
     mostrarPanel();
   } catch (e) {
-    const caja = document.getElementById("login-error");
-    caja.className = "mensaje error";
-    caja.textContent = e.message;
+    const c = document.getElementById("login-error");
+    c.className = "mensaje error"; c.textContent = e.message;
   }
 }
 
+function mostrarRegistro() { document.getElementById("form-registro").style.display = "block"; }
+
+async function registrarJugador() {
+  const cuerpo = {
+    usuario: document.getElementById("reg-usuario").value,
+    password: document.getElementById("reg-password").value,
+    nombre: document.getElementById("reg-nombre").value,
+    codigo_vendedor: document.getElementById("reg-codigo").value,
+  };
+  try {
+    const r = await fetch("/auth/registro-jugador", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(cuerpo) });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || "Error de registro");
+    aviso(d.detalle);
+    document.getElementById("form-registro").style.display = "none";
+  } catch (e) { aviso(e.message, true); }
+}
+
 function salir() {
-  token = null;
-  rol = null;
-  localStorage.removeItem("rifalo_token");
-  localStorage.removeItem("rifalo_rol");
+  token = null; rol = null;
+  localStorage.removeItem("rifalo_token"); localStorage.removeItem("rifalo_rol");
   document.getElementById("zona-panel").style.display = "none";
   document.getElementById("zona-login").style.display = "block";
 }
@@ -205,211 +313,368 @@ function salir() {
 function mostrarPanel() {
   document.getElementById("zona-login").style.display = "none";
   document.getElementById("zona-panel").style.display = "block";
-  document.getElementById("panel-usuario").textContent =
-    "- " + (localStorage.getItem("rifalo_nombre") || "") + " (" + rol + ")";
-  TABS_ADMIN.forEach(t => { document.getElementById("tab-" + t).style.display = rol === "revendedor" ? "none" : ""; });
-  TABS_REV.forEach(t => { document.getElementById("tab-" + t).style.display = rol === "revendedor" ? "" : "none"; });
-  irTab(rol === "revendedor" ? "rsorteos" : "sorteos");
+  document.getElementById("panel-usuario").textContent = "- " + (localStorage.getItem("rifalo_nombre") || "") + " (" + rol + ")";
+  const barra = document.getElementById("barra-tabs");
+  const tabs = TABS_POR_ROL[rol] || [];
+  barra.innerHTML = tabs.map(t => "<button id='tab-" + t[0] + "' onclick=\"irTab('" + t[0] + "')\">" + t[1] + "</button>").join("") + "<button class='peligro' onclick='salir()'>Salir</button>";
+  irTab(tabs[0][0]);
 }
 
 function irTab(nombre) {
-  TABS_ADMIN.concat(TABS_REV).forEach(s => {
-    document.getElementById("seccion-" + s).style.display = s === nombre ? "block" : "none";
-    document.getElementById("tab-" + s).className = s === nombre ? "activa" : "";
-  });
-  if (nombre === "sorteos") cargarSorteos();
-  if (nombre === "jugadas") cargarJugadas();
-  if (nombre === "revendedores") cargarRevendedores();
-  if (nombre === "auditoria") cargarAuditoria();
-  if (nombre === "rsorteos") cargarSorteosAbiertos();
-  if (nombre === "rjugada") llenarSelectSorteos();
-  if (nombre === "rmisjugadas") cargarMisJugadas();
+  document.querySelectorAll("#zona-panel .tarjeta").forEach(s => { s.style.display = "none"; });
+  const seccion = document.getElementById("seccion-" + nombre);
+  if (seccion) seccion.style.display = "block";
+  document.querySelectorAll("#barra-tabs button").forEach(b => { b.className = ""; });
+  const tab = document.getElementById("tab-" + nombre);
+  if (tab) tab.className = "activa";
+  const acciones = {
+    sorteos: () => { llenarHorarios(); cargarSorteos(); },
+    reglas: cargarReglas,
+    vendedores: cargarVendedores,
+    jugadas: cargarJugadasAdmin,
+    resumen: cargarResumenGeneral,
+    auditoria: cargarAuditoria,
+    vresumen: cargarVResumen,
+    vcargar: () => llenarSelect("/vendedor/sorteos", "v-sorteo"),
+    vpendientes: cargarVPendientes,
+    vjugadas: cargarVJugadas,
+    vrevendedores: cargarVRevendedores,
+    vjugadores: cargarVJugadores,
+    rsorteos: cargarRSorteos,
+    rcargar: () => llenarSelect("/revendedor/sorteos", "r-sorteo"),
+    rjugadas: cargarRJugadas,
+    rresumen: cargarRResumen,
+    jsorteos: cargarJSorteos,
+    jcargar: () => llenarSelect("/jugador/sorteos", "j-sorteo"),
+    jjugadas: cargarJJugadas,
+  };
+  if (acciones[nombre]) acciones[nombre]();
 }
 
-// ---------- ADMIN: SORTEOS ----------
+async function llenarSelect(ruta, idSelect) {
+  try {
+    const sorteos = await api(ruta, "GET");
+    document.getElementById(idSelect).innerHTML = sorteos.map(s =>
+      "<option value='" + s.id + "'>#" + s.id + " " + s.modulo + " " + s.horario + " " + s.fecha.slice(0,16).replace("T"," ") + " - pozo $" + s.pozo + (s.solo_participantes ? " (VACANTE)" : "") + "</option>"
+    ).join("") || "<option value=''>No hay sorteos abiertos</option>";
+  } catch (e) { aviso(e.message, true); }
+}
+
+// ---------- ADMIN ----------
+async function llenarHorarios() {
+  try {
+    const reglas = await api("/admin/reglas", "GET");
+    document.getElementById("sorteo-horario").innerHTML = Object.keys(reglas.horarios).map(h => "<option value='" + h + "'>" + h + " " + reglas.horarios[h] + "</option>").join("");
+  } catch (e) { /* sin permisos de reglas: ignora */ }
+}
+
 async function crearSorteo() {
   const cuerpo = {
     modulo: document.getElementById("sorteo-modulo").value,
-    fecha_sorteo: document.getElementById("sorteo-fecha").value,
+    horario: document.getElementById("sorteo-horario").value,
+    fecha: document.getElementById("sorteo-fecha").value,
   };
   const premio = document.getElementById("sorteo-premio").value;
   if (premio) cuerpo.premio_fijo = parseFloat(premio);
-  try {
-    const datos = await api("/admin/sorteos", "POST", cuerpo);
-    aviso("Sorteo creado con id " + datos.id);
-    cargarSorteos();
-  } catch (e) { aviso(e.message, true); }
+  const pozo = document.getElementById("sorteo-pozo").value;
+  if (pozo) cuerpo.pozo_inicial = parseFloat(pozo);
+  try { const d = await api("/admin/sorteos", "POST", cuerpo); aviso("Sorteo #" + d.id + " creado con pozo $" + d.pozo_inicial); cargarSorteos(); }
+  catch (e) { aviso(e.message, true); }
 }
 
 async function cargarSorteos() {
   try {
     const sorteos = await api("/admin/sorteos", "GET");
-    let html = "<table><tr><th>Id</th><th>Modulo</th><th>Fecha</th><th>Estado</th><th>Resultado</th><th>Acciones</th></tr>";
+    let html = "<table><tr><th>#</th><th>Modulo</th><th>Horario</th><th>Fecha</th><th>Estado</th><th>Pozo</th><th>Recaudado</th><th>Acciones</th></tr>";
     sorteos.forEach(s => {
-      html += "<tr><td>" + s.id + "</td><td>" + s.modulo + "</td><td>" + s.fecha_sorteo.slice(0, 16).replace("T", " ") + "</td><td>" + s.estado + "</td><td>" + (s.resultado_numero ?? "-") + "</td><td class='fila-botones'>";
+      html += "<tr><td>" + s.id + "</td><td>" + s.modulo + (s.solo_participantes ? " VACANTE" : "") + "</td><td>" + s.horario + "</td><td>" + s.fecha.slice(0,16).replace("T"," ") + "</td><td>" + s.estado + (s.busqueda_agotada ? " (carga manual)" : "") + "</td><td>$" + s.pozo + "</td><td>$" + (s.recaudado || 0) + "</td><td>";
       if (s.estado === "programado") html += "<button class='secundario' onclick='cerrarSorteo(" + s.id + ")'>Cerrar</button>";
-      if (s.estado === "cerrado") html += "<button onclick='cargarResultado(" + s.id + ")'>Cargar resultado</button>";
-      html += "<button class='secundario' onclick='verResumen(" + s.id + ")'>Resumen</button></td></tr>";
+      if (s.estado === "cerrado") html += "<button onclick='cargarResultado(" + s.id + ")'>Cargar 20 nums</button>";
+      if (s.estado === "liquidado") html += "<button class='secundario' onclick='pozoVacante(" + s.id + ")'>Pozo vacante</button>";
+      html += "</td></tr>";
     });
     document.getElementById("lista-sorteos").innerHTML = html + "</table>";
   } catch (e) { aviso(e.message, true); }
 }
 
 async function cerrarSorteo(id) {
-  try { await api("/admin/sorteos/" + id + "/cerrar", "POST"); aviso("Sorteo " + id + " cerrado"); cargarSorteos(); }
+  try { await api("/admin/sorteos/" + id + "/cerrar", "POST"); aviso("Sorteo cerrado: el buscador automatico ya puede trabajar"); cargarSorteos(); }
   catch (e) { aviso(e.message, true); }
 }
 
 async function cargarResultado(id) {
-  const numero = prompt("Numero oficial del sorteo (0-99):");
-  if (numero === null) return;
+  const texto = prompt("Pega los 20 numeros oficiales separados por coma (en orden, 1er premio primero):");
+  if (!texto) return;
   try {
-    const resumen = await api("/admin/sorteos/" + id + "/resultado", "POST", { numero: parseInt(numero) });
-    aviso("Liquido: " + resumen.ganadoras + " ganadoras, premios $" + resumen.total_premios);
+    const d = await api("/admin/sorteos/" + id + "/resultado", "POST", { numeros: parseNumeros(texto) });
+    aviso("Liquidado: ganadoras " + JSON.stringify(d.ganadoras) + ", pozo pagado $" + d.pozo_pagado + (d.pozo_sin_ganador ? ", pozo sin ganador $" + d.pozo_sin_ganador : ""));
     cargarSorteos();
   } catch (e) { aviso(e.message, true); }
 }
 
-async function verResumen(id) {
-  try {
-    const r = await api("/admin/sorteos/" + id + "/resumen", "GET");
-    alert("Sorteo " + r.sorteo_id + " (" + r.modulo + ")\nEstado: " + r.estado +
-      "\nResultado: " + (r.resultado_numero ?? "-") +
-      "\nJugadas aprobadas: " + r.jugadas_aprobadas +
-      "\nRecaudado: $" + r.recaudado +
-      "\nComisiones: $" + r.comisiones +
-      "\nPremios: $" + r.premios +
-      "\nGanadoras (ids): " + (r.ganadoras.join(", ") || "ninguna") +
-      "\nPozo acumulado: $" + r.pozo_acumulado);
-  } catch (e) { aviso(e.message, true); }
-}
-
-// ---------- ADMIN: JUGADAS ----------
-async function cargarJugadas() {
-  try {
-    const jugadas = await api("/admin/jugadas/pendientes", "GET");
-    if (!jugadas.length) { document.getElementById("lista-jugadas").innerHTML = "<p class='chico'>No hay jugadas pendientes.</p>"; return; }
-    let html = "<table><tr><th>Id</th><th>Sorteo</th><th>Revendedor</th><th>Jugador</th><th>Numero</th><th>Monto</th><th>Acciones</th></tr>";
-    jugadas.forEach(j => {
-      html += "<tr><td>" + j.id + "</td><td>" + j.sorteo_id + "</td><td>" + j.revendedor_id + "</td><td>" + (j.jugador_nombre || "-") + "</td><td>" + j.numero + "</td><td>$" + j.monto + "</td><td class='fila-botones'><button onclick='aprobarJugada(" + j.id + ")'>Aprobar</button><button class='peligro' onclick='rechazarJugada(" + j.id + ")'>Rechazar</button></td></tr>";
-    });
-    document.getElementById("lista-jugadas").innerHTML = html + "</table>";
-  } catch (e) { aviso(e.message, true); }
-}
-
-async function aprobarJugada(id) {
-  try { await api("/admin/jugadas/" + id + "/aprobar", "POST"); aviso("Jugada " + id + " aprobada"); cargarJugadas(); }
+async function pozoVacante(id) {
+  const fecha = prompt("Fecha del sorteo vacante (AAAA-MM-DDTHH:MM):");
+  if (!fecha) return;
+  try { const d = await api("/admin/sorteos/" + id + "/pozo-vacante", "POST", { fecha: fecha }); aviso("Pozo vacante #" + d.id + " creado con $" + d.pozo_inicial); cargarSorteos(); }
   catch (e) { aviso(e.message, true); }
 }
 
-async function rechazarJugada(id) {
-  try { await api("/admin/jugadas/" + id + "/rechazar", "POST"); aviso("Jugada " + id + " rechazada"); cargarJugadas(); }
-  catch (e) { aviso(e.message, true); }
+async function cargarReglas() {
+  try {
+    const r = await api("/admin/reglas", "GET");
+    document.getElementById("regla-precio-clasico").value = r.precio_clasico;
+    document.getElementById("regla-precio-semanal").value = r.precio_semanal;
+    document.getElementById("regla-precio-rifa").value = r.precio_rifa;
+    document.getElementById("regla-pozo-clasico").value = r.pozo_base_clasico;
+    document.getElementById("regla-pozo-semanal").value = r.pozo_base_semanal;
+    document.getElementById("regla-pozo-pct").value = r.pozo_pct;
+    document.getElementById("regla-vendedor-pct").value = r.vendedor_pct;
+    document.getElementById("regla-semanal-horario").value = r.semanal_horario;
+    document.getElementById("regla-semanal-inicio").value = r.semanal_dia_inicio;
+    document.getElementById("regla-semanal-fin").value = r.semanal_dia_fin;
+    document.getElementById("regla-bus-inicio").value = r.busqueda_inicio_min;
+    document.getElementById("regla-bus-intervalo").value = r.busqueda_intervalo_min;
+    document.getElementById("regla-bus-duracion").value = r.busqueda_duracion_min;
+    document.getElementById("regla-horarios").value = JSON.stringify(r.horarios);
+  } catch (e) { aviso(e.message, true); }
 }
 
-// ---------- ADMIN: REVENDEDORES ----------
-async function crearRevendedor() {
+async function guardarReglas() {
   const cuerpo = {
-    usuario: document.getElementById("rev-usuario").value,
-    password: document.getElementById("rev-password").value,
-    nombre: document.getElementById("rev-nombre").value,
-    telefono: document.getElementById("rev-telefono").value || null,
-    codigo: document.getElementById("rev-codigo").value,
-    comision_pct: parseFloat(document.getElementById("rev-comision").value),
-    datos_transferencia: document.getElementById("rev-transferencia").value || null,
+    precio_clasico: parseFloat(document.getElementById("regla-precio-clasico").value),
+    precio_semanal: parseFloat(document.getElementById("regla-precio-semanal").value),
+    precio_rifa: parseFloat(document.getElementById("regla-precio-rifa").value),
+    pozo_base_clasico: parseFloat(document.getElementById("regla-pozo-clasico").value),
+    pozo_base_semanal: parseFloat(document.getElementById("regla-pozo-semanal").value),
+    pozo_pct: parseFloat(document.getElementById("regla-pozo-pct").value),
+    vendedor_pct: parseFloat(document.getElementById("regla-vendedor-pct").value),
+    semanal_horario: document.getElementById("regla-semanal-horario").value,
+    semanal_dia_inicio: parseInt(document.getElementById("regla-semanal-inicio").value),
+    semanal_dia_fin: parseInt(document.getElementById("regla-semanal-fin").value),
+    busqueda_inicio_min: parseInt(document.getElementById("regla-bus-inicio").value),
+    busqueda_intervalo_min: parseInt(document.getElementById("regla-bus-intervalo").value),
+    busqueda_duracion_min: parseInt(document.getElementById("regla-bus-duracion").value),
+    horarios: document.getElementById("regla-horarios").value,
   };
-  try {
-    await api("/admin/revendedores", "POST", cuerpo);
-    aviso("Revendedor creado");
-    cargarRevendedores();
-  } catch (e) { aviso(e.message, true); }
+  try { await api("/admin/reglas", "PUT", cuerpo); aviso("Reglas guardadas"); }
+  catch (e) { aviso(e.message, true); }
 }
 
-async function cargarRevendedores() {
+async function crearVendedor() {
+  const cuerpo = {
+    usuario: document.getElementById("vend-usuario").value,
+    password: document.getElementById("vend-password").value,
+    nombre: document.getElementById("vend-nombre").value,
+    telefono: document.getElementById("vend-telefono").value || null,
+    codigo: document.getElementById("vend-codigo").value,
+    comision_pct: parseFloat(document.getElementById("vend-comision").value),
+    datos_transferencia: document.getElementById("vend-transferencia").value || null,
+  };
+  try { await api("/admin/vendedores", "POST", cuerpo); aviso("Vendedor creado"); cargarVendedores(); }
+  catch (e) { aviso(e.message, true); }
+}
+
+async function cargarVendedores() {
   try {
-    const revs = await api("/admin/revendedores", "GET");
-    let html = "<table><tr><th>Id</th><th>Usuario</th><th>Nombre</th><th>Codigo</th><th>Comision</th><th>Activo</th><th>Acciones</th></tr>";
-    revs.forEach(r => {
-      html += "<tr><td>" + r.id + "</td><td>" + r.usuario + "</td><td>" + r.nombre + "</td><td>" + r.codigo + "</td><td>" + r.comision_pct + "%</td><td>" + (r.activo ? "si" : "no") + "</td><td class='fila-botones'><button class='secundario' onclick='cambiarComision(" + r.id + ", " + r.comision_pct + ")'>Comision</button><button class='" + (r.activo ? "peligro" : "") + "' onclick='alternarActivo(" + r.id + ", " + !r.activo + ")'>" + (r.activo ? "Desactivar" : "Activar") + "</button></td></tr>";
+    const vs = await api("/admin/vendedores", "GET");
+    let html = "<table><tr><th>#</th><th>Usuario</th><th>Nombre</th><th>Codigo</th><th>Comision</th><th>Activo</th><th>Acciones</th></tr>";
+    vs.forEach(v => {
+      html += "<tr><td>" + v.id + "</td><td>" + v.usuario + "</td><td>" + v.nombre + "</td><td>" + v.codigo + "</td><td>" + v.comision_pct + "%</td><td>" + (v.activo ? "si" : "no") + "</td><td><button class='secundario' onclick='editarVendedor(" + v.id + "," + v.comision_pct + ")'>Comision</button><button class='" + (v.activo ? "peligro" : "") + "' onclick='alternarVendedor(" + v.id + "," + !v.activo + ")'>" + (v.activo ? "Desactivar" : "Activar") + "</button></td></tr>";
     });
-    document.getElementById("lista-revendedores").innerHTML = html + "</table>";
+    document.getElementById("lista-vendedores").innerHTML = html + "</table>";
   } catch (e) { aviso(e.message, true); }
 }
 
-async function cambiarComision(id, actual) {
-  const nueva = prompt("Nueva comision % para el revendedor " + id + " (actual " + actual + "%):");
+async function editarVendedor(id, actual) {
+  const nueva = prompt("Nueva comision % (actual " + actual + "%):");
   if (nueva === null) return;
-  try { await api("/admin/revendedores/" + id, "PUT", { comision_pct: parseFloat(nueva) }); aviso("Comision actualizada"); cargarRevendedores(); }
+  try { await api("/admin/vendedores/" + id, "PUT", { comision_pct: parseFloat(nueva) }); aviso("Comision actualizada"); cargarVendedores(); }
   catch (e) { aviso(e.message, true); }
 }
 
-async function alternarActivo(id, activo) {
-  try { await api("/admin/revendedores/" + id, "PUT", { activo: activo }); aviso("Revendedor " + (activo ? "activado" : "desactivado")); cargarRevendedores(); }
+async function alternarVendedor(id, activo) {
+  try { await api("/admin/vendedores/" + id, "PUT", { activo: activo }); aviso("Vendedor " + (activo ? "activado" : "desactivado")); cargarVendedores(); }
   catch (e) { aviso(e.message, true); }
 }
 
-// ---------- ADMIN: AUDITORIA ----------
+async function cargarJugadasAdmin() {
+  const estado = document.getElementById("jugadas-filtro").value;
+  try {
+    const js = await api("/admin/jugadas" + (estado ? "?estado=" + estado : ""), "GET");
+    let html = "<table><tr><th>#</th><th>Sorteo</th><th>Vendedor</th><th>Jugador</th><th>Numeros</th><th>Precio</th><th>Estado</th><th>Premio</th></tr>";
+    js.forEach(j => {
+      html += "<tr><td>" + j.id + "</td><td>" + j.sorteo_id + "</td><td>" + j.vendedor + "</td><td>" + (j.jugador_nombre || "-") + "</td><td>" + j.numeros + "</td><td>$" + j.precio + "</td><td>" + j.estado + "</td><td>$" + (j.premio ?? "-") + "</td></tr>";
+    });
+    document.getElementById("lista-jugadas-admin").innerHTML = html + "</table>";
+  } catch (e) { aviso(e.message, true); }
+}
+
+async function cargarResumenGeneral() {
+  try {
+    const r = await api("/admin/resumen-general", "GET");
+    document.getElementById("caja-resumen").innerHTML = "<table><tr><th>Jugadas</th><th>Vendido</th><th>Casa</th><th>Vendedores</th><th>Revendedores</th><th>Premios</th></tr><tr><td>" + r.jugadas_aprobadas + "</td><td>$" + r.vendido + "</td><td>$" + r.casa + "</td><td>$" + r.vendedores + "</td><td>$" + r.revendedores + "</td><td>$" + r.premios_pagados + "</td></tr></table>";
+  } catch (e) { aviso(e.message, true); }
+}
+
 async function cargarAuditoria() {
   try {
     const logs = await api("/admin/auditoria", "GET");
     let html = "<table><tr><th>Fecha</th><th>Usuario</th><th>Accion</th><th>Detalle</th></tr>";
-    logs.forEach(l => {
-      html += "<tr><td>" + l.fecha.slice(0, 19).replace("T", " ") + "</td><td>" + (l.nombre_usuario || "-") + "</td><td>" + l.accion + "</td><td>" + (l.detalle || "") + "</td></tr>";
-    });
+    logs.forEach(l => { html += "<tr><td>" + l.fecha.slice(0,19).replace("T"," ") + "</td><td>" + (l.nombre_usuario || "-") + "</td><td>" + l.accion + "</td><td>" + (l.detalle || "") + "</td></tr>"; });
     document.getElementById("lista-auditoria").innerHTML = html + "</table>";
   } catch (e) { aviso(e.message, true); }
 }
 
-// ---------- REVENDEDOR ----------
-async function cargarSorteosAbiertos() {
+// ---------- VENDEDOR ----------
+async function cargarVResumen() {
   try {
-    const sorteos = await api("/revendedor/sorteos", "GET");
-    if (!sorteos.length) { document.getElementById("lista-rsorteos").innerHTML = "<p class='chico'>No hay sorteos abiertos ahora.</p>"; return; }
-    let html = "<table><tr><th>Id</th><th>Modulo</th><th>Fecha</th><th>Pozo</th></tr>";
-    sorteos.forEach(s => {
-      html += "<tr><td>" + s.id + "</td><td>" + s.modulo + "</td><td>" + s.fecha_sorteo.slice(0, 16).replace("T", " ") + "</td><td>$" + (s.pozo_acumulado || 0) + "</td></tr>";
+    const r = await api("/vendedor/resumen", "GET");
+    document.getElementById("caja-vresumen").innerHTML = "<table><tr><th>Jugadas aprobadas</th><th>Vendido</th><th>Tu comision</th><th>Pagado a tus revendedores</th></tr><tr><td>" + r.jugadas_aprobadas + "</td><td>$" + r.vendido + "</td><td>$" + r.mi_comision + "</td><td>$" + r.comision_revendedores + "</td></tr></table>";
+  } catch (e) { aviso(e.message, true); }
+}
+
+async function vCargarJugada() {
+  const cuerpo = {
+    sorteo_id: parseInt(document.getElementById("v-sorteo").value),
+    numeros: parseNumeros(document.getElementById("v-numeros").value),
+    jugador_nombre: document.getElementById("v-jugador").value || null,
+  };
+  try { const d = await api("/vendedor/jugadas", "POST", cuerpo); aviso("Jugada #" + d.id + " cargada"); document.getElementById("v-numeros").value = ""; }
+  catch (e) { aviso(e.message, true); }
+}
+
+async function cargarVPendientes() {
+  try {
+    const js = await api("/vendedor/jugadas/pendientes", "GET");
+    if (!js.length) { document.getElementById("lista-vpendientes").innerHTML = "<p class='chico'>Nada pendiente.</p>"; return; }
+    let html = "<table><tr><th>#</th><th>Sorteo</th><th>Numeros</th><th>Precio</th><th>Jugador</th><th>Origen</th><th>Acciones</th></tr>";
+    js.forEach(j => {
+      html += "<tr><td>" + j.id + "</td><td>" + j.sorteo_id + "</td><td>" + j.numeros + "</td><td>$" + j.precio + "</td><td>" + (j.jugador_nombre || "-") + "</td><td>" + (j.revendedor_id ? "revendedor #" + j.revendedor_id : (j.jugador_id ? "jugador #" + j.jugador_id : "propia")) + "</td><td><button onclick='aprobarV(" + j.id + ")'>Aprobar</button><button class='peligro' onclick='rechazarV(" + j.id + ")'>Rechazar</button></td></tr>";
     });
+    document.getElementById("lista-vpendientes").innerHTML = html + "</table>";
+  } catch (e) { aviso(e.message, true); }
+}
+
+async function aprobarV(id) {
+  try { await api("/vendedor/jugadas/" + id + "/aprobar", "POST"); aviso("Jugada aprobada"); cargarVPendientes(); }
+  catch (e) { aviso(e.message, true); }
+}
+async function rechazarV(id) {
+  try { await api("/vendedor/jugadas/" + id + "/rechazar", "POST"); aviso("Jugada rechazada"); cargarVPendientes(); }
+  catch (e) { aviso(e.message, true); }
+}
+
+async function cargarVJugadas() {
+  try {
+    const js = await api("/vendedor/jugadas", "GET");
+    let html = "<table><tr><th>#</th><th>Sorteo</th><th>Numeros</th><th>Precio</th><th>Estado</th><th>Premio</th><th>Tu comision</th></tr>";
+    js.forEach(j => { html += "<tr><td>" + j.id + "</td><td>" + j.sorteo_id + "</td><td>" + j.numeros + "</td><td>$" + j.precio + "</td><td>" + j.estado + "</td><td>$" + (j.premio ?? "-") + "</td><td>$" + (j.mi_comision ?? "-") + "</td></tr>"; });
+    document.getElementById("lista-vjugadas").innerHTML = html + "</table>";
+  } catch (e) { aviso(e.message, true); }
+}
+
+async function crearVRevendedor() {
+  const cuerpo = {
+    usuario: document.getElementById("vrev-usuario").value,
+    password: document.getElementById("vrev-password").value,
+    nombre: document.getElementById("vrev-nombre").value,
+    codigo: document.getElementById("vrev-codigo").value,
+    comision_pct: parseFloat(document.getElementById("vrev-comision").value),
+  };
+  try { await api("/vendedor/revendedores", "POST", cuerpo); aviso("Revendedor creado"); cargarVRevendedores(); }
+  catch (e) { aviso(e.message, true); }
+}
+
+async function cargarVRevendedores() {
+  try {
+    const rs = await api("/vendedor/revendedores", "GET");
+    let html = "<table><tr><th>#</th><th>Usuario</th><th>Nombre</th><th>Codigo</th><th>Comision</th><th>Activo</th><th>Acciones</th></tr>";
+    rs.forEach(r => {
+      html += "<tr><td>" + r.id + "</td><td>" + r.usuario + "</td><td>" + r.nombre + "</td><td>" + r.codigo + "</td><td>" + r.comision_pct + "%</td><td>" + (r.activo ? "si" : "no") + "</td><td><button class='secundario' onclick='editarVRev(" + r.id + "," + r.comision_pct + ")'>Comision</button><button class='" + (r.activo ? "peligro" : "") + "' onclick='alternarVRev(" + r.id + "," + !r.activo + ")'>" + (r.activo ? "Desactivar" : "Activar") + "</button></td></tr>";
+    });
+    document.getElementById("lista-vrevendedores").innerHTML = html + "</table>";
+  } catch (e) { aviso(e.message, true); }
+}
+
+async function editarVRev(id, actual) {
+  const nueva = prompt("Nueva comision % para tu revendedor (actual " + actual + "%, no puede superar la tuya):");
+  if (nueva === null) return;
+  try { await api("/vendedor/revendedores/" + id, "PUT", { comision_pct: parseFloat(nueva) }); aviso("Comision actualizada"); cargarVRevendedores(); }
+  catch (e) { aviso(e.message, true); }
+}
+async function alternarVRev(id, activo) {
+  try { await api("/vendedor/revendedores/" + id, "PUT", { activo: activo }); aviso("Revendedor " + (activo ? "activado" : "desactivado")); cargarVRevendedores(); }
+  catch (e) { aviso(e.message, true); }
+}
+
+async function cargarVJugadores() {
+  try {
+    const js = await api("/vendedor/jugadores", "GET");
+    let html = "<table><tr><th>#</th><th>Usuario</th><th>Nombre</th><th>Activo</th></tr>";
+    js.forEach(j => { html += "<tr><td>" + j.id + "</td><td>" + j.usuario + "</td><td>" + j.nombre + "</td><td>" + (j.activo ? "si" : "no") + "</td></tr>"; });
+    document.getElementById("lista-vjugadores").innerHTML = html + "</table>";
+  } catch (e) { aviso(e.message, true); }
+}
+
+// ---------- REVENDEDOR ----------
+async function cargarRSorteos() {
+  try {
+    const ss = await api("/revendedor/sorteos", "GET");
+    let html = "<table><tr><th>#</th><th>Modulo</th><th>Horario</th><th>Fecha</th><th>Pozo</th></tr>";
+    ss.forEach(s => { html += "<tr><td>" + s.id + "</td><td>" + s.modulo + "</td><td>" + s.horario + "</td><td>" + s.fecha.slice(0,16).replace("T"," ") + "</td><td>$" + s.pozo + "</td></tr>"; });
     document.getElementById("lista-rsorteos").innerHTML = html + "</table>";
   } catch (e) { aviso(e.message, true); }
 }
-
-async function llenarSelectSorteos() {
-  try {
-    const sorteos = await api("/revendedor/sorteos", "GET");
-    const select = document.getElementById("jugada-sorteo");
-    select.innerHTML = sorteos.map(s => "<option value='" + s.id + "'>Sorteo " + s.id + " - " + s.modulo + " - " + s.fecha_sorteo.slice(0, 16).replace("T", " ") + "</option>").join("");
-  } catch (e) { aviso(e.message, true); }
-}
-
-async function cargarJugada() {
+async function rCargarJugada() {
   const cuerpo = {
-    sorteo_id: parseInt(document.getElementById("jugada-sorteo").value),
-    numero: parseInt(document.getElementById("jugada-numero").value),
-    monto: parseFloat(document.getElementById("jugada-monto").value),
-    jugador_nombre: document.getElementById("jugada-nombre").value || null,
+    sorteo_id: parseInt(document.getElementById("r-sorteo").value),
+    numeros: parseNumeros(document.getElementById("r-numeros").value),
+    jugador_nombre: document.getElementById("r-jugador").value || null,
   };
+  try { const d = await api("/revendedor/jugadas", "POST", cuerpo); aviso("Jugada #" + d.id + " cargada, la aprueba tu vendedor"); document.getElementById("r-numeros").value = ""; }
+  catch (e) { aviso(e.message, true); }
+}
+async function cargarRJugadas() {
   try {
-    const datos = await api("/revendedor/jugadas", "POST", cuerpo);
-    aviso("Jugada " + datos.id + " cargada, queda pendiente de aprobacion");
-    document.getElementById("jugada-numero").value = "";
-    document.getElementById("jugada-monto").value = "";
-    document.getElementById("jugada-nombre").value = "";
+    const js = await api("/revendedor/jugadas", "GET");
+    let html = "<table><tr><th>#</th><th>Sorteo</th><th>Numeros</th><th>Precio</th><th>Estado</th><th>Premio</th><th>Tu comision</th></tr>";
+    js.forEach(j => { html += "<tr><td>" + j.id + "</td><td>" + j.sorteo_id + "</td><td>" + j.numeros + "</td><td>$" + j.precio + "</td><td>" + j.estado + "</td><td>$" + (j.premio ?? "-") + "</td><td>$" + (j.mi_comision ?? "-") + "</td></tr>"; });
+    document.getElementById("lista-rjugadas").innerHTML = html + "</table>";
+  } catch (e) { aviso(e.message, true); }
+}
+async function cargarRResumen() {
+  try {
+    const r = await api("/revendedor/resumen", "GET");
+    document.getElementById("caja-rresumen").innerHTML = "<table><tr><th>Jugadas aprobadas</th><th>Vendido</th><th>Tu comision</th></tr><tr><td>" + r.jugadas_aprobadas + "</td><td>$" + r.vendido + "</td><td>$" + r.mi_comision + "</td></tr></table>";
   } catch (e) { aviso(e.message, true); }
 }
 
-async function cargarMisJugadas() {
+// ---------- JUGADOR ----------
+async function cargarJSorteos() {
   try {
-    const jugadas = await api("/revendedor/jugadas", "GET");
-    if (!jugadas.length) { document.getElementById("lista-rmisjugadas").innerHTML = "<p class='chico'>Todavia no cargaste jugadas.</p>"; return; }
-    let html = "<table><tr><th>Id</th><th>Sorteo</th><th>Numero</th><th>Monto</th><th>Estado</th><th>Premio</th></tr>";
-    jugadas.forEach(j => {
-      html += "<tr><td>" + j.id + "</td><td>" + j.sorteo_id + "</td><td>" + j.numero + "</td><td>$" + j.monto + "</td><td>" + j.estado + "</td><td>$" + (j.premio ?? "-") + "</td></tr>";
-    });
-    document.getElementById("lista-rmisjugadas").innerHTML = html + "</table>";
+    const ss = await api("/jugador/sorteos", "GET");
+    let html = "<table><tr><th>#</th><th>Modulo</th><th>Horario</th><th>Fecha</th><th>Pozo</th></tr>";
+    ss.forEach(s => { html += "<tr><td>" + s.id + "</td><td>" + s.modulo + "</td><td>" + s.horario + "</td><td>" + s.fecha.slice(0,16).replace("T"," ") + "</td><td>$" + s.pozo + "</td></tr>"; });
+    document.getElementById("lista-jsorteos").innerHTML = html + "</table>";
+  } catch (e) { aviso(e.message, true); }
+}
+async function jCargarJugada() {
+  const cuerpo = {
+    sorteo_id: parseInt(document.getElementById("j-sorteo").value),
+    numeros: parseNumeros(document.getElementById("j-numeros").value),
+  };
+  try { const d = await api("/jugador/jugadas", "POST", cuerpo); aviso("Jugada #" + d.id + " cargada, espera aprobacion de tu vendedor"); document.getElementById("j-numeros").value = ""; }
+  catch (e) { aviso(e.message, true); }
+}
+async function cargarJJugadas() {
+  try {
+    const js = await api("/jugador/jugadas", "GET");
+    let html = "<table><tr><th>#</th><th>Sorteo</th><th>Numeros</th><th>Precio</th><th>Estado</th><th>Premio</th></tr>";
+    js.forEach(j => { html += "<tr><td>" + j.id + "</td><td>" + j.sorteo_id + "</td><td>" + j.numeros + "</td><td>$" + j.precio + "</td><td>" + j.estado + "</td><td>$" + (j.premio ?? "-") + "</td></tr>"; });
+    document.getElementById("lista-jjugadas").innerHTML = html + "</table>";
   } catch (e) { aviso(e.message, true); }
 }
 
-// Al abrir la pagina, si hay token guardado, entrar directo
 if (token) { mostrarPanel(); }
 </script>
 </body>
