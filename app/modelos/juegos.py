@@ -1,20 +1,20 @@
 import enum
-from sqlalchemy import Column, Integer, String, Float, DateTime, Enum, ForeignKey
+from sqlalchemy import Column, Integer, String, Boolean, Float, DateTime, Enum, ForeignKey
 from sqlalchemy.sql import func
 
 from app.core.database import Base
 
 
 class ModuloJuego(str, enum.Enum):
-    CLASICO = "clasico"      # jugadas directas, premio por tabla de pago
-    RIFA = "rifa"            # numeros pre-soldados, premio fijo
-    SEMANAL = "semanal"      # pozo acumulado que se reparte entre ganadores
+    CLASICO = "clasico"    # 3 numeros, pozo por sorteo de horario
+    SEMANAL = "semanal"    # 10 numeros, pozo semanal (5 dias, 1 horario)
+    RIFA = "rifa"          # 1 numero, premio fijo
 
 
 class EstadoSorteo(str, enum.Enum):
-    PROGRAMADO = "programado"    # acepta jugadas
-    CERRADO = "cerrado"          # no acepta mas jugadas, espera resultado
-    LIQUIDADO = "liquidado"      # resultado cargado y premios calculados
+    PROGRAMADO = "programado"
+    CERRADO = "cerrado"
+    LIQUIDADO = "liquidado"
 
 
 class EstadoJugada(str, enum.Enum):
@@ -25,32 +25,82 @@ class EstadoJugada(str, enum.Enum):
     PERDEDORA = "perdedora"
 
 
+class ReglasSistema(Base):
+    """Reglas configurables por el admin (una unica fila, id=1)."""
+    __tablename__ = "reglas_sistema"
+
+    id = Column(Integer, primary_key=True, default=1)
+    precio_clasico = Column(Float, default=200.0)
+    precio_semanal = Column(Float, default=500.0)
+    precio_rifa = Column(Float, default=100.0)
+    pozo_base_clasico = Column(Float, default=100000.0)
+    pozo_base_semanal = Column(Float, default=500000.0)
+    pozo_pct = Column(Float, default=50.0)          # % de cada jugada que va al pozo (post-congelamiento)
+    vendedor_pct = Column(Float, default=20.0)      # comision por defecto de vendedores sin % propio
+    horarios = Column(String(300), default='{"matutina":"11:30","vespertina":"14:30","siesta":"17:30","tarde":"19:30","nocturna":"22:00"}')
+    semanal_horario = Column(String(20), default="nocturna")
+    semanal_dia_inicio = Column(Integer, default=0)   # 0=lunes
+    semanal_dia_fin = Column(Integer, default=4)      # 4=viernes
+    busqueda_inicio_min = Column(Integer, default=1)
+    busqueda_intervalo_min = Column(Integer, default=2)
+    busqueda_duracion_min = Column(Integer, default=16)
+
+    def dict_horarios(self):
+        import json
+        try:
+            return json.loads(self.horarios or "{}")
+        except Exception:
+            return {}
+
+
 class Sorteo(Base):
-    """Edicion de un juego: una fecha y un modulo concretos."""
     __tablename__ = "sorteos"
 
     id = Column(Integer, primary_key=True, index=True)
     modulo = Column(Enum(ModuloJuego, name="modulo_juego"), nullable=False)
-    fecha_sorteo = Column(DateTime(timezone=True), nullable=False)
+    horario = Column(String(20), nullable=False)       # matutina, vespertina, siesta, tarde, nocturna
+    fecha = Column(DateTime(timezone=True), nullable=False)
     estado = Column(Enum(EstadoSorteo, name="estado_sorteo"), default=EstadoSorteo.PROGRAMADO)
-    resultado_numero = Column(Integer, nullable=True)
-    premio_fijo = Column(Float, nullable=True)     # Solo rifa: premio al ticket ganador
-    pozo_acumulado = Column(Float, default=0.0)    # Semanal: arrastre de semanas sin ganador
+    resultados = Column(String(200), nullable=True)    # los 20 numeros oficiales, separados por comas
+    premio_fijo = Column(Float, nullable=True)         # solo rifa
+    pozo_inicial = Column(Float, default=0.0)          # base o pozo acarreado
+    recaudado = Column(Float, default=0.0)             # suma de jugadas aprobadas
+    pozo_extra = Column(Float, default=0.0)            # crecimiento post-congelamiento
+    solo_participantes = Column(Boolean, default=False)  # pozo vacante
+    participantes = Column(String(2000), nullable=True)  # nombres habilitados en pozo vacante
+    busqueda_agotada = Column(Boolean, default=False)    # la busqueda automatica se rindio
     creado_en = Column(DateTime(timezone=True), server_default=func.now())
+
+    @property
+    def pozo_actual(self):
+        return (self.pozo_inicial or 0.0) + (self.pozo_extra or 0.0)
+
+    @property
+    def lista_resultados(self):
+        if not self.resultados:
+            return []
+        return [int(x) for x in self.resultados.split(",") if x.strip() != ""]
 
 
 class Jugada(Base):
-    """Apuesta cargada por un revendedor para un sorteo."""
     __tablename__ = "jugadas"
 
     id = Column(Integer, primary_key=True, index=True)
     sorteo_id = Column(Integer, ForeignKey("sorteos.id"), nullable=False)
-    revendedor_id = Column(Integer, ForeignKey("usuarios.id"), nullable=False)
+    vendedor_id = Column(Integer, ForeignKey("usuarios.id"), nullable=False)   # vendedor duenio
+    revendedor_id = Column(Integer, ForeignKey("usuarios.id"), nullable=True)  # si la cargo un revendedor
+    jugador_id = Column(Integer, ForeignKey("usuarios.id"), nullable=True)     # si la cargo un jugador
     jugador_nombre = Column(String(100), nullable=True)
-    numero = Column(Integer, nullable=False)
-    monto = Column(Float, nullable=False)
+    numeros = Column(String(120), nullable=False)      # ej: "07,15,42"
+    precio = Column(Float, nullable=False)
     estado = Column(Enum(EstadoJugada, name="estado_jugada"), default=EstadoJugada.PENDIENTE)
     premio = Column(Float, nullable=True)
-    comision_pct = Column(Float, nullable=True)     # Foto del % al aprobar
-    comision_monto = Column(Float, nullable=True)
+    monto_casa = Column(Float, nullable=True)
+    monto_vendedor = Column(Float, nullable=True)
+    monto_revendedor = Column(Float, nullable=True)
+    monto_pozo = Column(Float, nullable=True)
     creada_en = Column(DateTime(timezone=True), server_default=func.now())
+
+    @property
+    def lista_numeros(self):
+        return [int(x) for x in self.numeros.split(",") if x.strip() != ""]
