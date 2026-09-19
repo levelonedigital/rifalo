@@ -26,7 +26,7 @@ class EstadoJugada(str, enum.Enum):
 
 
 class ReglasSistema(Base):
-    """Reglas configurables por el admin (una unica fila, id=1)."""
+    """Reglas POR DEFECTO (una unica fila, id=1). Cada sorteo puede pisarlas."""
     __tablename__ = "reglas_sistema"
 
     id = Column(Integer, primary_key=True, default=1)
@@ -35,12 +35,12 @@ class ReglasSistema(Base):
     precio_rifa = Column(Float, default=100.0)
     pozo_base_clasico = Column(Float, default=100000.0)
     pozo_base_semanal = Column(Float, default=500000.0)
-    pozo_pct = Column(Float, default=50.0)          # % de cada jugada que va al pozo (post-congelamiento)
-    vendedor_pct = Column(Float, default=20.0)      # comision por defecto de vendedores sin % propio
+    pozo_pct = Column(Float, default=50.0)
+    vendedor_pct = Column(Float, default=20.0)
     horarios = Column(String(300), default='{"matutina":"11:30","vespertina":"14:30","siesta":"17:30","tarde":"19:30","nocturna":"22:00"}')
     semanal_horario = Column(String(20), default="nocturna")
-    semanal_dia_inicio = Column(Integer, default=0)   # 0=lunes
-    semanal_dia_fin = Column(Integer, default=4)      # 4=viernes
+    semanal_dia_inicio = Column(Integer, default=0)
+    semanal_dia_fin = Column(Integer, default=4)
     busqueda_inicio_min = Column(Integer, default=1)
     busqueda_intervalo_min = Column(Integer, default=2)
     busqueda_duracion_min = Column(Integer, default=16)
@@ -52,24 +52,34 @@ class ReglasSistema(Base):
         except Exception:
             return {}
 
+    @property
+    def casa_pct_por_defecto(self):
+        return max(0.0, 100.0 - (self.pozo_pct or 0.0) - (self.vendedor_pct or 0.0))
+
 
 class Sorteo(Base):
     __tablename__ = "sorteos"
 
     id = Column(Integer, primary_key=True, index=True)
     modulo = Column(Enum(ModuloJuego, name="modulo_juego"), nullable=False)
-    horario = Column(String(20), nullable=False)       # matutina, vespertina, siesta, tarde, nocturna
+    horario = Column(String(20), nullable=False)
     fecha = Column(DateTime(timezone=True), nullable=False)
     estado = Column(Enum(EstadoSorteo, name="estado_sorteo"), default=EstadoSorteo.PROGRAMADO)
-    resultados = Column(String(200), nullable=True)    # los 20 numeros oficiales, separados por comas
+    resultados = Column(String(200), nullable=True)
     premio_fijo = Column(Float, nullable=True)         # solo rifa
-    pozo_inicial = Column(Float, default=0.0)          # base o pozo acarreado
-    recaudado = Column(Float, default=0.0)             # suma de jugadas aprobadas
-    pozo_extra = Column(Float, default=0.0)            # crecimiento post-congelamiento
-    solo_participantes = Column(Boolean, default=False)  # pozo vacante
-    participantes = Column(String(2000), nullable=True)  # nombres habilitados en pozo vacante
-    busqueda_agotada = Column(Boolean, default=False)    # la busqueda automatica se rindio
+    pozo_inicial = Column(Float, default=0.0)
+    recaudado = Column(Float, default=0.0)
+    pozo_extra = Column(Float, default=0.0)
+    solo_participantes = Column(Boolean, default=False)
+    participantes = Column(String(2000), nullable=True)
+    busqueda_agotada = Column(Boolean, default=False)
     creado_en = Column(DateTime(timezone=True), server_default=func.now())
+
+    # Reglas PROPIAS de este sorteo (si estan vacias se usan las reglas por defecto)
+    precio_jugada = Column(Float, nullable=True)
+    pozo_base = Column(Float, nullable=True)
+    casa_pct = Column(Float, nullable=True)
+    vendedor_pct = Column(Float, nullable=True)
 
     @property
     def pozo_actual(self):
@@ -87,11 +97,11 @@ class Jugada(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     sorteo_id = Column(Integer, ForeignKey("sorteos.id"), nullable=False)
-    vendedor_id = Column(Integer, ForeignKey("usuarios.id"), nullable=False)   # vendedor duenio
-    revendedor_id = Column(Integer, ForeignKey("usuarios.id"), nullable=True)  # si la cargo un revendedor
-    jugador_id = Column(Integer, ForeignKey("usuarios.id"), nullable=True)     # si la cargo un jugador
+    vendedor_id = Column(Integer, ForeignKey("usuarios.id"), nullable=False)
+    revendedor_id = Column(Integer, ForeignKey("usuarios.id"), nullable=True)
+    jugador_id = Column(Integer, ForeignKey("usuarios.id"), nullable=True)
     jugador_nombre = Column(String(100), nullable=True)
-    numeros = Column(String(120), nullable=False)      # ej: "07,15,42"
+    numeros = Column(String(120), nullable=False)
     precio = Column(Float, nullable=False)
     estado = Column(Enum(EstadoJugada, name="estado_jugada"), default=EstadoJugada.PENDIENTE)
     premio = Column(Float, nullable=True)
