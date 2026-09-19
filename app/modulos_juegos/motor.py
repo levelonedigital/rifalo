@@ -12,7 +12,6 @@ from app.modelos.usuario import Usuario
 
 
 def obtener_reglas(sesion: Session) -> ReglasSistema:
-    """Devuelve la fila unica de reglas, creandola si no existe."""
     reglas = sesion.get(ReglasSistema, 1)
     if reglas is None:
         reglas = ReglasSistema(id=1)
@@ -23,6 +22,8 @@ def obtener_reglas(sesion: Session) -> ReglasSistema:
 
 
 def base_pozo(sorteo: Sorteo, reglas: ReglasSistema) -> float:
+    if sorteo.pozo_base is not None:
+        return sorteo.pozo_base
     if sorteo.modulo == ModuloJuego.CLASICO:
         return reglas.pozo_base_clasico or 0.0
     if sorteo.modulo == ModuloJuego.SEMANAL:
@@ -30,22 +31,35 @@ def base_pozo(sorteo: Sorteo, reglas: ReglasSistema) -> float:
     return 0.0
 
 
-def aprobar_jugada(sesion: Session, jugada: Jugada, reglas: ReglasSistema) -> Jugada:
-    """Aprueba la jugada y reparte su precio: casa, vendedor, revendedor y pozo.
+def porcentajes_sorteo(sorteo: Sorteo, reglas: ReglasSistema):
+    """Devuelve (casa_pct, vendedor_linea_pct, pozo_pct) efectivos de este sorteo."""
+    casa = sorteo.casa_pct if sorteo.casa_pct is not None else reglas.casa_pct_por_defecto
+    linea = sorteo.vendedor_pct if sorteo.vendedor_pct is not None else reglas.vendedor_pct
+    pozo = max(0.0, 100.0 - casa - linea)
+    return casa, linea, pozo
 
-    Regla del pozo congelado: mientras lo recaudado del sorteo no iguale la
-    base configurada, el % de pozo queda para la casa. Recien a partir de ahi
-    el pozo empieza a crecer.
+
+def aprobar_jugada(sesion: Session, jugada: Jugada, reglas: ReglasSistema) -> Jugada:
+    """Aprueba y reparte el precio: casa, linea de venta y pozo (congelado incluido).
+
+    Pozo congelado: mientras lo recaudado no iguale la base, el % de pozo queda
+    para la casa. Recien a partir de ahi el pozo crece.
+    Linea de venta: el vendedor cobra su % propio (tope: % de linea del sorteo);
+    el revendedor cobra su % dentro del % del vendedor.
     No hace commit.
     """
     sorteo = sesion.get(Sorteo, jugada.sorteo_id)
     vendedor = sesion.get(Usuario, jugada.vendedor_id)
     revendedor = sesion.get(Usuario, jugada.revendedor_id) if jugada.revendedor_id else None
 
-    v_pct = vendedor.comision_pct if vendedor and vendedor.comision_pct is not None else reglas.vendedor_pct
-    r_pct = 0.0
+    casa_pct, linea_pct, pozo_pct = porcentajes_sorteo(sorteo, reglas)
+
+    vend_efectivo = linea_pct
+    if vendedor is not None and vendedor.comision_pct is not None:
+        vend_efectivo = min(vendedor.comision_pct, linea_pct)
+    rev_pct = 0.0
     if revendedor is not None:
-        r_pct = min(revendedor.comision_pct or 0.0, v_pct)
+        rev_pct = min(revendedor.comision_pct or 0.0, vend_efectivo)
 
     precio = jugada.precio
     base = base_pozo(sorteo, reglas)
@@ -54,11 +68,11 @@ def aprobar_jugada(sesion: Session, jugada: Jugada, reglas: ReglasSistema) -> Ju
 
     aporte_pozo = 0.0
     if sorteo.modulo != ModuloJuego.RIFA and recaudado_previo >= base:
-        aporte_pozo = round(precio * (reglas.pozo_pct or 0.0) / 100.0, 2)
+        aporte_pozo = round(precio * pozo_pct / 100.0, 2)
     sorteo.pozo_extra = (sorteo.pozo_extra or 0.0) + aporte_pozo
 
-    monto_rev = round(precio * r_pct / 100.0, 2)
-    monto_vend = round(precio * v_pct / 100.0, 2) - monto_rev
+    monto_rev = round(precio * rev_pct / 100.0, 2)
+    monto_vend = round(precio * vend_efectivo / 100.0, 2) - monto_rev
     monto_casa = round(precio - monto_rev - monto_vend - aporte_pozo, 2)
 
     jugada.estado = EstadoJugada.APROBADA
@@ -70,12 +84,7 @@ def aprobar_jugada(sesion: Session, jugada: Jugada, reglas: ReglasSistema) -> Ju
 
 
 def liquidar_sorteo(sorteo: Sorteo, sesion: Session, reglas: ReglasSistema) -> dict:
-    """Compara las jugadas aprobadas contra los resultados y asigna premios.
-
-    Clasico y semanal: gana si TODOS sus numeros estan entre los resultados.
-    Rifa: gana si su numero coincide con el 1er premio.
-    No hace commit.
-    """
+    """Compara jugadas aprobadas contra resultados y asigna premios. No hace commit."""
     resultados = set(sorteo.lista_resultados)
     primer_premio = sorteo.lista_resultados[0] if sorteo.lista_resultados else None
     aprobadas = (
@@ -125,7 +134,6 @@ def liquidar_sorteo(sorteo: Sorteo, sesion: Session, reglas: ReglasSistema) -> d
 
 
 def nombres_participantes(sorteo_id: int, sesion: Session) -> str:
-    """Lista de nombres habilitados para un pozo vacante."""
     jugadas = (
         sesion.query(Jugada)
         .filter(Jugada.sorteo_id == sorteo_id, Jugada.estado == EstadoJugada.APROBADA)
@@ -138,7 +146,6 @@ def nombres_participantes(sorteo_id: int, sesion: Session) -> str:
 
 
 def crear_pozo_vacante(sesion: Session, origen: Sorteo, fecha, reglas: ReglasSistema) -> Sorteo:
-    """Sorteo especial con el pozo sin ganador, solo para participantes del original."""
     nuevo = Sorteo(
         modulo=origen.modulo,
         horario=origen.horario,
@@ -146,6 +153,10 @@ def crear_pozo_vacante(sesion: Session, origen: Sorteo, fecha, reglas: ReglasSis
         pozo_inicial=origen.pozo_actual,
         solo_participantes=True,
         participantes=nombres_participantes(origen.id, sesion),
+        precio_jugada=origen.precio_jugada,
+        pozo_base=origen.pozo_base,
+        casa_pct=origen.casa_pct,
+        vendedor_pct=origen.vendedor_pct,
     )
     sesion.add(nuevo)
     return nuevo
