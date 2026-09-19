@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 
 from app.core import auditoria, security
 from app.core.database import obtener_sesion
-from app.core.dependencias import obtener_usuario_actual, requerir_permiso, requerir_rol
+from app.core.dependencias import obtener_usuario_actual, requerir_rol
 from app.modulos_roles.administrador import schemas
 from app.modelos.auditoria import LogAuditoria
 from app.modelos.usuario import RolUsuario, Usuario
@@ -11,7 +11,6 @@ from app.modelos.usuario import RolUsuario, Usuario
 router = APIRouter(prefix="/admin", tags=["admin"])
 
 PERMISOS_POSIBLES = [
-    "gestionar_revendedores",
     "configurar_sorteos",
     "cargar_resultados",
     "ver_auditoria",
@@ -26,73 +25,6 @@ def _admin_out(admin: Usuario) -> schemas.AdminOut:
         permisos=admin.lista_permisos(),
         activo=admin.activo,
     )
-
-
-# ---------- REVENDEDORES ----------
-
-@router.post("/revendedores", response_model=schemas.RevendedorOut)
-def crear_revendedor(
-    datos: schemas.RevendedorCrear,
-    sesion: Session = Depends(obtener_sesion),
-    admin: Usuario = Depends(requerir_permiso("gestionar_revendedores")),
-):
-    if sesion.query(Usuario).filter(Usuario.usuario == datos.usuario).first():
-        raise HTTPException(status_code=400, detail="El nombre de usuario ya existe")
-    if sesion.query(Usuario).filter(Usuario.codigo == datos.codigo.upper()).first():
-        raise HTTPException(status_code=400, detail="El codigo de revendedor ya existe")
-    revendedor = Usuario(
-        usuario=datos.usuario,
-        password_hash=security.hash_password(datos.password),
-        nombre=datos.nombre,
-        telefono=datos.telefono,
-        rol=RolUsuario.REVENDEDOR,
-        codigo=datos.codigo.upper(),
-        comision_pct=datos.comision_pct,
-        datos_transferencia=datos.datos_transferencia,
-        activo=True,
-    )
-    sesion.add(revendedor)
-    sesion.commit()
-    sesion.refresh(revendedor)
-    auditoria.registrar(
-        sesion, "REVENDEDOR_CREADO", detalle=f"{revendedor.usuario} ({revendedor.codigo})", usuario=admin
-    )
-    sesion.commit()
-    return revendedor
-
-
-@router.get("/revendedores", response_model=list[schemas.RevendedorOut])
-def listar_revendedores(
-    sesion: Session = Depends(obtener_sesion),
-    admin: Usuario = Depends(requerir_permiso("gestionar_revendedores")),
-):
-    return (
-        sesion.query(Usuario)
-        .filter(Usuario.rol == RolUsuario.REVENDEDOR)
-        .order_by(Usuario.nombre)
-        .all()
-    )
-
-
-@router.put("/revendedores/{revendedor_id}", response_model=schemas.RevendedorOut)
-def editar_revendedor(
-    revendedor_id: int,
-    datos: schemas.RevendedorEditar,
-    sesion: Session = Depends(obtener_sesion),
-    admin: Usuario = Depends(requerir_permiso("gestionar_revendedores")),
-):
-    revendedor = sesion.get(Usuario, revendedor_id)
-    if revendedor is None or revendedor.rol != RolUsuario.REVENDEDOR:
-        raise HTTPException(status_code=404, detail="Revendedor no encontrado")
-    for campo in ("nombre", "telefono", "codigo", "comision_pct", "datos_transferencia", "activo"):
-        valor = getattr(datos, campo)
-        if valor is not None:
-            setattr(revendedor, campo, valor)
-    sesion.commit()
-    sesion.refresh(revendedor)
-    auditoria.registrar(sesion, "REVENDEDOR_EDITADO", detalle=revendedor.usuario, usuario=admin)
-    sesion.commit()
-    return revendedor
 
 
 # ---------- ADMINISTRADORES SECUNDARIOS (solo admin principal) ----------
@@ -213,7 +145,7 @@ def cambiar_password(
 def ver_auditoria(
     limite: int = 100,
     sesion: Session = Depends(obtener_sesion),
-    admin: Usuario = Depends(requerir_permiso("ver_auditoria")),
+    admin: Usuario = Depends(requerir_permiso_ver_auditoria := requerir_rol(RolUsuario.ADMIN_PRINCIPAL, RolUsuario.ADMIN)),
 ):
     return (
         sesion.query(LogAuditoria)
