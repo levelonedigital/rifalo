@@ -77,6 +77,7 @@ class Sorteo(Base):
     busqueda_agotada = Column(Boolean, default=False)
     creado_en = Column(DateTime(timezone=True), server_default=func.now())
     imagen_url = Column(String(500), nullable=True)  # imagen de presentacion (foto del premio, cartel de pozo, etc.)
+    detalle = Column(String(1000), nullable=True)    # texto de reglas/condiciones visible para los jugadores
 
     # Configuracion propia de este sorteo
     precio_jugada = Column(Float, nullable=True)
