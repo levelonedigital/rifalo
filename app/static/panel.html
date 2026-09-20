@@ -73,4 +73,723 @@
         <div><label>Pozo base (congelado hasta recaudarlo)</label><input id="sorteo-pozobase" type="number"></div>
         <div><label>% administrador (casa)</label><input id="sorteo-casa" type="number"></div>
         <div><label>% vendedores (linea de venta)</label><input id="sorteo-vend" type="number"></div>
-        <div id="caja-premio-fijo" style="display:none"><label>Premio fijo (rifa)</label><input id="sorteo-premio" type="number"></
+        <div id="caja-premio-fijo" style="display:none"><label>Premio fijo (rifa)</label><input id="sorteo-premio" type="number"></div>
+        <div id="caja-minimo" style="display:none"><label>Minimo a cubrir (rifa, vacio = premio fijo)</label><input id="sorteo-minimo" type="number"></div>
+        <div><label>Pozo inicial (vacio = pozo base)</label><input id="sorteo-pozoinicial" type="number"></div>
+      </div>
+      <div id="reglas-modalidad" class="reglas-box"></div>
+      <button onclick="crearSorteo()">Crear sorteo</button>
+      <button class="secundario" onclick="guardarPlantilla()">Guardar esta config como guia</button>
+      <label>Nombre de la guia</label><input id="plantilla-nombre" placeholder="Ej: Nocturna clasica 200">
+
+      <h2>Cargar una guia guardada</h2>
+      <div class="grilla">
+        <div><select id="plantillas-select"></select></div>
+        <div><button class="secundario" onclick="cargarPlantillaSel()">Cargar guia al formulario</button><button class="peligro" onclick="borrarPlantillaSel()">Borrar guia</button></div>
+      </div>
+
+      <h2>Sorteos</h2>
+      <div id="lista-sorteos"></div>
+
+      <details style="margin-top:16px">
+        <summary style="cursor:pointer; color:#93c5fd">Horarios oficiales y busqueda automatica (solo admin principal)</summary>
+        <div class="grilla">
+          <div><label>Horarios (JSON)</label><input id="sis-horarios"></div>
+          <div><label>Horario del semanal</label><input id="sis-semhor"></div>
+          <div><label>Semanal dia inicio (0=lunes)</label><input id="sis-semini" type="number"></div>
+          <div><label>Semanal dia fin (4=viernes)</label><input id="sis-semfin" type="number"></div>
+          <div><label>Busqueda: empezar a los (min)</label><input id="sis-busini" type="number"></div>
+          <div><label>Busqueda: reintento cada (min)</label><input id="sis-busint" type="number"></div>
+          <div><label>Busqueda: rendirse a los (min)</label><input id="sis-busdur" type="number"></div>
+          <div><label>% vendedores por defecto</label><input id="sis-vendpct" type="number"></div>
+        </div>
+        <button onclick="guardarSistema()">Guardar sistema</button>
+      </details>
+    </div>
+
+    <!-- ADMIN: VENDEDORES -->
+    <div id="seccion-vendedores" class="tarjeta" style="display:none">
+      <h2>Crear vendedor</h2>
+      <div class="grilla">
+        <div><label>Usuario</label><input id="vend-usuario"></div>
+        <div><label>Contrasenia</label><input id="vend-password" type="password"></div>
+        <div><label>Nombre</label><input id="vend-nombre"></div>
+        <div><label>Telefono</label><input id="vend-telefono"></div>
+        <div><label>Codigo (ej: V1)</label><input id="vend-codigo"></div>
+        <div><label>Comision %</label><input id="vend-comision" type="number" value="20"></div>
+      </div>
+      <label>Datos de transferencia</label><input id="vend-transferencia">
+      <button onclick="crearVendedor()">Crear vendedor</button>
+      <h2>Vendedores</h2>
+      <div id="lista-vendedores"></div>
+    </div>
+
+    <!-- ADMIN: JUGADAS -->
+    <div id="seccion-jugadas" class="tarjeta" style="display:none">
+      <h2>Todas las jugadas</h2>
+      <label>Filtrar por estado</label>
+      <select id="jugadas-filtro" onchange="cargarJugadasAdmin()">
+        <option value="">Todas</option><option value="pendiente">Pendientes</option><option value="aprobada">Aprobadas</option><option value="ganadora">Ganadoras</option><option value="perdedora">Perdedoras</option><option value="rechazada">Rechazadas</option>
+      </select>
+      <div id="lista-jugadas-admin"></div>
+    </div>
+
+    <!-- ADMIN: RESUMEN -->
+    <div id="seccion-resumen" class="tarjeta" style="display:none">
+      <h2>Resumen general</h2>
+      <button class="secundario" onclick="cargarResumenGeneral()">Actualizar</button>
+      <div id="caja-resumen"></div>
+    </div>
+
+    <!-- ADMIN: AUDITORIA -->
+    <div id="seccion-auditoria" class="tarjeta" style="display:none">
+      <h2>Auditoria</h2>
+      <button class="secundario" onclick="cargarAuditoria()">Actualizar</button>
+      <div id="lista-auditoria"></div>
+    </div>
+
+    <!-- VENDEDOR -->
+    <div id="seccion-vresumen" class="tarjeta" style="display:none">
+      <h2>Mi resumen</h2>
+      <button class="secundario" onclick="cargarVResumen()">Actualizar</button>
+      <div id="caja-vresumen"></div>
+    </div>
+    <div id="seccion-vcargar" class="tarjeta" style="display:none">
+      <h2>Cargar jugada</h2>
+      <label>Sorteo</label><select id="v-sorteo" onchange="pintarReglasSelect('v-sorteo','v-reglas')"></select>
+      <div id="v-reglas" class="reglas-box"></div>
+      <label>Numeros (separados por coma)</label><input id="v-numeros">
+      <label>Nombre del jugador</label><input id="v-jugador">
+      <button onclick="vCargarJugada()">Cargar</button>
+    </div>
+    <div id="seccion-vpendientes" class="tarjeta" style="display:none">
+      <h2>Jugadas pendientes de mi aprobacion</h2>
+      <button class="secundario" onclick="cargarVPendientes()">Actualizar</button>
+      <div id="lista-vpendientes"></div>
+    </div>
+    <div id="seccion-vjugadas" class="tarjeta" style="display:none">
+      <h2>Mis jugadas</h2>
+      <button class="secundario" onclick="cargarVJugadas()">Actualizar</button>
+      <div id="lista-vjugadas"></div>
+    </div>
+    <div id="seccion-vrevendedores" class="tarjeta" style="display:none">
+      <h2>Crear revendedor (se paga de tu comision)</h2>
+      <div class="grilla">
+        <div><label>Usuario</label><input id="vrev-usuario"></div>
+        <div><label>Contrasenia</label><input id="vrev-password" type="password"></div>
+        <div><label>Nombre</label><input id="vrev-nombre"></div>
+        <div><label>Codigo</label><input id="vrev-codigo"></div>
+        <div><label>Comision % (menor o igual a la tuya)</label><input id="vrev-comision" type="number"></div>
+      </div>
+      <button onclick="crearVRevendedor()">Crear revendedor</button>
+      <h2>Mis revendedores</h2>
+      <div id="lista-vrevendedores"></div>
+    </div>
+    <div id="seccion-vjugadores" class="tarjeta" style="display:none">
+      <h2>Jugadores registrados conmigo</h2>
+      <button class="secundario" onclick="cargarVJugadores()">Actualizar</button>
+      <div id="lista-vjugadores"></div>
+    </div>
+
+    <!-- REVENDEDOR -->
+    <div id="seccion-rsorteos" class="tarjeta" style="display:none">
+      <h2>Sorteos abiertos</h2>
+      <div id="lista-rsorteos"></div>
+    </div>
+    <div id="seccion-rcargar" class="tarjeta" style="display:none">
+      <h2>Cargar jugada</h2>
+      <label>Sorteo</label><select id="r-sorteo" onchange="pintarReglasSelect('r-sorteo','r-reglas')"></select>
+      <div id="r-reglas" class="reglas-box"></div>
+      <label>Numeros (separados por coma)</label><input id="r-numeros">
+      <label>Nombre del jugador</label><input id="r-jugador">
+      <button onclick="rCargarJugada()">Cargar</button>
+    </div>
+    <div id="seccion-rjugadas" class="tarjeta" style="display:none">
+      <h2>Mis jugadas</h2>
+      <button class="secundario" onclick="cargarRJugadas()">Actualizar</button>
+      <div id="lista-rjugadas"></div>
+    </div>
+    <div id="seccion-rresumen" class="tarjeta" style="display:none">
+      <h2>Mi resumen</h2>
+      <button class="secundario" onclick="cargarRResumen()">Actualizar</button>
+      <div id="caja-rresumen"></div>
+    </div>
+
+    <!-- JUGADOR -->
+    <div id="seccion-jsorteos" class="tarjeta" style="display:none">
+      <h2>Sorteos abiertos</h2>
+      <div id="lista-jsorteos"></div>
+    </div>
+    <div id="seccion-jcargar" class="tarjeta" style="display:none">
+      <h2>Mi jugada</h2>
+      <label>Sorteo</label><select id="j-sorteo" onchange="pintarReglasSelect('j-sorteo','j-reglas')"></select>
+      <div id="j-reglas" class="reglas-box"></div>
+      <label>Numeros (separados por coma)</label><input id="j-numeros">
+      <button onclick="jCargarJugada()">Cargar (queda pendiente de aprobacion de tu vendedor)</button>
+    </div>
+    <div id="seccion-jjugadas" class="tarjeta" style="display:none">
+      <h2>Mis jugadas</h2>
+      <button class="secundario" onclick="cargarJJugadas()">Actualizar</button>
+      <div id="lista-jjugadas"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+let token = localStorage.getItem("rifalo_token") || null;
+let rol = localStorage.getItem("rifalo_rol") || null;
+let MODALIDADES = [];
+let SORTEOS_ABIERTOS_CACHE = {};
+let avisosTimer = null;
+
+const TABS_POR_ROL = {
+  admin_principal: [["sorteos","Sorteos"],["vendedores","Vendedores"],["jugadas","Jugadas"],["resumen","Resumen"],["auditoria","Auditoria"]],
+  admin: [["sorteos","Sorteos"],["jugadas","Jugadas"],["resumen","Resumen"],["auditoria","Auditoria"]],
+  vendedor: [["vresumen","Mi resumen"],["vcargar","Cargar jugada"],["vpendientes","Aprobar"],["vjugadas","Mis jugadas"],["vrevendedores","Mis revendedores"],["vjugadores","Mis jugadores"]],
+  revendedor: [["rsorteos","Sorteos"],["rcargar","Cargar jugada"],["rjugadas","Mis jugadas"],["rresumen","Mi resumen"]],
+  jugador: [["jsorteos","Sorteos"],["jcargar","Mi jugada"],["jjugadas","Mis jugadas"]],
+};
+
+function cabeceras() { return { "Content-Type": "application/json", "Authorization": "Bearer " + token }; }
+
+async function api(ruta, metodo, cuerpo) {
+  const r = await fetch(ruta, { method: metodo, headers: cabeceras(), body: cuerpo ? JSON.stringify(cuerpo) : undefined });
+  if (r.status === 401) { salir(); throw new Error("Sesion expirada, entra de nuevo"); }
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) {
+    const msg = typeof d.detail === "string" ? d.detail : JSON.stringify(d.detail);
+    throw new Error(msg || ("Error " + r.status));
+  }
+  return d;
+}
+
+function aviso(t, err) {
+  const c = document.getElementById("mensaje");
+  c.className = "mensaje " + (err ? "error" : "ok");
+  c.textContent = t;
+  setTimeout(() => { c.className = "mensaje"; }, 4000);
+}
+
+function parseNumeros(texto) {
+  return texto.split(/[,\s]+/).filter(x => x).map(x => parseInt(x, 10));
+}
+
+// ---------- AVISOS (carteles) ----------
+async function cargarAvisos() {
+  try {
+    const as = await api("/admin/avisos", "GET");
+    const esAdmin = (rol === "admin_principal" || rol === "admin");
+    document.getElementById("zona-avisos").innerHTML = as.map(a =>
+      "<div class='aviso-box'>" + a.texto + (esAdmin ? " <button class='peligro' onclick='borrarAviso(" + a.id + ")'>X</button>" : "") + "</div>"
+    ).join("");
+  } catch (e) { /* sin sesion aun */ }
+}
+
+async function borrarAviso(id) {
+  try { await api("/admin/avisos/" + id, "DELETE"); cargarAvisos(); }
+  catch (e) { aviso(e.message, true); }
+}
+
+// ---------- SESION ----------
+async function login() {
+  const cuerpo = { usuario: document.getElementById("login-usuario").value, password: document.getElementById("login-password").value };
+  const f = document.getElementById("login-2fa").value;
+  if (f) cuerpo.codigo_2fa = f;
+  try {
+    const r = await fetch("/auth/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(cuerpo) });
+    const d = await r.json();
+    if (!d.token) throw new Error(d.detail || "Credenciales incorrectas");
+    token = d.token; rol = d.rol;
+    localStorage.setItem("rifalo_token", token);
+    localStorage.setItem("rifalo_rol", rol);
+    localStorage.setItem("rifalo_nombre", d.nombre);
+    mostrarPanel();
+  } catch (e) {
+    const c = document.getElementById("login-error");
+    c.className = "mensaje error"; c.textContent = e.message;
+  }
+}
+
+function mostrarRegistro() { document.getElementById("form-registro").style.display = "block"; }
+
+async function registrarJugador() {
+  const cuerpo = {
+    usuario: document.getElementById("reg-usuario").value,
+    password: document.getElementById("reg-password").value,
+    nombre: document.getElementById("reg-nombre").value,
+    codigo_vendedor: document.getElementById("reg-codigo").value,
+  };
+  try {
+    const r = await fetch("/auth/registro-jugador", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(cuerpo) });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || "Error de registro");
+    aviso(d.detalle);
+    document.getElementById("form-registro").style.display = "none";
+  } catch (e) { aviso(e.message, true); }
+}
+
+function salir() {
+  token = null; rol = null;
+  localStorage.removeItem("rifalo_token"); localStorage.removeItem("rifalo_rol");
+  document.getElementById("zona-panel").style.display = "none";
+  document.getElementById("zona-login").style.display = "block";
+}
+
+function mostrarPanel() {
+  document.getElementById("zona-login").style.display = "none";
+  document.getElementById("zona-panel").style.display = "block";
+  document.getElementById("panel-usuario").textContent = "- " + (localStorage.getItem("rifalo_nombre") || "") + " (" + rol + ")";
+  const barra = document.getElementById("barra-tabs");
+  const tabs = TABS_POR_ROL[rol] || [];
+  barra.innerHTML = tabs.map(t => "<button id='tab-" + t[0] + "' onclick=\"irTab('" + t[0] + "')\">" + t[1] + "</button>").join("") + "<button class='peligro' onclick='salir()'>Salir</button>";
+  cargarAvisos();
+  if (!avisosTimer) { avisosTimer = setInterval(cargarAvisos, 60000); }
+  irTab(tabs[0][0]);
+}
+
+function irTab(nombre) {
+  document.querySelectorAll("#zona-panel .tarjeta").forEach(s => { s.style.display = "none"; });
+  const seccion = document.getElementById("seccion-" + nombre);
+  if (seccion) seccion.style.display = "block";
+  document.querySelectorAll("#barra-tabs button").forEach(b => { b.className = ""; });
+  const tab = document.getElementById("tab-" + nombre);
+  if (tab) tab.className = "activa";
+  const acciones = {
+    sorteos: iniciarSorteos,
+    vendedores: cargarVendedores,
+    jugadas: cargarJugadasAdmin,
+    resumen: cargarResumenGeneral,
+    auditoria: cargarAuditoria,
+    vresumen: cargarVResumen,
+    vcargar: () => llenarSelectSorteos("/vendedor/sorteos", "v-sorteo"),
+    vpendientes: cargarVPendientes,
+    vjugadas: cargarVJugadas,
+    vrevendedores: cargarVRevendedores,
+    vjugadores: cargarVJugadores,
+    rsorteos: cargarRSorteos,
+    rcargar: () => llenarSelectSorteos("/revendedor/sorteos", "r-sorteo"),
+    rjugadas: cargarRJugadas,
+    rresumen: cargarRResumen,
+    jsorteos: cargarJSorteos,
+    jcargar: () => llenarSelectSorteos("/jugador/sorteos", "j-sorteo"),
+    jjugadas: cargarJJugadas,
+  };
+  if (acciones[nombre]) acciones[nombre]();
+}
+
+// ---------- MODALIDADES Y REGLAS VISIBLES ----------
+async function cargarModalidades() {
+  MODALIDADES = await api("/admin/modalidades", "GET");
+  const sel = document.getElementById("sorteo-modalidad");
+  sel.innerHTML = MODALIDADES.map(m => "<option value='" + m.clave + "'>" + m.nombre + " (" + m.cantidad_numeros + " numeros)</option>").join("");
+  pintarReglasModalidad();
+}
+
+function pintarReglasModalidad() {
+  const clave = document.getElementById("sorteo-modalidad").value;
+  const m = MODALIDADES.find(x => x.clave === clave);
+  document.getElementById("reglas-modalidad").textContent = m ? m.resumen_reglas : "";
+  const esRifa = m && m.usa_premio_fijo;
+  document.getElementById("caja-premio-fijo").style.display = esRifa ? "block" : "none";
+  document.getElementById("caja-minimo").style.display = esRifa ? "block" : "none";
+}
+
+function pintarReglasSelect(idSelect, idCaja) {
+  const id = document.getElementById(idSelect).value;
+  const s = SORTEOS_ABIERTOS_CACHE[idSelect] && SORTEOS_ABIERTOS_CACHE[idSelect][id];
+  document.getElementById(idCaja).textContent = s ? (s.nombre_modalidad + ": " + s.reglas + " | Precio jugada: $" + s.precio_jugada + " | Pozo: $" + s.pozo + (s.reprogramando ? " | REPROGRAMANDO: aguarda nuevo horario" : "")) : "";
+}
+
+// ---------- ADMIN: SORTEOS ----------
+async function iniciarSorteos() {
+  await cargarModalidades();
+  await cargarSistema();
+  await cargarPlantillas();
+  cargarSorteos();
+}
+
+async function cargarSistema() {
+  try {
+    const s = await api("/admin/sistema", "GET");
+    document.getElementById("sis-horarios").value = JSON.stringify(s.horarios);
+    document.getElementById("sis-semhor").value = s.semanal_horario;
+    document.getElementById("sis-semini").value = s.semanal_dia_inicio;
+    document.getElementById("sis-semfin").value = s.semanal_dia_fin;
+    document.getElementById("sis-busini").value = s.busqueda_inicio_min;
+    document.getElementById("sis-busint").value = s.busqueda_intervalo_min;
+    document.getElementById("sis-busdur").value = s.busqueda_duracion_min;
+    document.getElementById("sis-vendpct").value = s.vendedor_pct;
+    document.getElementById("sorteo-horario").innerHTML = Object.keys(s.horarios).map(h => "<option value='" + h + "'>" + h + " " + s.horarios[h] + "</option>").join("");
+  } catch (e) { /* secundario sin permiso */ }
+}
+
+async function guardarSistema() {
+  const cuerpo = {
+    horarios: document.getElementById("sis-horarios").value,
+    semanal_horario: document.getElementById("sis-semhor").value,
+    semanal_dia_inicio: parseInt(document.getElementById("sis-semini").value),
+    semanal_dia_fin: parseInt(document.getElementById("sis-semfin").value),
+    busqueda_inicio_min: parseInt(document.getElementById("sis-busini").value),
+    busqueda_intervalo_min: parseInt(document.getElementById("sis-busint").value),
+    busqueda_duracion_min: parseInt(document.getElementById("sis-busdur").value),
+    vendedor_pct: parseFloat(document.getElementById("sis-vendpct").value),
+  };
+  try { await api("/admin/sistema", "PUT", cuerpo); aviso("Sistema guardado"); }
+  catch (e) { aviso(e.message, true); }
+}
+
+async function crearSorteo() {
+  const cuerpo = {
+    modalidad: document.getElementById("sorteo-modalidad").value,
+    horario: document.getElementById("sorteo-horario").value,
+    fecha: document.getElementById("sorteo-fecha").value,
+    precio_jugada: parseFloat(document.getElementById("sorteo-precio").value),
+    pozo_base: parseFloat(document.getElementById("sorteo-pozobase").value || 0),
+    casa_pct: parseFloat(document.getElementById("sorteo-casa").value),
+  };
+  const vend = document.getElementById("sorteo-vend").value;
+  if (vend) cuerpo.vendedor_pct = parseFloat(vend);
+  const premio = document.getElementById("sorteo-premio").value;
+  if (premio) cuerpo.premio_fijo = parseFloat(premio);
+  const minimo = document.getElementById("sorteo-minimo").value;
+  if (minimo) cuerpo.minimo_cubrir = parseFloat(minimo);
+  const pin = document.getElementById("sorteo-pozoinicial").value;
+  if (pin) cuerpo.pozo_inicial = parseFloat(pin);
+  try { const d = await api("/admin/sorteos", "POST", cuerpo); aviso("Sorteo #" + d.id + " creado con pozo $" + d.pozo_inicial); cargarSorteos(); }
+  catch (e) { aviso(e.message, true); }
+}
+
+async function guardarPlantilla() {
+  const nombre = document.getElementById("plantilla-nombre").value;
+  if (!nombre) { aviso("Ponele un nombre a la guia", true); return; }
+  const cuerpo = {
+    nombre: nombre,
+    modalidad: document.getElementById("sorteo-modalidad").value,
+    horario: document.getElementById("sorteo-horario").value,
+    precio_jugada: parseFloat(document.getElementById("sorteo-precio").value),
+    pozo_base: parseFloat(document.getElementById("sorteo-pozobase").value || 0),
+    casa_pct: parseFloat(document.getElementById("sorteo-casa").value),
+  };
+  const vend = document.getElementById("sorteo-vend").value;
+  if (vend) cuerpo.vendedor_pct = parseFloat(vend);
+  const premio = document.getElementById("sorteo-premio").value;
+  if (premio) cuerpo.premio_fijo = parseFloat(premio);
+  try { await api("/admin/plantillas", "POST", cuerpo); aviso("Guia guardada: " + nombre); cargarPlantillas(); }
+  catch (e) { aviso(e.message, true); }
+}
+
+async function cargarPlantillas() {
+  try {
+    const ps = await api("/admin/plantillas", "GET");
+    document.getElementById("plantillas-select").innerHTML = ps.map(p => "<option value='" + p.id + "'>" + p.nombre + " (" + p.modalidad + ")</option>").join("") || "<option value=''>No hay guias guardadas</option>";
+  } catch (e) { /* sin permiso */ }
+}
+
+async function cargarPlantillaSel() {
+  const id = document.getElementById("plantillas-select").value;
+  if (!id) return;
+  const ps = await api("/admin/plantillas", "GET");
+  const p = ps.find(x => String(x.id) === String(id));
+  if (!p) return;
+  document.getElementById("sorteo-modalidad").value = p.modalidad;
+  pintarReglasModalidad();
+  if (p.horario) document.getElementById("sorteo-horario").value = p.horario;
+  document.getElementById("sorteo-precio").value = p.precio_jugada;
+  document.getElementById("sorteo-pozobase").value = p.pozo_base;
+  document.getElementById("sorteo-casa").value = p.casa_pct;
+  document.getElementById("sorteo-vend").value = p.vendedor_pct ?? "";
+  document.getElementById("sorteo-premio").value = p.premio_fijo ?? "";
+  aviso("Guia cargada, pone la fecha y crea el sorteo");
+}
+
+async function borrarPlantillaSel() {
+  const id = document.getElementById("plantillas-select").value;
+  if (!id) return;
+  try { await api("/admin/plantillas/" + id, "DELETE"); aviso("Guia borrada"); cargarPlantillas(); }
+  catch (e) { aviso(e.message, true); }
+}
+
+async function cargarSorteos() {
+  try {
+    const sorteos = await api("/admin/sorteos", "GET");
+    let html = "<table><tr><th>#</th><th>Modalidad</th><th>Horario</th><th>Fecha</th><th>Estado</th><th>Pozo</th><th>Recaudado / costo</th><th>Config</th><th>Acciones</th></tr>";
+    sorteos.forEach(s => {
+      html += "<tr><td>" + s.id + "</td><td>" + s.modalidad + (s.solo_participantes ? " VACANTE" : "") + "</td><td>" + s.horario + "</td><td>" + s.fecha.slice(0,16).replace("T"," ") + "</td><td>" + s.estado + (s.busqueda_agotada ? " (manual)" : "") + "</td><td>$" + s.pozo + "</td><td>$" + (s.recaudado || 0) + " / $" + s.costo + (s.costo_cubierto ? " ✔" : " ✘") + "</td><td class='chico'>$" + s.precio_jugada + " / casa " + s.casa_pct + "% / vend " + s.vendedor_pct + "%</td><td>";
+      if (s.estado === "programado") html += "<button class='secundario' onclick='cerrarSorteo(" + s.id + ")'>Cerrar</button><button class='peligro' onclick='cancelarHorario(" + s.id + ")'>Cancelar horario</button>";
+      if (s.estado === "cerrado") html += "<button onclick='cargarResultado(" + s.id + ")'>Cargar 20 nums</button><button class='peligro' onclick='cancelarHorario(" + s.id + ")'>Cancelar horario</button>";
+      if (s.estado === "reprogramando") html += "<button onclick='reprogramarSorteo(" + s.id + ")'>Reprogramar</button>";
+      if (s.estado === "liquidado") html += "<button class='secundario' onclick='pozoVacante(" + s.id + ")'>Pozo vacante</button>";
+      html += "</td></tr>";
+    });
+    document.getElementById("lista-sorteos").innerHTML = html + "</table>";
+  } catch (e) { aviso(e.message, true); }
+}
+
+async function cerrarSorteo(id) {
+  try { await api("/admin/sorteos/" + id + "/cerrar", "POST"); aviso("Sorteo cerrado: el buscador automatico ya puede trabajar"); cargarSorteos(); }
+  catch (e) { aviso(e.message, true); }
+}
+
+async function cancelarHorario(id) {
+  try { await api("/admin/sorteos/" + id + "/cancelar-horario", "POST"); aviso("Horario cancelado: jugadas y pozo siguen en juego, se aviso a los jugadores"); cargarSorteos(); cargarAvisos(); }
+  catch (e) { aviso(e.message, true); }
+}
+
+async function reprogramarSorteo(id) {
+  const f = prompt("Nueva fecha y hora del sorteo (AAAA-MM-DDTHH:MM):");
+  if (!f) return;
+  try { await api("/admin/sorteos/" + id + "/reprogramar", "POST", { fecha: f }); aviso("Sorteo reprogramado: se aviso a los jugadores con el nuevo horario"); cargarSorteos(); cargarAvisos(); }
+  catch (e) { aviso(e.message, true); }
+}
+
+async function cargarResultado(id) {
+  const texto = prompt("Pega los 20 numeros oficiales separados por coma (1er premio primero):");
+  if (!texto) return;
+  try {
+    const d = await api("/admin/sorteos/" + id + "/resultado", "POST", { numeros: parseNumeros(texto) });
+    aviso("Liquidado: ganadoras " + JSON.stringify(d.ganadoras) + ", pozo pagado $" + d.pozo_pagado + (d.pozo_sin_ganador ? ", pozo sin ganador $" + d.pozo_sin_ganador : ""));
+    cargarSorteos();
+  } catch (e) { aviso(e.message, true); }
+}
+
+async function pozoVacante(id) {
+  const fecha = prompt("Fecha del sorteo vacante (AAAA-MM-DDTHH:MM):");
+  if (!fecha) return;
+  try { const d = await api("/admin/sorteos/" + id + "/pozo-vacante", "POST", { fecha: fecha }); aviso("Pozo vacante #" + d.id + " creado con $" + d.pozo_inicial); cargarSorteos(); }
+  catch (e) { aviso(e.message, true); }
+}
+
+// ---------- ADMIN: VENDEDORES ----------
+async function crearVendedor() {
+  const cuerpo = {
+    usuario: document.getElementById("vend-usuario").value,
+    password: document.getElementById("vend-password").value,
+    nombre: document.getElementById("vend-nombre").value,
+    telefono: document.getElementById("vend-telefono").value || null,
+    codigo: document.getElementById("vend-codigo").value,
+    comision_pct: parseFloat(document.getElementById("vend-comision").value),
+    datos_transferencia: document.getElementById("vend-transferencia").value || null,
+  };
+  try { await api("/admin/vendedores", "POST", cuerpo); aviso("Vendedor creado"); cargarVendedores(); }
+  catch (e) { aviso(e.message, true); }
+}
+
+async function cargarVendedores() {
+  try {
+    const vs = await api("/admin/vendedores", "GET");
+    let html = "<table><tr><th>#</th><th>Usuario</th><th>Nombre</th><th>Codigo</th><th>Comision</th><th>Activo</th><th>Acciones</th></tr>";
+    vs.forEach(v => {
+      html += "<tr><td>" + v.id + "</td><td>" + v.usuario + "</td><td>" + v.nombre + "</td><td>" + v.codigo + "</td><td>" + v.comision_pct + "%</td><td>" + (v.activo ? "si" : "no") + "</td><td><button class='secundario' onclick='editarVendedor(" + v.id + "," + v.comision_pct + ")'>Comision</button><button class='" + (v.activo ? "peligro" : "") + "' onclick='alternarVendedor(" + v.id + "," + !v.activo + ")'>" + (v.activo ? "Desactivar" : "Activar") + "</button></td></tr>";
+    });
+    document.getElementById("lista-vendedores").innerHTML = html + "</table>";
+  } catch (e) { aviso(e.message, true); }
+}
+
+async function editarVendedor(id, actual) {
+  const nueva = prompt("Nueva comision % (actual " + actual + "%):");
+  if (nueva === null) return;
+  try { await api("/admin/vendedores/" + id, "PUT", { comision_pct: parseFloat(nueva) }); aviso("Comision actualizada"); cargarVendedores(); }
+  catch (e) { aviso(e.message, true); }
+}
+
+async function alternarVendedor(id, activo) {
+  try { await api("/admin/vendedores/" + id, "PUT", { activo: activo }); aviso("Vendedor " + (activo ? "activado" : "desactivado")); cargarVendedores(); }
+  catch (e) { aviso(e.message, true); }
+}
+
+// ---------- ADMIN: JUGADAS / RESUMEN / AUDITORIA ----------
+async function cargarJugadasAdmin() {
+  const estado = document.getElementById("jugadas-filtro").value;
+  try {
+    const js = await api("/admin/jugadas" + (estado ? "?estado=" + estado : ""), "GET");
+    let html = "<table><tr><th>#</th><th>Sorteo</th><th>Vendedor</th><th>Jugador</th><th>Numeros</th><th>Precio</th><th>Estado</th><th>Premio</th></tr>";
+    js.forEach(j => {
+      html += "<tr><td>" + j.id + "</td><td>" + j.sorteo_id + "</td><td>" + j.vendedor + "</td><td>" + (j.jugador_nombre || "-") + "</td><td>" + j.numeros + "</td><td>$" + j.precio + "</td><td>" + j.estado + "</td><td>$" + (j.premio ?? "-") + "</td></tr>";
+    });
+    document.getElementById("lista-jugadas-admin").innerHTML = html + "</table>";
+  } catch (e) { aviso(e.message, true); }
+}
+
+async function cargarResumenGeneral() {
+  try {
+    const r = await api("/admin/resumen-general", "GET");
+    document.getElementById("caja-resumen").innerHTML = "<table><tr><th>Jugadas</th><th>Vendido</th><th>Casa</th><th>Vendedores</th><th>Revendedores</th><th>Premios</th></tr><tr><td>" + r.jugadas_aprobadas + "</td><td>$" + r.vendido + "</td><td>$" + r.casa + "</td><td>$" + r.vendedores + "</td><td>$" + r.revendedores + "</td><td>$" + r.premios_pagados + "</td></tr></table>";
+  } catch (e) { aviso(e.message, true); }
+}
+
+async function cargarAuditoria() {
+  try {
+    const logs = await api("/admin/auditoria", "GET");
+    let html = "<table><tr><th>Fecha</th><th>Usuario</th><th>Accion</th><th>Detalle</th></tr>";
+    logs.forEach(l => { html += "<tr><td>" + l.fecha.slice(0,19).replace("T"," ") + "</td><td>" + (l.nombre_usuario || "-") + "</td><td>" + l.accion + "</td><td>" + (l.detalle || "") + "</td></tr>"; });
+    document.getElementById("lista-auditoria").innerHTML = html + "</table>";
+  } catch (e) { aviso(e.message, true); }
+}
+
+// ---------- SELECTS DE SORTEOS ABIERTOS (vendedor/rev/jugador) ----------
+async function llenarSelectSorteos(ruta, idSelect) {
+  try {
+    const sorteos = await api(ruta, "GET");
+    SORTEOS_ABIERTOS_CACHE[idSelect] = {};
+    sorteos.forEach(s => { SORTEOS_ABIERTOS_CACHE[idSelect][s.id] = s; });
+    document.getElementById(idSelect).innerHTML = sorteos.map(s =>
+      "<option value='" + s.id + "'>#" + s.id + " " + s.nombre_modalidad + " " + s.horario + " " + s.fecha.slice(0,16).replace("T"," ") + " - $" + s.precio_jugada + " - pozo $" + s.pozo + (s.solo_participantes ? " (VACANTE)" : "") + (s.reprogramando ? " (REPROGRAMANDO)" : "") + "</option>"
+    ).join("") || "<option value=''>No hay sorteos abiertos</option>";
+    pintarReglasSelect(idSelect, idSelect.replace("-sorteo", "-reglas"));
+  } catch (e) { aviso(e.message, true); }
+}
+
+// ---------- VENDEDOR ----------
+async function cargarVResumen() {
+  try {
+    const r = await api("/vendedor/resumen", "GET");
+    document.getElementById("caja-vresumen").innerHTML = "<table><tr><th>Jugadas aprobadas</th><th>Vendido</th><th>Tu comision</th><th>Pagado a tus revendedores</th></tr><tr><td>" + r.jugadas_aprobadas + "</td><td>$" + r.vendido + "</td><td>$" + r.mi_comision + "</td><td>$" + r.comision_revendedores + "</td></tr></table>";
+  } catch (e) { aviso(e.message, true); }
+}
+
+async function vCargarJugada() {
+  const cuerpo = {
+    sorteo_id: parseInt(document.getElementById("v-sorteo").value),
+    numeros: parseNumeros(document.getElementById("v-numeros").value),
+    jugador_nombre: document.getElementById("v-jugador").value || null,
+  };
+  try { const d = await api("/vendedor/jugadas", "POST", cuerpo); aviso("Jugada #" + d.id + " cargada"); document.getElementById("v-numeros").value = ""; }
+  catch (e) { aviso(e.message, true); }
+}
+
+async function cargarVPendientes() {
+  try {
+    const js = await api("/vendedor/jugadas/pendientes", "GET");
+    if (!js.length) { document.getElementById("lista-vpendientes").innerHTML = "<p class='chico'>Nada pendiente.</p>"; return; }
+    let html = "<table><tr><th>#</th><th>Sorteo</th><th>Numeros</th><th>Precio</th><th>Jugador</th><th>Origen</th><th>Acciones</th></tr>";
+    js.forEach(j => {
+      html += "<tr><td>" + j.id + "</td><td>" + j.sorteo_id + "</td><td>" + j.numeros + "</td><td>$" + j.precio + "</td><td>" + (j.jugador_nombre || "-") + "</td><td>" + (j.revendedor_id ? "revendedor #" + j.revendedor_id : (j.jugador_id ? "jugador #" + j.jugador_id : "propia")) + "</td><td><button onclick='aprobarV(" + j.id + ")'>Aprobar</button><button class='peligro' onclick='rechazarV(" + j.id + ")'>Rechazar</button></td></tr>";
+    });
+    document.getElementById("lista-vpendientes").innerHTML = html + "</table>";
+  } catch (e) { aviso(e.message, true); }
+}
+
+async function aprobarV(id) {
+  try { await api("/vendedor/jugadas/" + id + "/aprobar", "POST"); aviso("Jugada aprobada"); cargarVPendientes(); }
+  catch (e) { aviso(e.message, true); }
+}
+async function rechazarV(id) {
+  try { await api("/vendedor/jugadas/" + id + "/rechazar", "POST"); aviso("Jugada rechazada"); cargarVPendientes(); }
+  catch (e) { aviso(e.message, true); }
+}
+
+async function cargarVJugadas() {
+  try {
+    const js = await api("/vendedor/jugadas", "GET");
+    let html = "<table><tr><th>#</th><th>Sorteo</th><th>Numeros</th><th>Precio</th><th>Estado</th><th>Premio</th><th>Tu comision</th></tr>";
+    js.forEach(j => { html += "<tr><td>" + j.id + "</td><td>" + j.sorteo_id + "</td><td>" + j.numeros + "</td><td>$" + j.precio + "</td><td>" + j.estado + "</td><td>$" + (j.premio ?? "-") + "</td><td>$" + (j.mi_comision ?? "-") + "</td></tr>"; });
+    document.getElementById("lista-vjugadas").innerHTML = html + "</table>";
+  } catch (e) { aviso(e.message, true); }
+}
+
+async function crearVRevendedor() {
+  const cuerpo = {
+    usuario: document.getElementById("vrev-usuario").value,
+    password: document.getElementById("vrev-password").value,
+    nombre: document.getElementById("vrev-nombre").value,
+    codigo: document.getElementById("vrev-codigo").value,
+    comision_pct: parseFloat(document.getElementById("vrev-comision").value),
+  };
+  try { await api("/vendedor/revendedores", "POST", cuerpo); aviso("Revendedor creado"); cargarVRevendedores(); }
+  catch (e) { aviso(e.message, true); }
+}
+
+async function cargarVRevendedores() {
+  try {
+    const rs = await api("/vendedor/revendedores", "GET");
+    let html = "<table><tr><th>#</th><th>Usuario</th><th>Nombre</th><th>Codigo</th><th>Comision</th><th>Activo</th><th>Acciones</th></tr>";
+    rs.forEach(r => {
+      html += "<tr><td>" + r.id + "</td><td>" + r.usuario + "</td><td>" + r.nombre + "</td><td>" + r.codigo + "</td><td>" + r.comision_pct + "%</td><td>" + (r.activo ? "si" : "no") + "</td><td><button class='secundario' onclick='editarVRev(" + r.id + "," + r.comision_pct + ")'>Comision</button><button class='" + (r.activo ? "peligro" : "") + "' onclick='alternarVRev(" + r.id + "," + !r.activo + ")'>" + (r.activo ? "Desactivar" : "Activar") + "</button></td></tr>";
+    });
+    document.getElementById("lista-vrevendedores").innerHTML = html + "</table>";
+  } catch (e) { aviso(e.message, true); }
+}
+
+async function editarVRev(id, actual) {
+  const nueva = prompt("Nueva comision % para tu revendedor (actual " + actual + "%, no puede superar la tuya):");
+  if (nueva === null) return;
+  try { await api("/vendedor/revendedores/" + id, "PUT", { comision_pct: parseFloat(nueva) }); aviso("Comision actualizada"); cargarVRevendedores(); }
+  catch (e) { aviso(e.message, true); }
+}
+async function alternarVRev(id, activo) {
+  try { await api("/vendedor/revendedores/" + id, "PUT", { activo: activo }); aviso("Revendedor " + (activo ? "activado" : "desactivado")); cargarVRevendedores(); }
+  catch (e) { aviso(e.message, true); }
+}
+
+async function cargarVJugadores() {
+  try {
+    const js = await api("/vendedor/jugadores", "GET");
+    let html = "<table><tr><th>#</th><th>Usuario</th><th>Nombre</th><th>Activo</th></tr>";
+    js.forEach(j => { html += "<tr><td>" + j.id + "</td><td>" + j.usuario + "</td><td>" + j.nombre + "</td><td>" + (j.activo ? "si" : "no") + "</td></tr>"; });
+    document.getElementById("lista-vjugadores").innerHTML = html + "</table>";
+  } catch (e) { aviso(e.message, true); }
+}
+
+// ---------- REVENDEDOR ----------
+async function cargarRSorteos() {
+  try {
+    const ss = await api("/revendedor/sorteos", "GET");
+    let html = "<table><tr><th>#</th><th>Modalidad</th><th>Horario</th><th>Fecha</th><th>Precio</th><th>Pozo</th><th>Reglas</th></tr>";
+    ss.forEach(s => { html += "<tr><td>" + s.id + "</td><td>" + s.nombre_modalidad + (s.reprogramando ? " (REPROGRAMANDO)" : "") + "</td><td>" + s.horario + "</td><td>" + s.fecha.slice(0,16).replace("T"," ") + "</td><td>$" + s.precio_jugada + "</td><td>$" + s.pozo + "</td><td class='chico'>" + s.reglas + "</td></tr>"; });
+    document.getElementById("lista-rsorteos").innerHTML = html + "</table>";
+  } catch (e) { aviso(e.message, true); }
+}
+async function rCargarJugada() {
+  const cuerpo = {
+    sorteo_id: parseInt(document.getElementById("r-sorteo").value),
+    numeros: parseNumeros(document.getElementById("r-numeros").value),
+    jugador_nombre: document.getElementById("r-jugador").value || null,
+  };
+  try { const d = await api("/revendedor/jugadas", "POST", cuerpo); aviso("Jugada #" + d.id + " cargada, la aprueba tu vendedor"); document.getElementById("r-numeros").value = ""; }
+  catch (e) { aviso(e.message, true); }
+}
+async function cargarRJugadas() {
+  try {
+    const js = await api("/revendedor/jugadas", "GET");
+    let html = "<table><tr><th>#</th><th>Sorteo</th><th>Numeros</th><th>Precio</th><th>Estado</th><th>Premio</th><th>Tu comision</th></tr>";
+    js.forEach(j => { html += "<tr><td>" + j.id + "</td><td>" + j.sorteo_id + "</td><td>" + j.numeros + "</td><td>$" + j.precio + "</td><td>" + j.estado + "</td><td>$" + (j.premio ?? "-") + "</td><td>$" + (j.mi_comision ?? "-") + "</td></tr>"; });
+    document.getElementById("lista-rjugadas").innerHTML = html + "</table>";
+  } catch (e) { aviso(e.message, true); }
+}
+async function cargarRResumen() {
+  try {
+    const r = await api("/revendedor/resumen", "GET");
+    document.getElementById("caja-rresumen").innerHTML = "<table><tr><th>Jugadas aprobadas</th><th>Vendido</th><th>Tu comision</th></tr><tr><td>" + r.jugadas_aprobadas + "</td><td>$" + r.vendido + "</td><td>$" + r.mi_comision + "</td></tr></table>";
+  } catch (e) { aviso(e.message, true); }
+}
+
+// ---------- JUGADOR ----------
+async function cargarJSorteos() {
+  try {
+    const ss = await api("/jugador/sorteos", "GET");
+    let html = "<table><tr><th>#</th><th>Modalidad</th><th>Horario</th><th>Fecha</th><th>Precio</th><th>Pozo</th><th>Reglas</th></tr>";
+    ss.forEach(s => { html += "<tr><td>" + s.id + "</td><td>" + s.nombre_modalidad + (s.reprogramando ? " (REPROGRAMANDO)" : "") + "</td><td>" + s.horario + "</td><td>" + s.fecha.slice(0,16).replace("T"," ") + "</td><td>$" + s.precio_jugada + "</td><td>$" + s.pozo + "</td><td class='chico'>" + s.reglas + "</td></tr>"; });
+    document.getElementById("lista-jsorteos").innerHTML = html + "</table>";
+  } catch (e) { aviso(e.message, true); }
+}
+async function jCargarJugada() {
+  const cuerpo = {
+    sorteo_id: parseInt(document.getElementById("j-sorteo").value),
+    numeros: parseNumeros(document.getElementById("j-numeros").value),
+  };
+  try { const d = await api("/jugador/jugadas", "POST", cuerpo); aviso("Jugada #" + d.id + " cargada, espera aprobacion de tu vendedor"); document.getElementById("j-numeros").value = ""; }
+  catch (e) { aviso(e.message, true); }
+}
+async function cargarJJugadas() {
+  try {
+    const js = await api("/jugador/jugadas", "GET");
+    let html = "<table><tr><th>#</th><th>Sorteo</th><th>Numeros</th><th>Precio</th><th>Estado</th><th>Premio</th></tr>";
+    js.forEach(j => { html += "<tr><td>" + j.id + "</td><td>" + j.sorteo_id + "</td><td>" + j.numeros + "</td><td>$" + j.precio + "</td><td>" + j.estado + "</td><td>$" + (j.premio ?? "-") + "</td></tr>"; });
+    document.getElementById("lista-jjugadas").innerHTML = html + "</table>";
+  } catch (e) { aviso(e.message, true); }
+}
+
+if (token) { mostrarPanel(); }
+</script>
+</body>
+</html>
