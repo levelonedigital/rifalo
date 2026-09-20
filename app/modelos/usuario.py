@@ -36,6 +36,10 @@ class Usuario(Base):
     comision_pct = Column(Float, nullable=True)
     datos_transferencia = Column(String(300), nullable=True)
 
+    # Jugadores: datos para pagarles los premios
+    datos_cobro = Column(String(200), nullable=True)      # alias o CBU del jugador
+    cobro_transferencia = Column(Boolean, default=False)  # quiere cobrar sus premios por transferencia
+
     # Padre en la jerarquia:
     #  - REVENDEDOR: su vendedor duenio
     #  - JUGADOR: el vendedor con cuyo codigo se registro
