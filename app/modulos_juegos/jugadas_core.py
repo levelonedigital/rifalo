@@ -32,8 +32,8 @@ def crear_jugada(
     jugador_id=None,
     jugador_nombre=None,
 ) -> Jugada:
-    """Valida y crea una jugada pendiente."""
-    if sorteo.estado != EstadoSorteo.PROGRAMADO:
+    """Valida y crea una jugada pendiente. Acepta sorteos programados o reprogramando."""
+    if sorteo.estado not in (EstadoSorteo.PROGRAMADO, EstadoSorteo.REPROGRAMANDO):
         raise ValueError("El sorteo no esta abierto para cargar jugadas")
     error = validar_numeros(sorteo, numeros)
     if error:
