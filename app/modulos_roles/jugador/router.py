@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from app.core.database import obtener_sesion
 from app.core.dependencias import requerir_rol
 from app.modulos_juegos.jugadas_core import crear_jugada
-from app.modulos_juegos.motor import obtener_reglas
+from app.modulos_juegos.modalidades import obtener
 from app.modelos.juegos import EstadoSorteo, Jugada, Sorteo
 from app.modelos.usuario import RolUsuario, Usuario
 
@@ -19,13 +19,26 @@ class JugadaCrear(BaseModel):
     numeros: list[int]
 
 
+def _sorteo_out(s: Sorteo):
+    modalidad = obtener(s.modalidad)
+    return {
+        "id": s.id,
+        "modalidad": s.modalidad,
+        "nombre_modalidad": modalidad.nombre if modalidad else s.modalidad,
+        "reglas": modalidad.resumen_reglas if modalidad else "",
+        "cantidad_numeros": modalidad.cantidad_numeros if modalidad else 0,
+        "horario": s.horario,
+        "fecha": s.fecha.isoformat(),
+        "pozo": s.pozo_actual,
+        "precio_jugada": s.precio_jugada,
+        "solo_participantes": s.solo_participantes,
+    }
+
+
 @router.get("/sorteos")
 def sorteos_abiertos(sesion: Session = Depends(obtener_sesion), jugador: Usuario = jug_dep):
     sorteos = sesion.query(Sorteo).filter(Sorteo.estado == EstadoSorteo.PROGRAMADO).order_by(Sorteo.fecha).all()
-    return [
-        {"id": s.id, "modulo": s.modulo.value, "horario": s.horario, "fecha": s.fecha.isoformat(), "pozo": s.pozo_actual, "solo_participantes": s.solo_participantes}
-        for s in sorteos
-    ]
+    return [_sorteo_out(s) for s in sorteos]
 
 
 @router.post("/jugadas")
@@ -36,9 +49,8 @@ def cargar_jugada(datos: JugadaCrear, sesion: Session = Depends(obtener_sesion),
     sorteo = sesion.get(Sorteo, datos.sorteo_id)
     if sorteo is None:
         raise HTTPException(status_code=404, detail="Sorteo no encontrado")
-    reglas = obtener_reglas(sesion)
     try:
-        jugada = crear_jugada(sesion, sorteo, datos.numeros, vendedor, reglas, jugador_id=jugador.id, jugador_nombre=jugador.nombre)
+        jugada = crear_jugada(sesion, sorteo, datos.numeros, vendedor, jugador_id=jugador.id, jugador_nombre=jugador.nombre)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     return {"id": jugada.id, "numeros": jugada.numeros, "precio": jugada.precio, "estado": jugada.estado.value}
