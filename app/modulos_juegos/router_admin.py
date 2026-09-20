@@ -9,9 +9,9 @@ from app.core.database import obtener_sesion
 from app.core.dependencias import requerir_permiso, requerir_rol
 from app.core.security import hash_password
 from app.modulos_juegos import motor
-from app.modulos_juegos.buscador import _actualizar_semanal
+from app.modulos_juegos.buscador import _actualizar_semanal, costo_a_cubrir
 from app.modulos_juegos.modalidades import listar, obtener
-from app.modelos.juegos import EstadoJugada, EstadoSorteo, Jugada, Sorteo
+from app.modelos.juegos import Aviso, EstadoJugada, EstadoSorteo, Jugada, Sorteo
 from app.modelos.usuario import RolUsuario, Usuario
 
 router = APIRouter(prefix="/admin", tags=["juegos"])
@@ -29,10 +29,15 @@ class SorteoCrear(BaseModel):
     pozo_base: float = Field(ge=0)
     casa_pct: float = Field(ge=0, le=100)
     vendedor_pct: float | None = Field(default=None, ge=0, le=100)
+    minimo_cubrir: float | None = Field(default=None, ge=0)
 
 
 class ResultadoCargar(BaseModel):
     numeros: list[int]
+
+
+class Reprogramar(BaseModel):
+    fecha: datetime
 
 
 class VendedorCrear(BaseModel):
@@ -91,6 +96,7 @@ def crear_sorteo(datos: SorteoCrear, sesion: Session = Depends(obtener_sesion), 
         pozo_base=datos.pozo_base,
         casa_pct=datos.casa_pct,
         vendedor_pct=datos.vendedor_pct,
+        minimo_cubrir=datos.minimo_cubrir,
     )
     sesion.add(sorteo)
     sesion.commit()
@@ -103,25 +109,31 @@ def crear_sorteo(datos: SorteoCrear, sesion: Session = Depends(obtener_sesion), 
 @router.get("/sorteos")
 def listar_sorteos(sesion: Session = Depends(obtener_sesion), admin: Usuario = Depends(requerir_permiso("configurar_sorteos"))):
     sorteos = sesion.query(Sorteo).order_by(Sorteo.id.desc()).limit(100).all()
-    return [
-        {
-            "id": s.id,
-            "modalidad": s.modalidad,
-            "horario": s.horario,
-            "fecha": s.fecha.isoformat(),
-            "estado": s.estado.value,
-            "resultados": s.resultados,
-            "pozo": s.pozo_actual,
-            "recaudado": s.recaudado,
-            "solo_participantes": s.solo_participantes,
-            "busqueda_agotada": s.busqueda_agotada,
-            "precio_jugada": s.precio_jugada,
-            "pozo_base": s.pozo_base,
-            "casa_pct": s.casa_pct,
-            "vendedor_pct": s.vendedor_pct,
-        }
-        for s in sorteos
-    ]
+    salida = []
+    for s in sorteos:
+        costo = costo_a_cubrir(s)
+        salida.append(
+            {
+                "id": s.id,
+                "modalidad": s.modalidad,
+                "horario": s.horario,
+                "fecha": s.fecha.isoformat(),
+                "estado": s.estado.value,
+                "resultados": s.resultados,
+                "pozo": s.pozo_actual,
+                "recaudado": s.recaudado,
+                "solo_participantes": s.solo_participantes,
+                "busqueda_agotada": s.busqueda_agotada,
+                "precio_jugada": s.precio_jugada,
+                "pozo_base": s.pozo_base,
+                "casa_pct": s.casa_pct,
+                "vendedor_pct": s.vendedor_pct,
+                "minimo_cubrir": s.minimo_cubrir,
+                "costo": costo,
+                "costo_cubierto": (s.recaudado or 0.0) >= costo,
+            }
+        )
+    return salida
 
 
 @router.post("/sorteos/{sorteo_id}/cerrar")
@@ -136,6 +148,56 @@ def cerrar_sorteo(sorteo_id: int, sesion: Session = Depends(obtener_sesion), adm
     auditoria.registrar(sesion, "SORTEO_CERRADO", detalle=f"sorteo={sorteo.id}", usuario=admin)
     sesion.commit()
     return {"ok": True}
+
+
+@router.post("/sorteos/{sorteo_id}/cancelar-horario")
+def cancelar_horario(sorteo_id: int, sesion: Session = Depends(obtener_sesion), admin: Usuario = Depends(requerir_permiso("configurar_sorteos"))):
+    """Cancela la hora del sorteo. Jugadas y pozo siguen en juego, esperando nuevo horario."""
+    sorteo = sesion.get(Sorteo, sorteo_id)
+    if sorteo is None:
+        raise HTTPException(status_code=404, detail="Sorteo no encontrado")
+    if sorteo.estado not in (EstadoSorteo.PROGRAMADO, EstadoSorteo.CERRADO):
+        raise HTTPException(status_code=400, detail="Solo se puede cancelar el horario de sorteos programados o cerrados")
+    sorteo.estado = EstadoSorteo.REPROGRAMANDO
+    aviso = Aviso(
+        texto=(
+            f"Sorteo #{sorteo.id} ({sorteo.modalidad} {sorteo.horario} {sorteo.fecha.strftime('%d/%m %H:%M')}): "
+            f"jugada cancelada por no cumplir los requisitos. Aguarda nuevo horario."
+        ),
+        destino="todos",
+    )
+    sesion.add(aviso)
+    sesion.commit()
+    auditoria.registrar(sesion, "SORTEO_HORARIO_CANCELADO", detalle=f"sorteo={sorteo.id}", usuario=admin)
+    sesion.commit()
+    return {"ok": True, "estado": sorteo.estado.value}
+
+
+@router.post("/sorteos/{sorteo_id}/reprogramar")
+def reprogramar(sorteo_id: int, datos: Reprogramar, sesion: Session = Depends(obtener_sesion), admin: Usuario = Depends(requerir_permiso("configurar_sorteos"))):
+    """Fija el nuevo horario de un sorteo reprogramando. Jugadas y pozo quedan intactos."""
+    sorteo = sesion.get(Sorteo, sorteo_id)
+    if sorteo is None:
+        raise HTTPException(status_code=404, detail="Sorteo no encontrado")
+    if sorteo.estado != EstadoSorteo.REPROGRAMANDO:
+        raise HTTPException(status_code=400, detail="El sorteo no esta en estado reprogramando")
+    if datos.fecha.weekday() == 6:
+        raise HTTPException(status_code=400, detail="Los domingos no hay sorteos")
+    sorteo.fecha = datos.fecha
+    sorteo.estado = EstadoSorteo.PROGRAMADO
+    sorteo.aviso_costo_enviado = False
+    aviso = Aviso(
+        texto=(
+            f"Sorteo #{sorteo.id} ({sorteo.modalidad} {sorteo.horario}) reprogramado: "
+            f"nuevo horario {datos.fecha.strftime('%d/%m/%Y %H:%M')}."
+        ),
+        destino="todos",
+    )
+    sesion.add(aviso)
+    sesion.commit()
+    auditoria.registrar(sesion, "SORTEO_REPROGRAMADO", detalle=f"sorteo={sorteo.id} nueva_fecha={datos.fecha.isoformat()}", usuario=admin)
+    sesion.commit()
+    return {"ok": True, "estado": sorteo.estado.value, "fecha": sorteo.fecha.isoformat()}
 
 
 @router.post("/sorteos/{sorteo_id}/resultado")
