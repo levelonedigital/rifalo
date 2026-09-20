@@ -32,12 +32,18 @@ def _sorteo_out(s: Sorteo):
         "pozo": s.pozo_actual,
         "precio_jugada": s.precio_jugada,
         "solo_participantes": s.solo_participantes,
+        "reprogramando": s.estado == EstadoSorteo.REPROGRAMANDO,
     }
 
 
 @router.get("/sorteos")
 def sorteos_abiertos(sesion: Session = Depends(obtener_sesion), jugador: Usuario = jug_dep):
-    sorteos = sesion.query(Sorteo).filter(Sorteo.estado == EstadoSorteo.PROGRAMADO).order_by(Sorteo.fecha).all()
+    sorteos = (
+        sesion.query(Sorteo)
+        .filter(Sorteo.estado.in_([EstadoSorteo.PROGRAMADO, EstadoSorteo.REPROGRAMANDO]))
+        .order_by(Sorteo.fecha)
+        .all()
+    )
     return [_sorteo_out(s) for s in sorteos]
 
 
