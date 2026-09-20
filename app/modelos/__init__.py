@@ -1,6 +1,7 @@
 from app.modelos.usuario import RolUsuario, Usuario
 from app.modelos.auditoria import LogAuditoria
 from app.modelos.juegos import (
+    Aviso,
     EstadoJugada,
     EstadoSorteo,
     Jugada,
@@ -19,4 +20,5 @@ __all__ = [
     "EstadoJugada",
     "ReglasSistema",
     "PlantillaSorteo",
+    "Aviso",
 ]
