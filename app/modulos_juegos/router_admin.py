@@ -247,7 +247,7 @@ def pozo_vacante(sorteo_id: int, datos: PozoVacanteCrear, sesion: Session = Depe
     return {"id": nuevo.id, "pozo_inicial": nuevo.pozo_inicial, "participantes": nuevo.participantes}
 
 
-# ---------- VISTA GENERAL DE JUGADAS ----------
+# ---------- JUGADAS ----------
 
 @router.get("/jugadas")
 def ver_jugadas(
@@ -278,6 +278,41 @@ def ver_jugadas(
             }
         )
     return salida
+
+
+@router.get("/jugadas/{jugada_id}")
+def ver_jugada(jugada_id: int, sesion: Session = Depends(obtener_sesion), admin: Usuario = admin_dep):
+    """Ficha individual completa de una jugada."""
+    j = sesion.get(Jugada, jugada_id)
+    if j is None:
+        raise HTTPException(status_code=404, detail="Jugada no encontrada")
+    vendedor = sesion.get(Usuario, j.vendedor_id) if j.vendedor_id else None
+    revendedor = sesion.get(Usuario, j.revendedor_id) if j.revendedor_id else None
+    jugador = sesion.get(Usuario, j.jugador_id) if j.jugador_id else None
+    sorteo = sesion.get(Sorteo, j.sorteo_id)
+    return {
+        "id": j.id,
+        "sorteo": {
+            "id": sorteo.id,
+            "modalidad": sorteo.modalidad,
+            "horario": sorteo.horario,
+            "fecha": sorteo.fecha.isoformat(),
+            "estado": sorteo.estado.value,
+        } if sorteo else None,
+        "vendedor": vendedor.usuario if vendedor else "-",
+        "revendedor": revendedor.usuario if revendedor else None,
+        "jugador_usuario": jugador.usuario if jugador else None,
+        "jugador_nombre": j.jugador_nombre,
+        "numeros": j.numeros,
+        "precio": j.precio,
+        "estado": j.estado.value,
+        "premio": j.premio,
+        "monto_casa": j.monto_casa,
+        "monto_vendedor": j.monto_vendedor,
+        "monto_revendedor": j.monto_revendedor,
+        "monto_pozo": j.monto_pozo,
+        "creada_en": j.creada_en.isoformat() if j.creada_en else None,
+    }
 
 
 # ---------- VENDEDORES ----------
