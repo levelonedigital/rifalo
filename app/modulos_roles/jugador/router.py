@@ -28,6 +28,7 @@ def _sorteo_out(s: Sorteo):
         "modalidad": s.modalidad,
         "nombre_modalidad": modalidad.nombre if modalidad else s.modalidad,
         "reglas": modalidad.resumen_reglas if modalidad else "",
+        "detalle": s.detalle,
         "cantidad_numeros": modalidad.cantidad_numeros if modalidad else 0,
         "horario": s.horario,
         "fecha": s.fecha.isoformat(),
@@ -80,12 +81,12 @@ def cargar_jugada(datos: JugadaCrear, sesion: Session = Depends(obtener_sesion),
         "numeros": jugada.numeros,
         "precio": jugada.precio,
         "estado": jugada.estado.value,
-        "coincidencias": _coincidencias(sesion, sorteo.id, jugada.numeros),
     }
 
 
 @router.get("/jugadas")
 def mis_jugadas(sesion: Session = Depends(obtener_sesion), jugador: Usuario = jug_dep):
+    """El jugador ve SUS propios numeros y si alguien mas juega los mismos."""
     jugadas = (
         sesion.query(Jugada)
         .filter(Jugada.jugador_id == jugador.id)
