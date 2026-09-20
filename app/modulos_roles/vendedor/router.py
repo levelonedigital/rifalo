@@ -45,7 +45,7 @@ class JugadorCrear(BaseModel):
     usuario: str
     password: str
     nombre: str
-    datos_cobro: str = Field(min_length=3)   # alias o CBU, obligatorio
+    datos_cobro: str = Field(min_length=1)   # alias o CBU, obligatorio
     cobro_transferencia: bool = True
     telefono: str | None = None
 
