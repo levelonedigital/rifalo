@@ -13,6 +13,8 @@
   .tarjeta { background: #1e293b; border-radius: 10px; padding: 16px; margin-bottom: 16px; }
   label { display: block; margin: 6px 0 2px; font-size: 14px; color: #94a3b8; }
   input, select { width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #334155; background: #0f172a; color: #e2e8f0; }
+  input[type="checkbox"] { width: auto; margin-right: 8px; }
+  .check-linea { display: flex; align-items: center; margin: 10px 0; font-size: 14px; color: #e2e8f0; }
   button { margin: 6px 4px 0 0; padding: 8px 14px; border: none; border-radius: 6px; background: #22c55e; color: #052e16; font-weight: bold; cursor: pointer; }
   button.secundario { background: #334155; color: #e2e8f0; }
   button.peligro { background: #dc2626; color: #fff; }
@@ -29,6 +31,7 @@
   .reglas-box { background: #0f172a; border: 1px solid #334155; border-radius: 6px; padding: 8px; margin: 8px 0; font-size: 13px; color: #fbbf24; white-space: pre-line; }
   .aviso-box { background: #713f12; border: 1px solid #fbbf24; color: #fef3c7; border-radius: 6px; padding: 8px; margin: 6px 0; font-size: 13px; }
   .modo-box { background: #1e3a8a; border: 2px solid #60a5fa; color: #dbeafe; border-radius: 6px; padding: 10px; margin: 8px 0; font-size: 14px; }
+  .cobro-box { background: #14532d; border: 1px solid #22c55e; color: #dcfce7; border-radius: 6px; padding: 10px; margin: 8px 0; font-size: 13px; }
   .grilla { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
   @media (max-width: 700px) { .grilla { grid-template-columns: 1fr; } }
 </style>
@@ -53,6 +56,8 @@
       <label>Contrasenia</label><input id="reg-password" type="password">
       <label>Nombre y apellido</label><input id="reg-nombre">
       <label>Codigo de tu vendedor (ej: V1)</label><input id="reg-codigo">
+      <label>Alias o CBU (para cobrarte tus premios)</label><input id="reg-cobro" placeholder="tu.alias o CBU de 22 digitos">
+      <div class="check-linea"><input type="checkbox" id="reg-transferencia" checked><span>Cobrar mis premios por transferencia</span></div>
       <button onclick="registrarJugador()">Registrarme</button>
     </div>
   </div>
@@ -218,6 +223,18 @@
         <div><button class="secundario" onclick="copiarLink()">Copiar link</button></div>
       </div>
       <p class="chico">Comparti este link: quien lo abra llega al registro de jugador con tu codigo ya cargado.</p>
+
+      <h2>Cargar jugador a mano</h2>
+      <div class="grilla">
+        <div><label>Usuario</label><input id="vj-usuario"></div>
+        <div><label>Contrasenia</label><input id="vj-password" type="password"></div>
+        <div><label>Nombre y apellido</label><input id="vj-nombre"></div>
+        <div><label>Telefono</label><input id="vj-telefono"></div>
+        <div><label>Alias o CBU (para pagarle premios)</label><input id="vj-cobro"></div>
+      </div>
+      <div class="check-linea"><input type="checkbox" id="vj-transferencia" checked><span>Cobra sus premios por transferencia</span></div>
+      <button onclick="crearVJugador()">Cargar jugador a mano</button>
+
       <h2>Jugadores registrados conmigo</h2>
       <button class="secundario" onclick="cargarVJugadores()">Actualizar</button>
       <div id="lista-vjugadores"></div>
@@ -263,6 +280,7 @@
     </div>
     <div id="seccion-jjugadas" class="tarjeta" style="display:none">
       <h2>Mis jugadas</h2>
+      <div id="caja-cobro" class="cobro-box"></div>
       <button class="secundario" onclick="cargarJJugadas()">Actualizar</button>
       <div id="lista-jjugadas"></div>
     </div>
@@ -389,6 +407,8 @@ async function registrarJugador() {
     password: document.getElementById("reg-password").value,
     nombre: document.getElementById("reg-nombre").value,
     codigo_vendedor: document.getElementById("reg-codigo").value,
+    datos_cobro: document.getElementById("reg-cobro").value,
+    cobro_transferencia: document.getElementById("reg-transferencia").checked,
   };
   try {
     const r = await fetch("/auth/registro-jugador", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(cuerpo) });
@@ -402,7 +422,7 @@ async function registrarJugador() {
       }
       return;
     }
-    loginMsg("Registro listo: ya podes ingresar con tu usuario y contrasenia.");
+    loginMsg("Registro listo: ya podes ingresar con tu usuario y contrasenia. Tus premios se acreditan en tu alias/CBU.");
     document.getElementById("form-registro").style.display = "none";
   } catch (e) { loginMsg(e.message, true); }
 }
@@ -831,6 +851,32 @@ function copiarLink() {
   aviso("Link copiado: pegalo donde quieras compartirlo");
 }
 
+// ---------- VENDEDOR: JUGADORES ----------
+async function crearVJugador() {
+  const cuerpo = {
+    usuario: document.getElementById("vj-usuario").value,
+    password: document.getElementById("vj-password").value,
+    nombre: document.getElementById("vj-nombre").value,
+    telefono: document.getElementById("vj-telefono").value || null,
+    datos_cobro: document.getElementById("vj-cobro").value,
+    cobro_transferencia: document.getElementById("vj-transferencia").checked,
+  };
+  try { await api("/vendedor/jugadores", "POST", cuerpo); aviso("Jugador cargado a tu linea"); cargarVJugadores(); }
+  catch (e) { aviso(e.message, true); }
+}
+
+async function cargarVJugadores() {
+  cargarLinkVendedor();
+  try {
+    const js = await api("/vendedor/jugadores", "GET");
+    let html = "<table><tr><th>#</th><th>Usuario</th><th>Nombre</th><th>Alias/CBU</th><th>Cobra por transferencia</th><th>Activo</th></tr>";
+    js.forEach(j => {
+      html += "<tr><td>" + j.id + "</td><td>" + j.usuario + "</td><td>" + j.nombre + "</td><td>" + (j.datos_cobro || "-") + "</td><td>" + (j.cobro_transferencia ? "si" : "no") + "</td><td>" + (j.activo ? "si" : "no") + "</td></tr>";
+    });
+    document.getElementById("lista-vjugadores").innerHTML = html + "</table>";
+  } catch (e) { aviso(e.message, true); }
+}
+
 // ---------- SELECTS DE SORTEOS ABIERTOS (vendedor/rev/jugador) ----------
 async function llenarSelectSorteos(ruta, idSelect) {
   try {
@@ -845,7 +891,7 @@ async function llenarSelectSorteos(ruta, idSelect) {
   } catch (e) { aviso(e.message, true); }
 }
 
-// ---------- VENDEDOR ----------
+// ---------- VENDEDOR: JUGADAS ----------
 async function cargarVResumen() {
   try {
     const r = await api("/vendedor/resumen", "GET");
@@ -927,16 +973,6 @@ async function alternarVRev(id, activo) {
   catch (e) { aviso(e.message, true); }
 }
 
-async function cargarVJugadores() {
-  cargarLinkVendedor();
-  try {
-    const js = await api("/vendedor/jugadores", "GET");
-    let html = "<table><tr><th>#</th><th>Usuario</th><th>Nombre</th><th>Activo</th></tr>";
-    js.forEach(j => { html += "<tr><td>" + j.id + "</td><td>" + j.usuario + "</td><td>" + j.nombre + "</td><td>" + (j.activo ? "si" : "no") + "</td></tr>"; });
-    document.getElementById("lista-vjugadores").innerHTML = html + "</table>";
-  } catch (e) { aviso(e.message, true); }
-}
-
 // ---------- REVENDEDOR ----------
 async function cargarRSorteos() {
   try {
@@ -989,6 +1025,15 @@ async function jCargarJugada() {
 }
 async function cargarJJugadas() {
   try {
+    const me = await api("/auth/me", "GET");
+    const caja = document.getElementById("caja-cobro");
+    if (me.datos_cobro) {
+      caja.style.display = "block";
+      caja.textContent = "Tus datos de cobro: " + me.datos_cobro + (me.cobro_transferencia ? " | Cobras tus premios por transferencia: cuando ganes, se acredita ahi." : " | Sin transferencia activada: coordina el cobro con tu vendedor.");
+    } else {
+      caja.style.display = "block";
+      caja.textContent = "Carga tu alias o CBU con tu vendedor para cobrar tus premios por transferencia.";
+    }
     const js = await api("/jugador/jugadas", "GET");
     let html = "<table><tr><th>#</th><th>Sorteo</th><th>Numeros</th><th>Precio</th><th>Estado</th><th>Premio</th></tr>";
     js.forEach(j => { html += "<tr><td>" + j.id + "</td><td>" + j.sorteo_id + "</td><td>" + j.numeros + "</td><td>$" + j.precio + "</td><td>" + j.estado + "</td><td>$" + (j.premio ?? "-") + "</td></tr>"; });
