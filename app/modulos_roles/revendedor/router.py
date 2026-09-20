@@ -14,6 +14,7 @@ router = APIRouter(prefix="/revendedor", tags=["revendedor"])
 rev_dep = Depends(requerir_rol(RolUsuario.REVENDEDOR))
 
 ESTADOS_VENDIDOS = [EstadoJugada.APROBADA, EstadoJugada.GANADORA, EstadoJugada.PERDEDORA]
+NUMEROS_OCULTOS = "••• (numeros ocultos)"
 
 
 class JugadaCrear(BaseModel):
@@ -29,6 +30,7 @@ def _sorteo_out(s: Sorteo):
         "modalidad": s.modalidad,
         "nombre_modalidad": modalidad.nombre if modalidad else s.modalidad,
         "reglas": modalidad.resumen_reglas if modalidad else "",
+        "detalle": s.detalle,
         "cantidad_numeros": modalidad.cantidad_numeros if modalidad else 0,
         "horario": s.horario,
         "fecha": s.fecha.isoformat(),
@@ -76,7 +78,7 @@ def mis_jugadas(sesion: Session = Depends(obtener_sesion), rev: Usuario = rev_de
         .all()
     )
     return [
-        {"id": j.id, "sorteo_id": j.sorteo_id, "numeros": j.numeros, "precio": j.precio, "estado": j.estado.value, "premio": j.premio, "mi_comision": j.monto_revendedor}
+        {"id": j.id, "sorteo_id": j.sorteo_id, "numeros": NUMEROS_OCULTOS, "precio": j.precio, "estado": j.estado.value, "premio": j.premio, "mi_comision": j.monto_revendedor}
         for j in jugadas
     ]
 
