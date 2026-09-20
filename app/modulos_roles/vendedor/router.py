@@ -66,6 +66,7 @@ def _sorteo_out(s: Sorteo):
         "precio_jugada": s.precio_jugada,
         "solo_participantes": s.solo_participantes,
         "reprogramando": s.estado == EstadoSorteo.REPROGRAMANDO,
+        "imagen_url": s.imagen_url,
     }
 
 
