@@ -16,6 +16,8 @@ router = APIRouter(prefix="/vendedor", tags=["vendedor"])
 
 vendedor_dep = Depends(requerir_rol(RolUsuario.VENDEDOR))
 
+ESTADOS_VENDIDOS = [EstadoJugada.APROBADA, EstadoJugada.GANADORA, EstadoJugada.PERDEDORA]
+
 
 class RevendedorCrear(BaseModel):
     usuario: str
@@ -225,7 +227,8 @@ def historial(sesion: Session = Depends(obtener_sesion), vendedor: Usuario = ven
 
 @router.get("/resumen")
 def resumen(sesion: Session = Depends(obtener_sesion), vendedor: Usuario = vendedor_dep):
-    jugadas = sesion.query(Jugada).filter(Jugada.vendedor_id == vendedor.id, Jugada.estado == EstadoJugada.APROBADA).all()
+    """Cuenta todas las jugadas que llegaste a aprobar (incluidas ya liquidadas)."""
+    jugadas = sesion.query(Jugada).filter(Jugada.vendedor_id == vendedor.id, Jugada.estado.in_(ESTADOS_VENDIDOS)).all()
     return {
         "jugadas_aprobadas": len(jugadas),
         "vendido": round(sum(j.precio for j in jugadas), 2),
