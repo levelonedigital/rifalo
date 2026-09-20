@@ -32,6 +32,7 @@ class SorteoCrear(BaseModel):
     casa_pct: float = Field(ge=0, le=100)
     vendedor_pct: float | None = Field(default=None, ge=0, le=100)
     minimo_cubrir: float | None = Field(default=None, ge=0)
+    imagen_url: str | None = None
 
 
 class ResultadoCargar(BaseModel):
@@ -99,6 +100,7 @@ def crear_sorteo(datos: SorteoCrear, sesion: Session = Depends(obtener_sesion), 
         casa_pct=datos.casa_pct,
         vendedor_pct=datos.vendedor_pct,
         minimo_cubrir=datos.minimo_cubrir,
+        imagen_url=datos.imagen_url,
     )
     sesion.add(sorteo)
     sesion.commit()
@@ -131,6 +133,7 @@ def listar_sorteos(sesion: Session = Depends(obtener_sesion), admin: Usuario = D
                 "casa_pct": s.casa_pct,
                 "vendedor_pct": s.vendedor_pct,
                 "minimo_cubrir": s.minimo_cubrir,
+                "imagen_url": s.imagen_url,
                 "costo": costo,
                 "costo_cubierto": (s.recaudado or 0.0) >= costo,
             }
