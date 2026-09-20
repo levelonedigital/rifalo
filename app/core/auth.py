@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.core import auditoria, security
@@ -28,6 +28,8 @@ class RegistroJugador(BaseModel):
     nombre: str
     codigo_vendedor: str
     telefono: str | None = None
+    datos_cobro: str = Field(min_length=3)   # alias o CBU, obligatorio
+    cobro_transferencia: bool = True         # cobrar premios por transferencia
 
 
 @router.post("/login", response_model=DatosLoginOk)
@@ -62,7 +64,7 @@ def login(datos: DatosLogin, sesion: Session = Depends(obtener_sesion)):
 
 @router.post("/registro-jugador")
 def registro_jugador(datos: RegistroJugador, sesion: Session = Depends(obtener_sesion)):
-    """Un jugador se registra con el codigo de su vendedor."""
+    """Un jugador se registra con el codigo de su vendedor, dejando sus datos de cobro."""
     vendedor = (
         sesion.query(Usuario)
         .filter(Usuario.codigo == datos.codigo_vendedor.upper(), Usuario.rol == RolUsuario.VENDEDOR)
@@ -80,10 +82,12 @@ def registro_jugador(datos: RegistroJugador, sesion: Session = Depends(obtener_s
         rol=RolUsuario.JUGADOR,
         padre_id=vendedor.id,
         activo=True,
+        datos_cobro=datos.datos_cobro,
+        cobro_transferencia=datos.cobro_transferencia,
     )
     sesion.add(jugador)
     sesion.commit()
-    auditoria.registrar(sesion, "REGISTRO_JUGADOR", detalle=f"jugador={jugador.usuario} vendedor={vendedor.usuario}", usuario=vendedor)
+    auditoria.registrar(sesion, "REGISTRO_JUGADOR", detalle=f"jugador={jugador.usuario} vendedor={vendedor.usuario} cobro={jugador.datos_cobro}", usuario=vendedor)
     sesion.commit()
     return {"ok": True, "detalle": f"Jugador registrado con el vendedor {vendedor.nombre}"}
 
@@ -98,4 +102,6 @@ def yo(usuario: Usuario = Depends(obtener_usuario_actual)):
         "telefono": usuario.telefono,
         "codigo": usuario.codigo,
         "comision_pct": usuario.comision_pct,
+        "datos_cobro": usuario.datos_cobro,
+        "cobro_transferencia": usuario.cobro_transferencia,
     }
