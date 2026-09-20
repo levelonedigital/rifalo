@@ -31,7 +31,7 @@ def crear_tablas():
 
 
 def asegurar_enums():
-    """Agrega valores nuevos a los tipos enum de PostgreSQL (ej: nuevo rol vendedor)."""
+    """Agrega valores nuevos a los tipos enum de PostgreSQL."""
     if motor.dialect.name != "postgresql":
         return
     with motor.begin() as conexion:
@@ -69,3 +69,18 @@ def sincronizar_esquema():
                 conexion.execute(
                     text(f"ALTER TABLE {tabla.name} ADD COLUMN {columna.name} {tipo}")
                 )
+
+
+def migrar_modalidad():
+    """Una sola vez: copia el modulo viejo a la columna nueva modalidad (texto libre)."""
+    if motor.dialect.name != "postgresql":
+        return
+    inspector = inspect(motor)
+    if not inspector.has_table("sorteos"):
+        return
+    columnas = {c["name"] for c in inspector.get_columns("sorteos")}
+    if "modulo" in columnas and "modalidad" in columnas:
+        with motor.begin() as conexion:
+            conexion.execute(
+                text("UPDATE sorteos SET modalidad = modulo::text WHERE modalidad IS NULL")
+            )
