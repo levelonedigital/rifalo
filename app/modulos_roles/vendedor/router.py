@@ -17,6 +17,7 @@ router = APIRouter(prefix="/vendedor", tags=["vendedor"])
 vendedor_dep = Depends(requerir_rol(RolUsuario.VENDEDOR))
 
 ESTADOS_VENDIDOS = [EstadoJugada.APROBADA, EstadoJugada.GANADORA, EstadoJugada.PERDEDORA]
+NUMEROS_OCULTOS = "••• (numeros ocultos)"
 
 
 class RevendedorCrear(BaseModel):
@@ -68,6 +69,7 @@ def _sorteo_out(s: Sorteo):
         "modalidad": s.modalidad,
         "nombre_modalidad": modalidad.nombre if modalidad else s.modalidad,
         "reglas": modalidad.resumen_reglas if modalidad else "",
+        "detalle": s.detalle,
         "cantidad_numeros": modalidad.cantidad_numeros if modalidad else 0,
         "horario": s.horario,
         "fecha": s.fecha.isoformat(),
@@ -180,7 +182,7 @@ def listar_jugadores(sesion: Session = Depends(obtener_sesion), vendedor: Usuari
     ]
 
 
-# ---------- JUGADAS ----------
+# ---------- JUGADAS (numeros ocultos) ----------
 
 @router.get("/sorteos")
 def sorteos_abiertos(sesion: Session = Depends(obtener_sesion), vendedor: Usuario = vendedor_dep):
@@ -218,7 +220,7 @@ def pendientes(sesion: Session = Depends(obtener_sesion), vendedor: Usuario = ve
         {
             "id": j.id,
             "sorteo_id": j.sorteo_id,
-            "numeros": j.numeros,
+            "numeros": NUMEROS_OCULTOS,
             "precio": j.precio,
             "jugador_nombre": j.jugador_nombre,
             "revendedor_id": j.revendedor_id,
@@ -263,7 +265,7 @@ def historial(sesion: Session = Depends(obtener_sesion), vendedor: Usuario = ven
         .all()
     )
     return [
-        {"id": j.id, "sorteo_id": j.sorteo_id, "numeros": j.numeros, "precio": j.precio, "estado": j.estado.value, "premio": j.premio, "mi_comision": j.monto_vendedor}
+        {"id": j.id, "sorteo_id": j.sorteo_id, "numeros": NUMEROS_OCULTOS, "precio": j.precio, "estado": j.estado.value, "premio": j.premio, "mi_comision": j.monto_vendedor}
         for j in jugadas
     ]
 
