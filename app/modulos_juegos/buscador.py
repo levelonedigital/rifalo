@@ -10,7 +10,7 @@ from app.core import auditoria
 from app.core.config import Configuracion
 from app.core.database import SessionLocal
 from app.modulos_juegos.motor import liquidar_sorteo, obtener_reglas
-from app.modelos.juegos import EstadoSorteo, ModuloJuego, Sorteo
+from app.modelos.juegos import EstadoSorteo, Sorteo
 
 _intentos = {}
 
@@ -22,7 +22,7 @@ def _normalizar(texto: str) -> str:
 
 
 def obtener_resultado_oficial(nombre_horario: str):
-    """Best-effort: lee los 20 numeros del horario en la web oficial. Devuelve None si no."""
+    """Best-effort: lee los 20 numeros del horario en la web oficial."""
     try:
         respuesta = requests.get(
             Configuracion.URL_QUINIELA,
@@ -54,7 +54,7 @@ def _actualizar_semanal(sesion, sorteo_dia: Sorteo, reglas):
         return
     semanal = (
         sesion.query(Sorteo)
-        .filter(Sorteo.modulo == ModuloJuego.SEMANAL, Sorteo.estado != EstadoSorteo.LIQUIDADO)
+        .filter(Sorteo.modalidad == "semanal", Sorteo.estado != EstadoSorteo.LIQUIDADO)
         .order_by(Sorteo.id.desc())
         .first()
     )
@@ -83,7 +83,7 @@ def ciclo():
                 Sorteo.estado == EstadoSorteo.CERRADO,
                 Sorteo.resultados.is_(None),
                 Sorteo.busqueda_agotada.is_(False),
-                Sorteo.modulo != ModuloJuego.SEMANAL,
+                Sorteo.modalidad != "semanal",
             )
             .all()
         )
