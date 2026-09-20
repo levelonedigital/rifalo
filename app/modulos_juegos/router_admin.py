@@ -10,7 +10,8 @@ from app.core.dependencias import requerir_permiso, requerir_rol
 from app.core.security import hash_password
 from app.modulos_juegos import motor
 from app.modulos_juegos.buscador import _actualizar_semanal
-from app.modelos.juegos import EstadoJugada, EstadoSorteo, Jugada, ModuloJuego, Sorteo
+from app.modulos_juegos.modalidades import listar, obtener
+from app.modelos.juegos import EstadoJugada, EstadoSorteo, Jugada, Sorteo
 from app.modelos.usuario import RolUsuario, Usuario
 
 router = APIRouter(prefix="/admin", tags=["juegos"])
@@ -19,36 +20,19 @@ admin_dep = Depends(requerir_rol(RolUsuario.ADMIN_PRINCIPAL, RolUsuario.ADMIN))
 
 
 class SorteoCrear(BaseModel):
-    modulo: ModuloJuego
+    modalidad: str
     horario: str
     fecha: datetime
     premio_fijo: float | None = Field(default=None, gt=0)
     pozo_inicial: float | None = Field(default=None, ge=0)
-    precio_jugada: float | None = Field(default=None, gt=0)
-    pozo_base: float | None = Field(default=None, ge=0)
-    casa_pct: float | None = Field(default=None, ge=0, le=100)
+    precio_jugada: float = Field(gt=0)
+    pozo_base: float = Field(ge=0)
+    casa_pct: float = Field(ge=0, le=100)
     vendedor_pct: float | None = Field(default=None, ge=0, le=100)
 
 
 class ResultadoCargar(BaseModel):
     numeros: list[int]
-
-
-class ReglasEditar(BaseModel):
-    precio_clasico: float | None = None
-    precio_semanal: float | None = None
-    precio_rifa: float | None = None
-    pozo_base_clasico: float | None = None
-    pozo_base_semanal: float | None = None
-    pozo_pct: float | None = Field(default=None, ge=0, le=100)
-    vendedor_pct: float | None = Field(default=None, ge=0, le=100)
-    horarios: str | None = None
-    semanal_horario: str | None = None
-    semanal_dia_inicio: int | None = Field(default=None, ge=0, le=6)
-    semanal_dia_fin: int | None = Field(default=None, ge=0, le=6)
-    busqueda_inicio_min: int | None = None
-    busqueda_intervalo_min: int | None = None
-    busqueda_duracion_min: int | None = None
 
 
 class VendedorCrear(BaseModel):
@@ -73,39 +57,11 @@ class PozoVacanteCrear(BaseModel):
     fecha: datetime
 
 
-# ---------- REGLAS ----------
+# ---------- MODALIDADES ----------
 
-@router.get("/reglas")
-def ver_reglas(sesion: Session = Depends(obtener_sesion), admin: Usuario = admin_dep):
-    reglas = motor.obtener_reglas(sesion)
-    return {
-        "precio_clasico": reglas.precio_clasico,
-        "precio_semanal": reglas.precio_semanal,
-        "precio_rifa": reglas.precio_rifa,
-        "pozo_base_clasico": reglas.pozo_base_clasico,
-        "pozo_base_semanal": reglas.pozo_base_semanal,
-        "pozo_pct": reglas.pozo_pct,
-        "vendedor_pct": reglas.vendedor_pct,
-        "casa_pct": reglas.casa_pct_por_defecto,
-        "horarios": reglas.dict_horarios(),
-        "semanal_horario": reglas.semanal_horario,
-        "semanal_dia_inicio": reglas.semanal_dia_inicio,
-        "semanal_dia_fin": reglas.semanal_dia_fin,
-        "busqueda_inicio_min": reglas.busqueda_inicio_min,
-        "busqueda_intervalo_min": reglas.busqueda_intervalo_min,
-        "busqueda_duracion_min": reglas.busqueda_duracion_min,
-    }
-
-
-@router.put("/reglas")
-def editar_reglas(datos: ReglasEditar, sesion: Session = Depends(obtener_sesion), admin: Usuario = Depends(requerir_rol(RolUsuario.ADMIN_PRINCIPAL))):
-    reglas = motor.obtener_reglas(sesion)
-    for campo, valor in datos.model_dump(exclude_none=True).items():
-        setattr(reglas, campo, valor)
-    sesion.commit()
-    auditoria.registrar(sesion, "REGLAS_EDITADAS", detalle=str(datos.model_dump(exclude_none=True)), usuario=admin)
-    sesion.commit()
-    return {"ok": True}
+@router.get("/modalidades")
+def listar_modalidades():
+    return listar()
 
 
 # ---------- SORTEOS ----------
@@ -114,23 +70,19 @@ def editar_reglas(datos: ReglasEditar, sesion: Session = Depends(obtener_sesion)
 def crear_sorteo(datos: SorteoCrear, sesion: Session = Depends(obtener_sesion), admin: Usuario = Depends(requerir_permiso("configurar_sorteos"))):
     if datos.fecha.weekday() == 6:
         raise HTTPException(status_code=400, detail="Los domingos no hay sorteos")
+    modalidad = obtener(datos.modalidad)
+    if modalidad is None:
+        raise HTTPException(status_code=400, detail=f"Modalidad {datos.modalidad} no existe")
     reglas = motor.obtener_reglas(sesion)
     if datos.horario not in reglas.dict_horarios():
         raise HTTPException(status_code=400, detail="Horario inexistente en las reglas")
-    if datos.casa_pct is not None and datos.vendedor_pct is not None and datos.casa_pct + datos.vendedor_pct > 100:
+    if datos.vendedor_pct is None:
+        datos.vendedor_pct = reglas.vendedor_pct
+    if datos.casa_pct + datos.vendedor_pct > 100:
         raise HTTPException(status_code=400, detail="Casa + vendedores no puede superar el 100%")
-    if datos.pozo_inicial is not None:
-        pozo = datos.pozo_inicial
-    elif datos.pozo_base is not None:
-        pozo = datos.pozo_base
-    elif datos.modulo == ModuloJuego.CLASICO:
-        pozo = reglas.pozo_base_clasico
-    elif datos.modulo == ModuloJuego.SEMANAL:
-        pozo = reglas.pozo_base_semanal
-    else:
-        pozo = 0.0
+    pozo = datos.pozo_inicial if datos.pozo_inicial is not None else datos.pozo_base
     sorteo = Sorteo(
-        modulo=datos.modulo,
+        modalidad=datos.modalidad,
         horario=datos.horario,
         fecha=datos.fecha,
         premio_fijo=datos.premio_fijo,
@@ -143,9 +95,9 @@ def crear_sorteo(datos: SorteoCrear, sesion: Session = Depends(obtener_sesion), 
     sesion.add(sorteo)
     sesion.commit()
     sesion.refresh(sorteo)
-    auditoria.registrar(sesion, "SORTEO_CREADO", detalle=f"{sorteo.modulo.value} {sorteo.horario} id={sorteo.id} pozo={pozo}", usuario=admin)
+    auditoria.registrar(sesion, "SORTEO_CREADO", detalle=f"{sorteo.modalidad} {sorteo.horario} id={sorteo.id} pozo={pozo}", usuario=admin)
     sesion.commit()
-    return {"id": sorteo.id, "modulo": sorteo.modulo.value, "horario": sorteo.horario, "pozo_inicial": pozo}
+    return {"id": sorteo.id, "modalidad": sorteo.modalidad, "horario": sorteo.horario, "pozo_inicial": pozo}
 
 
 @router.get("/sorteos")
@@ -154,7 +106,7 @@ def listar_sorteos(sesion: Session = Depends(obtener_sesion), admin: Usuario = D
     return [
         {
             "id": s.id,
-            "modulo": s.modulo.value,
+            "modalidad": s.modalidad,
             "horario": s.horario,
             "fecha": s.fecha.isoformat(),
             "estado": s.estado.value,
@@ -195,7 +147,7 @@ def cargar_resultado(sorteo_id: int, datos: ResultadoCargar, sesion: Session = D
         raise HTTPException(status_code=400, detail="El sorteo ya esta liquidado")
     if sorteo.estado == EstadoSorteo.PROGRAMADO:
         raise HTTPException(status_code=400, detail="Primero cerrá el sorteo")
-    if sorteo.modulo == ModuloJuego.SEMANAL:
+    if sorteo.modalidad == "semanal":
         raise HTTPException(status_code=400, detail="El semanal se liquida solo con los sorteos diarios")
     if len(datos.numeros) != 20 or len(set(datos.numeros)) != 20 or any(n < 0 or n > 99 for n in datos.numeros):
         raise HTTPException(status_code=400, detail="Deben ser 20 numeros distintos entre 0 y 99")
@@ -215,8 +167,9 @@ def pozo_vacante(sorteo_id: int, datos: PozoVacanteCrear, sesion: Session = Depe
     sorteo = sesion.get(Sorteo, sorteo_id)
     if sorteo is None:
         raise HTTPException(status_code=404, detail="Sorteo no encontrado")
-    if sorteo.estado != EstadoSorteo.LIQUIDADO or sorteo.modulo == ModuloJuego.RIFA:
-        raise HTTPException(status_code=400, detail="Solo sorteos liquidados de clasico o semanal")
+    modalidad = obtener(sorteo.modalidad)
+    if sorteo.estado != EstadoSorteo.LIQUIDADO or modalidad is None or not modalidad.requiere_pozo:
+        raise HTTPException(status_code=400, detail="Solo sorteos liquidados con pozo")
     ganadoras = sesion.query(Jugada).filter(Jugada.sorteo_id == sorteo.id, Jugada.estado == EstadoJugada.GANADORA).count()
     if ganadoras > 0:
         raise HTTPException(status_code=400, detail="Este sorteo ya tuvo ganadores")
