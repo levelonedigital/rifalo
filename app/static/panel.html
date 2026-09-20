@@ -243,6 +243,7 @@
     <!-- REVENDEDOR -->
     <div id="seccion-rsorteos" class="tarjeta" style="display:none">
       <h2>Sorteos abiertos</h2>
+      <button class="secundario" onclick="cargarRSorteos()">Actualizar</button>
       <div id="lista-rsorteos"></div>
     </div>
     <div id="seccion-rcargar" class="tarjeta" style="display:none">
@@ -268,6 +269,8 @@
     <!-- JUGADOR -->
     <div id="seccion-jsorteos" class="tarjeta" style="display:none">
       <h2>Sorteos abiertos</h2>
+      <button class="secundario" onclick="cargarJSorteos()">Actualizar</button>
+      <p class="chico">El pozo se actualiza solo cada 30 segundos.</p>
       <div id="lista-jsorteos"></div>
     </div>
     <div id="seccion-jcargar" class="tarjeta" style="display:none">
@@ -296,6 +299,7 @@ let SORT_CACHE = {};
 let SORT_ACTUAL = null;
 let TAB_ACTUAL = null;
 let avisosTimer = null;
+let refrescoTimer = null;
 
 const TABS_POR_ROL = {
   admin_principal: [["sorteos","Sorteos"],["vendedores","Vendedores"],["jugadas","Jugadas"],["resumen","Resumen"],["auditoria","Auditoria"]],
@@ -444,6 +448,13 @@ function mostrarPanel() {
   pintarModo();
   cargarAvisos();
   if (!avisosTimer) { avisosTimer = setInterval(cargarAvisos, 60000); }
+  if (!refrescoTimer) {
+    refrescoTimer = setInterval(() => {
+      if (document.hidden) return;
+      if (TAB_ACTUAL === "jsorteos") cargarJSorteos();
+      else if (TAB_ACTUAL === "rsorteos") cargarRSorteos();
+    }, 30000);
+  }
   irTab(tabs[0][0]);
 }
 
@@ -880,12 +891,14 @@ async function cargarVJugadores() {
 // ---------- SELECTS DE SORTEOS ABIERTOS (vendedor/rev/jugador) ----------
 async function llenarSelectSorteos(ruta, idSelect) {
   try {
+    const previo = document.getElementById(idSelect).value;
     const sorteos = await api(ruta, "GET");
     SORTEOS_ABIERTOS_CACHE[idSelect] = {};
     sorteos.forEach(s => { SORTEOS_ABIERTOS_CACHE[idSelect][s.id] = s; });
     document.getElementById(idSelect).innerHTML = sorteos.map(s =>
       "<option value='" + s.id + "'>#" + s.id + " " + s.nombre_modalidad + " " + s.horario + " " + s.fecha.slice(0,16).replace("T"," ") + " - $" + s.precio_jugada + " - pozo $" + s.pozo + (s.solo_participantes ? " (VACANTE)" : "") + (s.reprogramando ? " (REPROGRAMANDO)" : "") + "</option>"
     ).join("") || "<option value=''>No hay sorteos abiertos</option>";
+    if (previo) document.getElementById(idSelect).value = previo;
     const idImg = idSelect.replace("-sorteo", "-imagen");
     pintarReglasSelect(idSelect, idSelect.replace("-sorteo", "-reglas"), idImg);
   } catch (e) { aviso(e.message, true); }
@@ -1020,7 +1033,11 @@ async function jCargarJugada() {
     sorteo_id: parseInt(document.getElementById("j-sorteo").value),
     numeros: parseNumeros(document.getElementById("j-numeros").value),
   };
-  try { const d = await api("/jugador/jugadas", "POST", cuerpo); aviso("Jugada #" + d.id + " cargada, espera aprobacion de tu vendedor"); document.getElementById("j-numeros").value = ""; }
+  try {
+    const d = await api("/jugador/jugadas", "POST", cuerpo);
+    aviso("Jugada #" + d.id + " cargada, espera aprobacion de tu vendedor.\nJuegan tus mismos numeros (" + d.numeros + "): " + d.coincidencias + " persona/s, vos incluido.");
+    document.getElementById("j-numeros").value = "";
+  }
   catch (e) { aviso(e.message, true); }
 }
 async function cargarJJugadas() {
@@ -1035,8 +1052,8 @@ async function cargarJJugadas() {
       caja.textContent = "Carga tu alias o CBU con tu vendedor para cobrar tus premios por transferencia.";
     }
     const js = await api("/jugador/jugadas", "GET");
-    let html = "<table><tr><th>#</th><th>Sorteo</th><th>Numeros</th><th>Precio</th><th>Estado</th><th>Premio</th></tr>";
-    js.forEach(j => { html += "<tr><td>" + j.id + "</td><td>" + j.sorteo_id + "</td><td>" + j.numeros + "</td><td>$" + j.precio + "</td><td>" + j.estado + "</td><td>$" + (j.premio ?? "-") + "</td></tr>"; });
+    let html = "<table><tr><th>#</th><th>Sorteo</th><th>Numeros</th><th>Precio</th><th>Estado</th><th>Premio</th><th>Mismos numeros</th></tr>";
+    js.forEach(j => { html += "<tr><td>" + j.id + "</td><td>" + j.sorteo_id + "</td><td>" + j.numeros + "</td><td>$" + j.precio + "</td><td>" + j.estado + "</td><td>$" + (j.premio ?? "-") + "</td><td>" + j.coincidencias + " persona/s</td></tr>"; });
     document.getElementById("lista-jjugadas").innerHTML = html + "</table>";
   } catch (e) { aviso(e.message, true); }
 }
