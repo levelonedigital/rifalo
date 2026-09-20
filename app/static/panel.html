@@ -66,7 +66,7 @@
       <div class="grilla">
         <div><label>Modalidad</label><select id="sorteo-modalidad" onchange="pintarReglasModalidad()"></select></div>
         <div><label>Horario</label><select id="sorteo-horario"></select></div>
-        <div><label>Fecha</label><input id="sorteo-fecha" type="datetime-local"></div>
+        <div><label>Fecha</label><input id="sorteo-fecha" type="datetime-local" min="2026-01-01T00:00" max="2035-12-31T23:59"></div>
         <div><label>Precio de la jugada</label><input id="sorteo-precio" type="number"></div>
         <div><label>Pozo base (congelado hasta recaudarlo)</label><input id="sorteo-pozobase" type="number"></div>
         <div><label>% administrador (casa)</label><input id="sorteo-casa" type="number"></div>
@@ -252,7 +252,10 @@ async function api(ruta, metodo, cuerpo) {
   const r = await fetch(ruta, { method: metodo, headers: cabeceras(), body: cuerpo ? JSON.stringify(cuerpo) : undefined });
   if (r.status === 401) { salir(); throw new Error("Sesion expirada, entra de nuevo"); }
   const d = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(d.detail || ("Error " + r.status));
+  if (!r.ok) {
+    const msg = typeof d.detail === "string" ? d.detail : JSON.stringify(d.detail);
+    throw new Error(msg || ("Error " + r.status));
+  }
   return d;
 }
 
