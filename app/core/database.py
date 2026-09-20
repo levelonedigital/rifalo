@@ -72,15 +72,28 @@ def sincronizar_esquema():
 
 
 def migrar_modalidad():
-    """Una sola vez: copia el modulo viejo a la columna nueva modalidad (texto libre)."""
+    """Copia modulo viejo a modalidad nueva y ELIMINA la columna modulo obsoleta."""
     if motor.dialect.name != "postgresql":
         return
     inspector = inspect(motor)
     if not inspector.has_table("sorteos"):
         return
     columnas = {c["name"] for c in inspector.get_columns("sorteos")}
-    if "modulo" in columnas and "modalidad" in columnas:
-        with motor.begin() as conexion:
+    with motor.begin() as conexion:
+        if "modulo" in columnas and "modalidad" in columnas:
             conexion.execute(
                 text("UPDATE sorteos SET modalidad = modulo::text WHERE modalidad IS NULL")
             )
+        if "modulo" in columnas:
+            conexion.execute(text("ALTER TABLE sorteos DROP COLUMN modulo"))
+
+
+def limpiar_enums_viejos():
+    """Elimina el tipo enum modulo_juego si ya no se usa."""
+    if motor.dialect.name != "postgresql":
+        return
+    with motor.begin() as conexion:
+        try:
+            conexion.execute(text("DROP TYPE IF EXISTS modulo_juego"))
+        except Exception:
+            pass
