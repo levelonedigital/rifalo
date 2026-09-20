@@ -9,6 +9,7 @@ class EstadoSorteo(str, enum.Enum):
     PROGRAMADO = "programado"
     CERRADO = "cerrado"
     LIQUIDADO = "liquidado"
+    REPROGRAMANDO = "reprogramando"   # hora cancelada, jugadas y pozo siguen en juego
 
 
 class EstadoJugada(str, enum.Enum):
@@ -17,6 +18,7 @@ class EstadoJugada(str, enum.Enum):
     RECHAZADA = "rechazada"
     GANADORA = "ganadora"
     PERDEDORA = "perdedora"
+    CANCELADA = "cancelada"
 
 
 class ReglasSistema(Base):
@@ -80,6 +82,8 @@ class Sorteo(Base):
     pozo_base = Column(Float, nullable=True)
     casa_pct = Column(Float, nullable=True)
     vendedor_pct = Column(Float, nullable=True)
+    minimo_cubrir = Column(Float, nullable=True)       # rifa: costo minimo a cubrir (vacio = premio fijo)
+    aviso_costo_enviado = Column(Boolean, default=False)  # ya se aviso al admin a 30 min del sorteo
 
     @property
     def pozo_actual(self):
@@ -114,3 +118,13 @@ class Jugada(Base):
     @property
     def lista_numeros(self):
         return [int(x) for x in self.numeros.split(",") if x.strip() != ""]
+
+
+class Aviso(Base):
+    """Cartel visible en el panel: cancelaciones, reprogramaciones y alertas al admin."""
+    __tablename__ = "avisos"
+
+    id = Column(Integer, primary_key=True, index=True)
+    texto = Column(String(500), nullable=False)
+    destino = Column(String(20), default="todos")   # todos | admin
+    creado_en = Column(DateTime(timezone=True), server_default=func.now())
