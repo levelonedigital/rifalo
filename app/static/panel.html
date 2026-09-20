@@ -19,7 +19,7 @@
   table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 13px; }
   th, td { padding: 6px 6px; border-bottom: 1px solid #334155; text-align: left; }
   th { color: #93c5fd; }
-  .mensaje { padding: 10px; border-radius: 6px; margin: 8px 0; display: none; }
+  .mensaje { padding: 10px; border-radius: 6px; margin: 8px 0; display: none; white-space: pre-line; }
   .mensaje.ok { display: block; background: #14532d; }
   .mensaje.error { display: block; background: #7f1d1d; }
   .tabs { display: flex; gap: 6px; flex-wrap: wrap; margin: 12px 0; }
@@ -267,7 +267,6 @@ function aviso(t, err) {
   const c = document.getElementById("mensaje");
   c.className = "mensaje " + (err ? "error" : "ok");
   c.textContent = t;
-  setTimeout(() => { c.className = "mensaje"; }, 4000);
 }
 
 function parseNumeros(texto) {
@@ -547,7 +546,14 @@ async function cargarResultado(id) {
   if (!texto) return;
   try {
     const d = await api("/admin/sorteos/" + id + "/resultado", "POST", { numeros: parseNumeros(texto) });
-    aviso("Liquidado: ganadoras " + JSON.stringify(d.ganadoras) + ", pozo pagado $" + d.pozo_pagado + (d.pozo_sin_ganador ? ", pozo sin ganador $" + d.pozo_sin_ganador : ""));
+    let detalle;
+    if (d.ganadoras && d.ganadoras.length) {
+      const porJugada = Math.round((d.pozo_pagado / d.ganadoras.length) * 100) / 100;
+      detalle = "Liquidado.\nGanadoras: jugadas " + d.ganadoras.join(", ") + ".\nPozo pagado: $" + d.pozo_pagado + " ($" + porJugada + " por jugada ganadora).";
+    } else {
+      detalle = "Liquidado sin ganadoras.\nPozo retenido: $" + d.pozo_sin_ganador + ".\nVos decis que hacer: pozo vacante para los del original o arrancar de cero.";
+    }
+    aviso(detalle);
     cargarSorteos();
   } catch (e) { aviso(e.message, true); }
 }
