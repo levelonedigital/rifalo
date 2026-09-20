@@ -18,6 +18,8 @@ router = APIRouter(prefix="/admin", tags=["juegos"])
 
 admin_dep = Depends(requerir_rol(RolUsuario.ADMIN_PRINCIPAL, RolUsuario.ADMIN))
 
+ESTADOS_VENDIDOS = [EstadoJugada.APROBADA, EstadoJugada.GANADORA, EstadoJugada.PERDEDORA]
+
 
 class SorteoCrear(BaseModel):
     modalidad: str
@@ -332,7 +334,8 @@ def editar_vendedor(vendedor_id: int, datos: VendedorEditar, sesion: Session = D
 
 @router.get("/resumen-general")
 def resumen_general(sesion: Session = Depends(obtener_sesion), admin: Usuario = admin_dep):
-    jugadas = sesion.query(Jugada).filter(Jugada.estado == EstadoJugada.APROBADA).all()
+    """Cuenta todas las jugadas que llegaron a aprobadas (incluidas ya liquidadas)."""
+    jugadas = sesion.query(Jugada).filter(Jugada.estado.in_(ESTADOS_VENDIDOS)).all()
     return {
         "jugadas_aprobadas": len(jugadas),
         "vendido": round(sum(j.precio for j in jugadas), 2),
