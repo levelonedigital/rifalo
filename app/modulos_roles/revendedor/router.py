@@ -6,7 +6,7 @@ from app.core.database import obtener_sesion
 from app.core.dependencias import requerir_rol
 from app.modulos_juegos.jugadas_core import crear_jugada
 from app.modulos_juegos.modalidades import obtener
-from app.modelos.juegos import EstadoSorteo, Jugada, Sorteo
+from app.modelos.juegos import EstadoJugada, EstadoSorteo, Jugada, Sorteo
 from app.modelos.usuario import RolUsuario, Usuario
 
 router = APIRouter(prefix="/revendedor", tags=["revendedor"])
@@ -33,12 +33,18 @@ def _sorteo_out(s: Sorteo):
         "pozo": s.pozo_actual,
         "precio_jugada": s.precio_jugada,
         "solo_participantes": s.solo_participantes,
+        "reprogramando": s.estado == EstadoSorteo.REPROGRAMANDO,
     }
 
 
 @router.get("/sorteos")
 def sorteos_abiertos(sesion: Session = Depends(obtener_sesion), rev: Usuario = rev_dep):
-    sorteos = sesion.query(Sorteo).filter(Sorteo.estado == EstadoSorteo.PROGRAMADO).order_by(Sorteo.fecha).all()
+    sorteos = (
+        sesion.query(Sorteo)
+        .filter(Sorteo.estado.in_([EstadoSorteo.PROGRAMADO, EstadoSorteo.REPROGRAMANDO]))
+        .order_by(Sorteo.fecha)
+        .all()
+    )
     return [_sorteo_out(s) for s in sorteos]
 
 
@@ -74,7 +80,7 @@ def mis_jugadas(sesion: Session = Depends(obtener_sesion), rev: Usuario = rev_de
 
 @router.get("/resumen")
 def resumen(sesion: Session = Depends(obtener_sesion), rev: Usuario = rev_dep):
-    jugadas = sesion.query(Jugada).filter(Jugada.revendedor_id == rev.id, Jugada.estado == "aprobada").all()
+    jugadas = sesion.query(Jugada).filter(Jugada.revendedor_id == rev.id, Jugada.estado == EstadoJugada.APROBADA).all()
     return {
         "jugadas_aprobadas": len(jugadas),
         "vendido": round(sum(j.precio for j in jugadas), 2),
