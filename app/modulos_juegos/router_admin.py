@@ -138,6 +138,38 @@ def listar_sorteos(sesion: Session = Depends(obtener_sesion), admin: Usuario = D
     return salida
 
 
+@router.get("/sorteos/{sorteo_id}/resumen")
+def resumen_sorteo(sorteo_id: int, sesion: Session = Depends(obtener_sesion), admin: Usuario = admin_dep):
+    """Resumen completo de un unico sorteo: vendido, reparto y premios."""
+    sorteo = sesion.get(Sorteo, sorteo_id)
+    if sorteo is None:
+        raise HTTPException(status_code=404, detail="Sorteo no encontrado")
+    jugadas = sesion.query(Jugada).filter(Jugada.sorteo_id == sorteo.id).all()
+    vendidas = [j for j in jugadas if j.estado in ESTADOS_VENDIDOS]
+    ganadoras = [j for j in jugadas if j.estado == EstadoJugada.GANADORA]
+    return {
+        "sorteo_id": sorteo.id,
+        "modalidad": sorteo.modalidad,
+        "horario": sorteo.horario,
+        "fecha": sorteo.fecha.isoformat(),
+        "estado": sorteo.estado.value,
+        "resultados": sorteo.resultados,
+        "pozo": sorteo.pozo_actual,
+        "recaudado": sorteo.recaudado or 0.0,
+        "costo": costo_a_cubrir(sorteo),
+        "costo_cubierto": (sorteo.recaudado or 0.0) >= costo_a_cubrir(sorteo),
+        "jugadas_cargadas": len(jugadas),
+        "jugadas_vendidas": len(vendidas),
+        "vendido": round(sum(j.precio for j in vendidas), 2),
+        "casa": round(sum(j.monto_casa or 0 for j in vendidas), 2),
+        "vendedores": round(sum(j.monto_vendedor or 0 for j in vendidas), 2),
+        "revendedores": round(sum(j.monto_revendedor or 0 for j in vendidas), 2),
+        "pozo_aportado": round(sum(j.monto_pozo or 0 for j in vendidas), 2),
+        "premios_pagados": round(sum(j.premio or 0 for j in ganadoras), 2),
+        "ganadoras": [j.id for j in ganadoras],
+    }
+
+
 @router.post("/sorteos/{sorteo_id}/cerrar")
 def cerrar_sorteo(sorteo_id: int, sesion: Session = Depends(obtener_sesion), admin: Usuario = Depends(requerir_permiso("configurar_sorteos"))):
     sorteo = sesion.get(Sorteo, sorteo_id)
