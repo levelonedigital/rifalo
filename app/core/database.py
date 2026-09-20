@@ -72,11 +72,13 @@ def sincronizar_esquema():
 
 
 def migrar_modalidad():
-    """Migracion unica: copia datos viejos a columnas nuevas y elimina las obsoletas.
+    """Migracion unica: adapta las tablas viejas al esquema nuevo.
 
-    - sorteos.modulo      -> sorteos.modalidad (texto libre)
-    - sorteos.fecha_sorteo -> sorteos.fecha
-    - jugadas.numero       -> jugadas.numeros (texto, ya cargado por el codigo nuevo)
+    - sorteos.modulo       -> sorteos.modalidad (texto libre) y se elimina
+    - sorteos.fecha_sorteo -> sorteos.fecha y se elimina
+    - jugadas.numero       -> jugadas.numeros (texto) y se elimina
+    - jugadas.revendedor_id deja de ser obligatorio (hoy es opcional)
+    - jugadas.monto        -> jugadas.precio y se elimina
     """
     if motor.dialect.name != "postgresql":
         return
@@ -100,6 +102,12 @@ def migrar_modalidad():
             columnas = {c["name"] for c in inspector.get_columns("jugadas")}
             if "numero" in columnas and "numeros" in columnas:
                 conexion.execute(text("ALTER TABLE jugadas DROP COLUMN numero"))
+            if "revendedor_id" in columnas:
+                conexion.execute(
+                    text("ALTER TABLE jugadas ALTER COLUMN revendedor_id DROP NOT NULL")
+                )
+            if "monto" in columnas and "precio" in columnas:
+                conexion.execute(text("ALTER TABLE jugadas DROP COLUMN monto"))
 
 
 def limpiar_enums_viejos():
