@@ -13,6 +13,7 @@ from app.core.database import (
     SessionLocal,
     asegurar_enums,
     crear_tablas,
+    limpiar_enums_viejos,
     migrar_modalidad,
     obtener_sesion,
     sincronizar_esquema,
@@ -52,6 +53,7 @@ async def lifespan(app: FastAPI):
     asegurar_enums()
     sincronizar_esquema()
     migrar_modalidad()
+    limpiar_enums_viejos()
     crear_admin_inicial()
     sesion = SessionLocal()
     try:
