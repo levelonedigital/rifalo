@@ -4,7 +4,7 @@ from app.modelos.juegos import (
     EstadoJugada,
     EstadoSorteo,
     Jugada,
-    ModuloJuego,
+    PlantillaSorteo,
     ReglasSistema,
     Sorteo,
 )
@@ -15,8 +15,8 @@ __all__ = [
     "LogAuditoria",
     "Sorteo",
     "Jugada",
-    "ModuloJuego",
     "EstadoSorteo",
     "EstadoJugada",
     "ReglasSistema",
+    "PlantillaSorteo",
 ]
