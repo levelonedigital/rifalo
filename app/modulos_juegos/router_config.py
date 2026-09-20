@@ -4,10 +4,10 @@ from sqlalchemy.orm import Session
 
 from app.core import auditoria
 from app.core.database import obtener_sesion
-from app.core.dependencias import requerir_rol
+from app.core.dependencias import obtener_usuario_actual, requerir_rol
 from app.modulos_juegos.modalidades import obtener
 from app.modulos_juegos.motor import obtener_reglas
-from app.modelos.juegos import PlantillaSorteo
+from app.modelos.juegos import Aviso, PlantillaSorteo
 from app.modelos.usuario import RolUsuario, Usuario
 
 router = APIRouter(prefix="/admin", tags=["config"])
@@ -109,4 +109,29 @@ def borrar_plantilla(plantilla_id: int, sesion: Session = Depends(obtener_sesion
     sesion.commit()
     auditoria.registrar(sesion, "PLANTILLA_BORRADA", detalle=nombre, usuario=admin)
     sesion.commit()
+    return {"ok": True}
+
+
+# ---------- AVISOS (carteles del panel) ----------
+
+@router.get("/avisos")
+def ver_avisos(sesion: Session = Depends(obtener_sesion), usuario: Usuario = Depends(obtener_usuario_actual)):
+    """Ultimos 5 carteles. Los de destino admin solo los ven administradores."""
+    es_admin = usuario.rol in (RolUsuario.ADMIN_PRINCIPAL, RolUsuario.ADMIN)
+    consulta = sesion.query(Aviso)
+    if not es_admin:
+        consulta = consulta.filter(Aviso.destino == "todos")
+    avisos = consulta.order_by(Aviso.creado_en.desc()).limit(5).all()
+    return [
+        {"id": a.id, "texto": a.texto, "destino": a.destino, "creado_en": a.creado_en.isoformat()}
+        for a in avisos
+    ]
+
+
+@router.delete("/avisos/{aviso_id}")
+def borrar_aviso(aviso_id: int, sesion: Session = Depends(obtener_sesion), admin: Usuario = Depends(requerir_rol(RolUsuario.ADMIN_PRINCIPAL, RolUsuario.ADMIN))):
+    aviso = sesion.get(Aviso, aviso_id)
+    if aviso is not None:
+        sesion.delete(aviso)
+        sesion.commit()
     return {"ok": True}
