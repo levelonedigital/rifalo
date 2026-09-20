@@ -19,6 +19,12 @@ router = APIRouter(prefix="/admin", tags=["juegos"])
 admin_dep = Depends(requerir_rol(RolUsuario.ADMIN_PRINCIPAL, RolUsuario.ADMIN))
 
 ESTADOS_VENDIDOS = [EstadoJugada.APROBADA, EstadoJugada.GANADORA, EstadoJugada.PERDEDORA]
+NUMEROS_OCULTOS = "••• (numeros ocultos)"
+
+
+def detalle_por_defecto(modalidad) -> str:
+    base = modalidad.resumen_reglas if modalidad else ""
+    return base + " Si no se cumplen las condiciones, el sorteo puede pasar a otro horario; se respetan las jugadas."
 
 
 class SorteoCrear(BaseModel):
@@ -33,6 +39,20 @@ class SorteoCrear(BaseModel):
     vendedor_pct: float | None = Field(default=None, ge=0, le=100)
     minimo_cubrir: float | None = Field(default=None, ge=0)
     imagen_url: str | None = None
+    detalle: str | None = None
+
+
+class SorteoEditar(BaseModel):
+    horario: str | None = None
+    fecha: datetime | None = None
+    precio_jugada: float | None = Field(default=None, gt=0)
+    pozo_base: float | None = Field(default=None, ge=0)
+    casa_pct: float | None = Field(default=None, ge=0, le=100)
+    vendedor_pct: float | None = Field(default=None, ge=0, le=100)
+    premio_fijo: float | None = Field(default=None, gt=0)
+    minimo_cubrir: float | None = Field(default=None, ge=0)
+    imagen_url: str | None = None
+    detalle: str | None = None
 
 
 class ResultadoCargar(BaseModel):
@@ -101,6 +121,7 @@ def crear_sorteo(datos: SorteoCrear, sesion: Session = Depends(obtener_sesion), 
         vendedor_pct=datos.vendedor_pct,
         minimo_cubrir=datos.minimo_cubrir,
         imagen_url=datos.imagen_url,
+        detalle=datos.detalle or detalle_por_defecto(modalidad),
     )
     sesion.add(sorteo)
     sesion.commit()
@@ -108,6 +129,44 @@ def crear_sorteo(datos: SorteoCrear, sesion: Session = Depends(obtener_sesion), 
     auditoria.registrar(sesion, "SORTEO_CREADO", detalle=f"{sorteo.modalidad} {sorteo.horario} id={sorteo.id} pozo={pozo}", usuario=admin)
     sesion.commit()
     return {"id": sorteo.id, "modalidad": sorteo.modalidad, "horario": sorteo.horario, "pozo_inicial": pozo}
+
+
+@router.put("/sorteos/{sorteo_id}")
+def editar_sorteo(sorteo_id: int, datos: SorteoEditar, sesion: Session = Depends(obtener_sesion), admin: Usuario = Depends(requerir_permiso("configurar_sorteos"))):
+    sorteo = sesion.get(Sorteo, sorteo_id)
+    if sorteo is None:
+        raise HTTPException(status_code=404, detail="Sorteo no encontrado")
+    if sorteo.estado == EstadoSorteo.LIQUIDADO:
+        raise HTTPException(status_code=400, detail="Un sorteo liquidado no se puede editar")
+    reglas = motor.obtener_reglas(sesion)
+    cambios = datos.model_dump(exclude_none=True)
+    if "horario" in cambios and cambios["horario"] not in reglas.dict_horarios():
+        raise HTTPException(status_code=400, detail="Horario inexistente en las reglas")
+    if "casa_pct" in cambios and "vendedor_pct" in cambios and cambios["casa_pct"] + cambios["vendedor_pct"] > 100:
+        raise HTTPException(status_code=400, detail="Casa + vendedores no puede superar el 100%")
+    for campo, valor in cambios.items():
+        setattr(sorteo, campo, valor)
+    sesion.commit()
+    auditoria.registrar(sesion, "SORTEO_EDITADO", detalle=f"sorteo={sorteo.id} campos={list(cambios.keys())}", usuario=admin)
+    sesion.commit()
+    return {"ok": True, "id": sorteo.id}
+
+
+@router.delete("/sorteos/{sorteo_id}")
+def borrar_sorteo(sorteo_id: int, sesion: Session = Depends(obtener_sesion), admin: Usuario = Depends(requerir_permiso("configurar_sorteos"))):
+    sorteo = sesion.get(Sorteo, sorteo_id)
+    if sorteo is None:
+        raise HTTPException(status_code=404, detail="Sorteo no encontrado")
+    if sorteo.estado == EstadoSorteo.LIQUIDADO:
+        raise HTTPException(status_code=400, detail="Un sorteo liquidado no se puede borrar")
+    jugadas = sesion.query(Jugada).filter(Jugada.sorteo_id == sorteo.id).count()
+    if jugadas > 0:
+        raise HTTPException(status_code=400, detail=f"El sorteo tiene {jugadas} jugadas: no se puede borrar. Usa Cancelar horario o Reprogramar.")
+    sesion.delete(sorteo)
+    sesion.commit()
+    auditoria.registrar(sesion, "SORTEO_BORRADO", detalle=f"sorteo={sorteo_id}", usuario=admin)
+    sesion.commit()
+    return {"ok": True}
 
 
 @router.get("/sorteos")
@@ -134,6 +193,7 @@ def listar_sorteos(sesion: Session = Depends(obtener_sesion), admin: Usuario = D
                 "vendedor_pct": s.vendedor_pct,
                 "minimo_cubrir": s.minimo_cubrir,
                 "imagen_url": s.imagen_url,
+                "detalle": s.detalle,
                 "costo": costo,
                 "costo_cubierto": (s.recaudado or 0.0) >= costo,
             }
@@ -282,7 +342,7 @@ def pozo_vacante(sorteo_id: int, datos: PozoVacanteCrear, sesion: Session = Depe
     return {"id": nuevo.id, "pozo_inicial": nuevo.pozo_inicial, "participantes": nuevo.participantes}
 
 
-# ---------- JUGADAS ----------
+# ---------- JUGADAS (numeros ocultos para todos) ----------
 
 @router.get("/jugadas")
 def ver_jugadas(
@@ -305,7 +365,7 @@ def ver_jugadas(
                 "id": j.id,
                 "sorteo_id": j.sorteo_id,
                 "vendedor": vendedor.usuario if vendedor else "-",
-                "numeros": j.numeros,
+                "numeros": NUMEROS_OCULTOS,
                 "precio": j.precio,
                 "estado": j.estado.value,
                 "premio": j.premio,
@@ -317,7 +377,7 @@ def ver_jugadas(
 
 @router.get("/jugadas/{jugada_id}")
 def ver_jugada(jugada_id: int, sesion: Session = Depends(obtener_sesion), admin: Usuario = admin_dep):
-    """Ficha individual completa de una jugada."""
+    """Ficha individual de una jugada. Los numeros quedan ocultos por privacidad."""
     j = sesion.get(Jugada, jugada_id)
     if j is None:
         raise HTTPException(status_code=404, detail="Jugada no encontrada")
@@ -338,7 +398,7 @@ def ver_jugada(jugada_id: int, sesion: Session = Depends(obtener_sesion), admin:
         "revendedor": revendedor.usuario if revendedor else None,
         "jugador_usuario": jugador.usuario if jugador else None,
         "jugador_nombre": j.jugador_nombre,
-        "numeros": j.numeros,
+        "numeros": NUMEROS_OCULTOS,
         "precio": j.precio,
         "estado": j.estado.value,
         "premio": j.premio,
