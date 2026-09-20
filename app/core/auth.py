@@ -28,7 +28,7 @@ class RegistroJugador(BaseModel):
     nombre: str
     codigo_vendedor: str
     telefono: str | None = None
-    datos_cobro: str = Field(min_length=3)   # alias o CBU, obligatorio
+    datos_cobro: str = Field(min_length=1)   # alias o CBU, obligatorio
     cobro_transferencia: bool = True         # cobrar premios por transferencia
 
 
