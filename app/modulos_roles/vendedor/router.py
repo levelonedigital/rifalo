@@ -41,6 +41,15 @@ class JugadaCrear(BaseModel):
     jugador_nombre: str | None = None
 
 
+class JugadorCrear(BaseModel):
+    usuario: str
+    password: str
+    nombre: str
+    datos_cobro: str = Field(min_length=3)   # alias o CBU, obligatorio
+    cobro_transferencia: bool = True
+    telefono: str | None = None
+
+
 def _comision_propia(vendedor: Usuario, reglas) -> float:
     return vendedor.comision_pct if vendedor.comision_pct is not None else reglas.vendedor_pct
 
@@ -132,10 +141,43 @@ def editar_revendedor(revendedor_id: int, datos: RevendedorEditar, sesion: Sessi
 
 # ---------- JUGADORES PROPIOS ----------
 
+@router.post("/jugadores")
+def crear_jugador(datos: JugadorCrear, sesion: Session = Depends(obtener_sesion), vendedor: Usuario = vendedor_dep):
+    """El vendedor carga a mano un jugador (por telefono, por ejemplo)."""
+    if sesion.query(Usuario).filter(Usuario.usuario == datos.usuario).first():
+        raise HTTPException(status_code=400, detail="El nombre de usuario ya existe")
+    jugador = Usuario(
+        usuario=datos.usuario,
+        password_hash=hash_password(datos.password),
+        nombre=datos.nombre,
+        telefono=datos.telefono,
+        rol=RolUsuario.JUGADOR,
+        padre_id=vendedor.id,
+        activo=True,
+        datos_cobro=datos.datos_cobro,
+        cobro_transferencia=datos.cobro_transferencia,
+    )
+    sesion.add(jugador)
+    sesion.commit()
+    auditoria.registrar(sesion, "JUGADOR_CREADO_MANUAL", detalle=f"{jugador.usuario} por {vendedor.usuario} cobro={jugador.datos_cobro}", usuario=vendedor)
+    sesion.commit()
+    return {"id": jugador.id, "usuario": jugador.usuario, "nombre": jugador.nombre}
+
+
 @router.get("/jugadores")
 def listar_jugadores(sesion: Session = Depends(obtener_sesion), vendedor: Usuario = vendedor_dep):
     jugadores = sesion.query(Usuario).filter(Usuario.padre_id == vendedor.id, Usuario.rol == RolUsuario.JUGADOR).all()
-    return [{"id": j.id, "usuario": j.usuario, "nombre": j.nombre, "activo": j.activo} for j in jugadores]
+    return [
+        {
+            "id": j.id,
+            "usuario": j.usuario,
+            "nombre": j.nombre,
+            "activo": j.activo,
+            "datos_cobro": j.datos_cobro,
+            "cobro_transferencia": bool(j.cobro_transferencia),
+        }
+        for j in jugadores
+    ]
 
 
 # ---------- JUGADAS ----------
