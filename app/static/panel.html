@@ -26,7 +26,7 @@
   .tabs button { background: #334155; color: #e2e8f0; }
   .tabs button.activa { background: #22c55e; color: #052e16; }
   .chico { font-size: 12px; color: #94a3b8; }
-  .reglas-box { background: #0f172a; border: 1px solid #334155; border-radius: 6px; padding: 8px; margin: 8px 0; font-size: 13px; color: #fbbf24; }
+  .reglas-box { background: #0f172a; border: 1px solid #334155; border-radius: 6px; padding: 8px; margin: 8px 0; font-size: 13px; color: #fbbf24; white-space: pre-line; }
   .aviso-box { background: #713f12; border: 1px solid #fbbf24; color: #fef3c7; border-radius: 6px; padding: 8px; margin: 6px 0; font-size: 13px; }
   .grilla { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
   @media (max-width: 700px) { .grilla { grid-template-columns: 1fr; } }
@@ -91,6 +91,15 @@
       <h2>Sorteos</h2>
       <div id="lista-sorteos"></div>
 
+      <div id="bloque-reprog" class="tarjeta" style="background:#0f172a; margin-top:16px">
+        <h2>Reprogramar sorteo con hora cancelada</h2>
+        <div class="grilla">
+          <div><label>Sorteo a reprogramar</label><select id="reprog-sorteo"></select></div>
+          <div><label>Nueva fecha y hora</label><input id="reprog-fecha" type="datetime-local" min="2026-01-01T00:00" max="2035-12-31T23:59"></div>
+        </div>
+        <button onclick="reprogramarSorteo()">Confirmar reprogramacion</button>
+      </div>
+
       <details style="margin-top:16px">
         <summary style="cursor:pointer; color:#93c5fd">Horarios oficiales y busqueda automatica (solo admin principal)</summary>
         <div class="grilla">
@@ -132,6 +141,8 @@
         <option value="">Todas</option><option value="pendiente">Pendientes</option><option value="aprobada">Aprobadas</option><option value="ganadora">Ganadoras</option><option value="perdedora">Perdedoras</option><option value="rechazada">Rechazadas</option>
       </select>
       <div id="lista-jugadas-admin"></div>
+      <h2>Ficha de la jugada seleccionada</h2>
+      <div id="jugada-detalle" class="reglas-box">Toca "Ver" en una jugada de la tabla para ver su ficha individual.</div>
     </div>
 
     <!-- ADMIN: RESUMEN -->
@@ -512,16 +523,26 @@ async function cargarSorteos() {
   try {
     const sorteos = await api("/admin/sorteos", "GET");
     let html = "<table><tr><th>#</th><th>Modalidad</th><th>Horario</th><th>Fecha</th><th>Estado</th><th>Pozo</th><th>Recaudado / costo</th><th>Config</th><th>Acciones</th></tr>";
+    let opcionesReprog = "";
     sorteos.forEach(s => {
       html += "<tr><td>" + s.id + "</td><td>" + s.modalidad + (s.solo_participantes ? " VACANTE" : "") + "</td><td>" + s.horario + "</td><td>" + s.fecha.slice(0,16).replace("T"," ") + "</td><td>" + s.estado + (s.busqueda_agotada ? " (manual)" : "") + "</td><td>$" + s.pozo + "</td><td>$" + (s.recaudado || 0) + " / $" + s.costo + (s.costo_cubierto ? " ✔" : " ✘") + "</td><td class='chico'>$" + s.precio_jugada + " / casa " + s.casa_pct + "% / vend " + s.vendedor_pct + "%</td><td>";
       if (s.estado === "programado") html += "<button class='secundario' onclick='cerrarSorteo(" + s.id + ")'>Cerrar</button><button class='peligro' onclick='cancelarHorario(" + s.id + ")'>Cancelar horario</button>";
       if (s.estado === "cerrado") html += "<button onclick='cargarResultado(" + s.id + ")'>Cargar 20 nums</button><button class='peligro' onclick='cancelarHorario(" + s.id + ")'>Cancelar horario</button>";
-      if (s.estado === "reprogramando") html += "<button onclick='reprogramarSorteo(" + s.id + ")'>Reprogramar</button>";
+      if (s.estado === "reprogramando") {
+        html += "<button onclick='prepararReprog(" + s.id + ")'>Reprogramar</button>";
+        opcionesReprog += "<option value='" + s.id + "'>#" + s.id + " " + s.modalidad + " " + s.horario + " " + s.fecha.slice(0,16).replace("T"," ") + "</option>";
+      }
       if (s.estado === "liquidado") html += "<button class='secundario' onclick='pozoVacante(" + s.id + ")'>Pozo vacante</button>";
       html += "</td></tr>";
     });
     document.getElementById("lista-sorteos").innerHTML = html + "</table>";
+    document.getElementById("reprog-sorteo").innerHTML = opcionesReprog || "<option value=''>No hay sorteos con hora cancelada</option>";
   } catch (e) { aviso(e.message, true); }
+}
+
+function prepararReprog(id) {
+  document.getElementById("reprog-sorteo").value = String(id);
+  document.getElementById("bloque-reprog").scrollIntoView({ behavior: "smooth" });
 }
 
 async function cerrarSorteo(id) {
@@ -534,11 +555,17 @@ async function cancelarHorario(id) {
   catch (e) { aviso(e.message, true); }
 }
 
-async function reprogramarSorteo(id) {
-  const f = prompt("Nueva fecha y hora del sorteo (AAAA-MM-DDTHH:MM):");
-  if (!f) return;
-  try { await api("/admin/sorteos/" + id + "/reprogramar", "POST", { fecha: f }); aviso("Sorteo reprogramado: se aviso a los jugadores con el nuevo horario"); cargarSorteos(); cargarAvisos(); }
-  catch (e) { aviso(e.message, true); }
+async function reprogramarSorteo() {
+  const id = document.getElementById("reprog-sorteo").value;
+  const fecha = document.getElementById("reprog-fecha").value;
+  if (!id) { aviso("No hay sorteos con hora cancelada para reprogramar", true); return; }
+  if (!fecha) { aviso("Elegi la nueva fecha y hora en el calendario", true); return; }
+  try {
+    await api("/admin/sorteos/" + id + "/reprogramar", "POST", { fecha: fecha });
+    aviso("Sorteo #" + id + " reprogramado: se aviso a los jugadores con el nuevo horario");
+    cargarSorteos();
+    cargarAvisos();
+  } catch (e) { aviso(e.message, true); }
 }
 
 async function cargarResultado(id) {
@@ -608,11 +635,30 @@ async function cargarJugadasAdmin() {
   const estado = document.getElementById("jugadas-filtro").value;
   try {
     const js = await api("/admin/jugadas" + (estado ? "?estado=" + estado : ""), "GET");
-    let html = "<table><tr><th>#</th><th>Sorteo</th><th>Vendedor</th><th>Jugador</th><th>Numeros</th><th>Precio</th><th>Estado</th><th>Premio</th></tr>";
+    let html = "<table><tr><th>#</th><th>Sorteo</th><th>Vendedor</th><th>Jugador</th><th>Numeros</th><th>Precio</th><th>Estado</th><th>Premio</th><th></th></tr>";
     js.forEach(j => {
-      html += "<tr><td>" + j.id + "</td><td>" + j.sorteo_id + "</td><td>" + j.vendedor + "</td><td>" + (j.jugador_nombre || "-") + "</td><td>" + j.numeros + "</td><td>$" + j.precio + "</td><td>" + j.estado + "</td><td>$" + (j.premio ?? "-") + "</td></tr>";
+      html += "<tr><td>" + j.id + "</td><td>" + j.sorteo_id + "</td><td>" + j.vendedor + "</td><td>" + (j.jugador_nombre || "-") + "</td><td>" + j.numeros + "</td><td>$" + j.precio + "</td><td>" + j.estado + "</td><td>$" + (j.premio ?? "-") + "</td><td><button class='secundario' onclick='verJugada(" + j.id + ")'>Ver</button></td></tr>";
     });
     document.getElementById("lista-jugadas-admin").innerHTML = html + "</table>";
+  } catch (e) { aviso(e.message, true); }
+}
+
+async function verJugada(id) {
+  try {
+    const j = await api("/admin/jugadas/" + id, "GET");
+    const s = j.sorteo || {};
+    document.getElementById("jugada-detalle").textContent =
+      "JUGADA #" + j.id +
+      "\nSorteo: #" + (s.id || "-") + " " + (s.modalidad || "") + " " + (s.horario || "") + " " + ((s.fecha || "").slice(0,16).replace("T"," ")) + " (" + (s.estado || "") + ")" +
+      "\nVendedor: " + j.vendedor +
+      "\nRevendedor: " + (j.revendedor || "sin revendedor") +
+      "\nJugador: " + (j.jugador_nombre || "-") + (j.jugador_usuario ? " (usuario " + j.jugador_usuario + ")" : "") +
+      "\nNumeros: " + j.numeros +
+      "\nPrecio: $" + j.precio +
+      "\nEstado: " + j.estado +
+      "\nPremio: $" + (j.premio ?? 0) +
+      "\nReparto: casa $" + (j.monto_casa ?? 0) + " | vendedor $" + (j.monto_vendedor ?? 0) + " | revendedor $" + (j.monto_revendedor ?? 0) + " | pozo $" + (j.monto_pozo ?? 0) +
+      "\nCargada: " + ((j.creada_en || "").slice(0,19).replace("T"," "));
   } catch (e) { aviso(e.message, true); }
 }
 
