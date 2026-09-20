@@ -46,6 +46,7 @@
     <button onclick="login()">Entrar</button>
     <button class="secundario" onclick="mostrarRegistro()">Soy jugador: registrarme</button>
     <div id="login-error" class="mensaje error"></div>
+    <div id="login-msg" class="mensaje"></div>
     <div id="form-registro" style="display:none; margin-top:14px">
       <h2>Registro de jugador</h2>
       <label>Usuario</label><input id="reg-usuario">
@@ -78,6 +79,7 @@
         <div id="caja-premio-fijo" style="display:none"><label>Premio fijo (rifa)</label><input id="sorteo-premio" type="number"></div>
         <div id="caja-minimo" style="display:none"><label>Minimo a cubrir (rifa, vacio = premio fijo)</label><input id="sorteo-minimo" type="number"></div>
         <div><label>Pozo inicial (vacio = pozo base)</label><input id="sorteo-pozoinicial" type="number"></div>
+        <div><label>Imagen de presentacion (URL, opcional)</label><input id="sorteo-imagen" placeholder="https://... foto del premio o cartel del pozo"></div>
       </div>
       <div id="reglas-modalidad" class="reglas-box"></div>
       <button onclick="crearSorteo()">Crear sorteo</button>
@@ -179,7 +181,8 @@
     </div>
     <div id="seccion-vcargar" class="tarjeta" style="display:none">
       <h2>Cargar jugada</h2>
-      <label>Sorteo</label><select id="v-sorteo" onchange="pintarReglasSelect('v-sorteo','v-reglas')"></select>
+      <label>Sorteo</label><select id="v-sorteo" onchange="pintarReglasSelect('v-sorteo','v-reglas','v-imagen')"></select>
+      <img id="v-imagen" style="display:none; max-width:220px; border-radius:6px; margin:6px 0">
       <div id="v-reglas" class="reglas-box"></div>
       <label>Numeros (separados por coma)</label><input id="v-numeros">
       <label>Nombre del jugador</label><input id="v-jugador">
@@ -209,6 +212,12 @@
       <div id="lista-vrevendedores"></div>
     </div>
     <div id="seccion-vjugadores" class="tarjeta" style="display:none">
+      <h2>Tu link de registro para compartir</h2>
+      <div class="grilla">
+        <div><input id="v-link" readonly></div>
+        <div><button class="secundario" onclick="copiarLink()">Copiar link</button></div>
+      </div>
+      <p class="chico">Comparti este link: quien lo abra llega al registro de jugador con tu codigo ya cargado.</p>
       <h2>Jugadores registrados conmigo</h2>
       <button class="secundario" onclick="cargarVJugadores()">Actualizar</button>
       <div id="lista-vjugadores"></div>
@@ -221,7 +230,8 @@
     </div>
     <div id="seccion-rcargar" class="tarjeta" style="display:none">
       <h2>Cargar jugada</h2>
-      <label>Sorteo</label><select id="r-sorteo" onchange="pintarReglasSelect('r-sorteo','r-reglas')"></select>
+      <label>Sorteo</label><select id="r-sorteo" onchange="pintarReglasSelect('r-sorteo','r-reglas','r-imagen')"></select>
+      <img id="r-imagen" style="display:none; max-width:220px; border-radius:6px; margin:6px 0">
       <div id="r-reglas" class="reglas-box"></div>
       <label>Numeros (separados por coma)</label><input id="r-numeros">
       <label>Nombre del jugador</label><input id="r-jugador">
@@ -245,7 +255,8 @@
     </div>
     <div id="seccion-jcargar" class="tarjeta" style="display:none">
       <h2>Mi jugada</h2>
-      <label>Sorteo</label><select id="j-sorteo" onchange="pintarReglasSelect('j-sorteo','j-reglas')"></select>
+      <label>Sorteo</label><select id="j-sorteo" onchange="pintarReglasSelect('j-sorteo','j-reglas','j-imagen')"></select>
+      <img id="j-imagen" style="display:none; max-width:220px; border-radius:6px; margin:6px 0">
       <div id="j-reglas" class="reglas-box"></div>
       <label>Numeros (separados por coma)</label><input id="j-numeros">
       <button onclick="jCargarJugada()">Cargar (queda pendiente de aprobacion de tu vendedor)</button>
@@ -291,6 +302,12 @@ async function api(ruta, metodo, cuerpo) {
 
 function aviso(t, err) {
   const c = document.getElementById("mensaje");
+  c.className = "mensaje " + (err ? "error" : "ok");
+  c.textContent = t;
+}
+
+function loginMsg(t, err) {
+  const c = document.getElementById("login-msg");
   c.className = "mensaje " + (err ? "error" : "ok");
   c.textContent = t;
 }
@@ -375,11 +392,19 @@ async function registrarJugador() {
   };
   try {
     const r = await fetch("/auth/registro-jugador", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(cuerpo) });
-    const d = await r.json();
-    if (!r.ok) throw new Error(d.detail || "Error de registro");
-    aviso(d.detalle);
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      const det = typeof d.detail === "string" ? d.detail : JSON.stringify(d.detail);
+      if (det.includes("ya existe")) {
+        loginMsg("Ya estas registrado: ingresa con tu usuario y contrasenia.");
+      } else {
+        loginMsg(det || "Error de registro", true);
+      }
+      return;
+    }
+    loginMsg("Registro listo: ya podes ingresar con tu usuario y contrasenia.");
     document.getElementById("form-registro").style.display = "none";
-  } catch (e) { aviso(e.message, true); }
+  } catch (e) { loginMsg(e.message, true); }
 }
 
 function salir() {
@@ -450,10 +475,15 @@ function pintarReglasModalidad() {
   document.getElementById("caja-minimo").style.display = esRifa ? "block" : "none";
 }
 
-function pintarReglasSelect(idSelect, idCaja) {
+function pintarReglasSelect(idSelect, idCaja, idImagen) {
   const id = document.getElementById(idSelect).value;
   const s = SORTEOS_ABIERTOS_CACHE[idSelect] && SORTEOS_ABIERTOS_CACHE[idSelect][id];
   document.getElementById(idCaja).textContent = s ? (s.nombre_modalidad + ": " + s.reglas + " | Precio jugada: $" + s.precio_jugada + " | Pozo: $" + s.pozo + (s.reprogramando ? " | REPROGRAMANDO: aguarda nuevo horario" : "")) : "";
+  const img = document.getElementById(idImagen);
+  if (img) {
+    if (s && s.imagen_url) { img.src = s.imagen_url; img.style.display = "block"; }
+    else { img.style.display = "none"; }
+  }
 }
 
 // ---------- ADMIN: SORTEOS ----------
@@ -511,6 +541,8 @@ async function crearSorteo() {
   if (minimo) cuerpo.minimo_cubrir = parseFloat(minimo);
   const pin = document.getElementById("sorteo-pozoinicial").value;
   if (pin) cuerpo.pozo_inicial = parseFloat(pin);
+  const img = document.getElementById("sorteo-imagen").value;
+  if (img) cuerpo.imagen_url = img;
   try { const d = await api("/admin/sorteos", "POST", cuerpo); aviso("Sorteo #" + d.id + " creado con pozo $" + d.pozo_inicial); cargarSorteos(); }
   catch (e) { aviso(e.message, true); }
 }
@@ -569,10 +601,10 @@ async function cargarSorteos() {
   try {
     const sorteos = await api("/admin/sorteos", "GET");
     sorteos.forEach(s => { SORT_CACHE[s.id] = s; });
-    let html = "<table><tr><th>#</th><th>Modalidad</th><th>Horario</th><th>Fecha</th><th>Estado</th><th>Pozo</th><th>Recaudado / costo</th><th>Acciones</th></tr>";
+    let html = "<table><tr><th>#</th><th>Img</th><th>Modalidad</th><th>Horario</th><th>Fecha</th><th>Estado</th><th>Pozo</th><th>Recaudado / costo</th><th>Acciones</th></tr>";
     let opcionesReprog = "";
     sorteos.forEach(s => {
-      html += "<tr><td>" + s.id + "</td><td>" + s.modalidad + (s.solo_participantes ? " VACANTE" : "") + "</td><td>" + s.horario + "</td><td>" + s.fecha.slice(0,16).replace("T"," ") + "</td><td>" + s.estado + (s.busqueda_agotada ? " (manual)" : "") + "</td><td>$" + s.pozo + "</td><td>$" + (s.recaudado || 0) + " / $" + s.costo + (s.costo_cubierto ? " ✔" : " ✘") + "</td><td>";
+      html += "<tr><td>" + s.id + "</td><td>" + (s.imagen_url ? "<img src='" + s.imagen_url + "' style='width:44px;height:44px;object-fit:cover;border-radius:4px'>" : "-") + "</td><td>" + s.modalidad + (s.solo_participantes ? " VACANTE" : "") + "</td><td>" + s.horario + "</td><td>" + s.fecha.slice(0,16).replace("T"," ") + "</td><td>" + s.estado + (s.busqueda_agotada ? " (manual)" : "") + "</td><td>$" + s.pozo + "</td><td>$" + (s.recaudado || 0) + " / $" + s.costo + (s.costo_cubierto ? " ✔" : " ✘") + "</td><td>";
       html += "<button class='secundario' onclick='seleccionarSorteo(" + s.id + ")'>Detalles</button>";
       if (s.estado === "programado") html += "<button class='secundario' onclick='cerrarSorteo(" + s.id + ")'>Cerrar</button><button class='peligro' onclick='cancelarHorario(" + s.id + ")'>Cancelar horario</button>";
       if (s.estado === "cerrado") html += "<button onclick='cargarResultado(" + s.id + ")'>Cargar 20 nums</button><button class='peligro' onclick='cancelarHorario(" + s.id + ")'>Cancelar horario</button>";
@@ -783,6 +815,22 @@ async function alternarVendedor(id, activo) {
   catch (e) { aviso(e.message, true); }
 }
 
+// ---------- LINK DE REGISTRO DEL VENDEDOR ----------
+async function cargarLinkVendedor() {
+  try {
+    const me = await api("/auth/me", "GET");
+    document.getElementById("v-link").value = window.location.origin + "/panel?codigo=" + (me.codigo || "");
+  } catch (e) { /* ignora */ }
+}
+
+function copiarLink() {
+  const input = document.getElementById("v-link");
+  input.select();
+  input.setSelectionRange(0, 99999);
+  document.execCommand("copy");
+  aviso("Link copiado: pegalo donde quieras compartirlo");
+}
+
 // ---------- SELECTS DE SORTEOS ABIERTOS (vendedor/rev/jugador) ----------
 async function llenarSelectSorteos(ruta, idSelect) {
   try {
@@ -792,7 +840,8 @@ async function llenarSelectSorteos(ruta, idSelect) {
     document.getElementById(idSelect).innerHTML = sorteos.map(s =>
       "<option value='" + s.id + "'>#" + s.id + " " + s.nombre_modalidad + " " + s.horario + " " + s.fecha.slice(0,16).replace("T"," ") + " - $" + s.precio_jugada + " - pozo $" + s.pozo + (s.solo_participantes ? " (VACANTE)" : "") + (s.reprogramando ? " (REPROGRAMANDO)" : "") + "</option>"
     ).join("") || "<option value=''>No hay sorteos abiertos</option>";
-    pintarReglasSelect(idSelect, idSelect.replace("-sorteo", "-reglas"));
+    const idImg = idSelect.replace("-sorteo", "-imagen");
+    pintarReglasSelect(idSelect, idSelect.replace("-sorteo", "-reglas"), idImg);
   } catch (e) { aviso(e.message, true); }
 }
 
@@ -879,6 +928,7 @@ async function alternarVRev(id, activo) {
 }
 
 async function cargarVJugadores() {
+  cargarLinkVendedor();
   try {
     const js = await api("/vendedor/jugadores", "GET");
     let html = "<table><tr><th>#</th><th>Usuario</th><th>Nombre</th><th>Activo</th></tr>";
@@ -891,8 +941,8 @@ async function cargarVJugadores() {
 async function cargarRSorteos() {
   try {
     const ss = await api("/revendedor/sorteos", "GET");
-    let html = "<table><tr><th>#</th><th>Modalidad</th><th>Horario</th><th>Fecha</th><th>Precio</th><th>Pozo</th><th>Reglas</th></tr>";
-    ss.forEach(s => { html += "<tr><td>" + s.id + "</td><td>" + s.nombre_modalidad + (s.reprogramando ? " (REPROGRAMANDO)" : "") + "</td><td>" + s.horario + "</td><td>" + s.fecha.slice(0,16).replace("T"," ") + "</td><td>$" + s.precio_jugada + "</td><td>$" + s.pozo + "</td><td class='chico'>" + s.reglas + "</td></tr>"; });
+    let html = "<table><tr><th>#</th><th>Img</th><th>Modalidad</th><th>Horario</th><th>Fecha</th><th>Precio</th><th>Pozo</th><th>Reglas</th></tr>";
+    ss.forEach(s => { html += "<tr><td>" + s.id + "</td><td>" + (s.imagen_url ? "<img src='" + s.imagen_url + "' style='width:40px;height:40px;object-fit:cover;border-radius:4px'>" : "-") + "</td><td>" + s.nombre_modalidad + (s.reprogramando ? " (REPROGRAMANDO)" : "") + "</td><td>" + s.horario + "</td><td>" + s.fecha.slice(0,16).replace("T"," ") + "</td><td>$" + s.precio_jugada + "</td><td>$" + s.pozo + "</td><td class='chico'>" + s.reglas + "</td></tr>"; });
     document.getElementById("lista-rsorteos").innerHTML = html + "</table>";
   } catch (e) { aviso(e.message, true); }
 }
@@ -924,8 +974,8 @@ async function cargarRResumen() {
 async function cargarJSorteos() {
   try {
     const ss = await api("/jugador/sorteos", "GET");
-    let html = "<table><tr><th>#</th><th>Modalidad</th><th>Horario</th><th>Fecha</th><th>Precio</th><th>Pozo</th><th>Reglas</th></tr>";
-    ss.forEach(s => { html += "<tr><td>" + s.id + "</td><td>" + s.nombre_modalidad + (s.reprogramando ? " (REPROGRAMANDO)" : "") + "</td><td>" + s.horario + "</td><td>" + s.fecha.slice(0,16).replace("T"," ") + "</td><td>$" + s.precio_jugada + "</td><td>$" + s.pozo + "</td><td class='chico'>" + s.reglas + "</td></tr>"; });
+    let html = "<table><tr><th>#</th><th>Img</th><th>Modalidad</th><th>Horario</th><th>Fecha</th><th>Precio</th><th>Pozo</th><th>Reglas</th></tr>";
+    ss.forEach(s => { html += "<tr><td>" + s.id + "</td><td>" + (s.imagen_url ? "<img src='" + s.imagen_url + "' style='width:40px;height:40px;object-fit:cover;border-radius:4px'>" : "-") + "</td><td>" + s.nombre_modalidad + (s.reprogramando ? " (REPROGRAMANDO)" : "") + "</td><td>" + s.horario + "</td><td>" + s.fecha.slice(0,16).replace("T"," ") + "</td><td>$" + s.precio_jugada + "</td><td>$" + s.pozo + "</td><td class='chico'>" + s.reglas + "</td></tr>"; });
     document.getElementById("lista-jsorteos").innerHTML = html + "</table>";
   } catch (e) { aviso(e.message, true); }
 }
@@ -944,6 +994,14 @@ async function cargarJJugadas() {
     js.forEach(j => { html += "<tr><td>" + j.id + "</td><td>" + j.sorteo_id + "</td><td>" + j.numeros + "</td><td>$" + j.precio + "</td><td>" + j.estado + "</td><td>$" + (j.premio ?? "-") + "</td></tr>"; });
     document.getElementById("lista-jjugadas").innerHTML = html + "</table>";
   } catch (e) { aviso(e.message, true); }
+}
+
+// ---------- ARRANQUE ----------
+const _params = new URLSearchParams(window.location.search);
+const _cod = _params.get("codigo");
+if (_cod) {
+  document.getElementById("form-registro").style.display = "block";
+  document.getElementById("reg-codigo").value = _cod;
 }
 
 if (token) { mostrarPanel(); }
