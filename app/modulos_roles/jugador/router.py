@@ -6,12 +6,14 @@ from app.core.database import obtener_sesion
 from app.core.dependencias import requerir_rol
 from app.modulos_juegos.jugadas_core import crear_jugada
 from app.modulos_juegos.modalidades import obtener
-from app.modelos.juegos import EstadoSorteo, Jugada, Sorteo
+from app.modelos.juegos import EstadoJugada, EstadoSorteo, Jugada, Sorteo
 from app.modelos.usuario import RolUsuario, Usuario
 
 router = APIRouter(prefix="/jugador", tags=["jugador"])
 
 jug_dep = Depends(requerir_rol(RolUsuario.JUGADOR))
+
+ESTADOS_ACTIVAS = [EstadoJugada.PENDIENTE, EstadoJugada.APROBADA]
 
 
 class JugadaCrear(BaseModel):
@@ -37,6 +39,19 @@ def _sorteo_out(s: Sorteo):
     }
 
 
+def _coincidencias(sesion: Session, sorteo_id: int, numeros_clave: str) -> int:
+    """Cuantas jugadas activas del sorteo tienen exactamente esos numeros (incluida la propia)."""
+    return (
+        sesion.query(Jugada)
+        .filter(
+            Jugada.sorteo_id == sorteo_id,
+            Jugada.numeros == numeros_clave,
+            Jugada.estado.in_(ESTADOS_ACTIVAS),
+        )
+        .count()
+    )
+
+
 @router.get("/sorteos")
 def sorteos_abiertos(sesion: Session = Depends(obtener_sesion), jugador: Usuario = jug_dep):
     sorteos = (
@@ -60,7 +75,13 @@ def cargar_jugada(datos: JugadaCrear, sesion: Session = Depends(obtener_sesion),
         jugada = crear_jugada(sesion, sorteo, datos.numeros, vendedor, jugador_id=jugador.id, jugador_nombre=jugador.nombre)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    return {"id": jugada.id, "numeros": jugada.numeros, "precio": jugada.precio, "estado": jugada.estado.value}
+    return {
+        "id": jugada.id,
+        "numeros": jugada.numeros,
+        "precio": jugada.precio,
+        "estado": jugada.estado.value,
+        "coincidencias": _coincidencias(sesion, sorteo.id, jugada.numeros),
+    }
 
 
 @router.get("/jugadas")
@@ -73,6 +94,14 @@ def mis_jugadas(sesion: Session = Depends(obtener_sesion), jugador: Usuario = ju
         .all()
     )
     return [
-        {"id": j.id, "sorteo_id": j.sorteo_id, "numeros": j.numeros, "precio": j.precio, "estado": j.estado.value, "premio": j.premio}
+        {
+            "id": j.id,
+            "sorteo_id": j.sorteo_id,
+            "numeros": j.numeros,
+            "precio": j.precio,
+            "estado": j.estado.value,
+            "premio": j.premio,
+            "coincidencias": _coincidencias(sesion, j.sorteo_id, j.numeros),
+        }
         for j in jugadas
     ]
