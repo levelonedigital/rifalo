@@ -10,7 +10,7 @@ from app.core import auditoria
 from app.core.config import Configuracion
 from app.core.database import SessionLocal
 from app.modulos_juegos.motor import liquidar_sorteo, obtener_reglas
-from app.modelos.juegos import EstadoSorteo, Sorteo
+from app.modelos.juegos import Aviso, EstadoSorteo, Sorteo
 
 _intentos = {}
 
@@ -45,6 +45,46 @@ def obtener_resultado_oficial(nombre_horario: str):
         return None
 
 
+def costo_a_cubrir(sorteo: Sorteo) -> float:
+    """Costo de referencia del sorteo: minimo explicito, premio fijo (rifa) o pozo inicial."""
+    if sorteo.minimo_cubrir is not None:
+        return sorteo.minimo_cubrir
+    if sorteo.modalidad == "rifa":
+        return sorteo.premio_fijo or 0.0
+    return sorteo.pozo_inicial or 0.0
+
+
+def chequeo_costo(sesion, reglas, ahora: datetime):
+    """A 30 minutos del horario oficial, avisa al admin si el recaudado no cubre el costo."""
+    pendientes = (
+        sesion.query(Sorteo)
+        .filter(
+            Sorteo.estado == EstadoSorteo.PROGRAMADO,
+            Sorteo.aviso_costo_enviado.is_(False),
+        )
+        .all()
+    )
+    for sorteo in pendientes:
+        hhmm = reglas.dict_horarios().get(sorteo.horario)
+        if not hhmm:
+            continue
+        hora, minuto = (int(x) for x in hhmm.split(":"))
+        momento = sorteo.fecha.replace(hour=hora, minute=minuto, second=0, microsecond=0)
+        if momento - timedelta(minutes=30) <= ahora < momento:
+            costo = costo_a_cubrir(sorteo)
+            if (sorteo.recaudado or 0.0) < costo:
+                aviso = Aviso(
+                    texto=(
+                        f"ADMIN: sorteo #{sorteo.id} ({sorteo.modalidad} {sorteo.horario}) no cubre el costo: "
+                        f"recaudado ${(sorteo.recaudado or 0.0):.2f} de ${costo:.2f}. Decidi si reprogramas el horario."
+                    ),
+                    destino="admin",
+                )
+                sesion.add(aviso)
+                sorteo.aviso_costo_enviado = True
+                sesion.commit()
+
+
 def _actualizar_semanal(sesion, sorteo_dia: Sorteo, reglas):
     """Acumula los numeros del dia al pozo semanal y lo liquida al cerrar la ventana."""
     if sorteo_dia.horario != reglas.semanal_horario:
@@ -71,12 +111,13 @@ def _actualizar_semanal(sesion, sorteo_dia: Sorteo, reglas):
 
 
 def ciclo():
-    """Una pasada de busqueda: revisa sorteos cerrados sin resultado."""
+    """Una pasada: alerta de costo a 30 min y busqueda de resultados de sorteos cerrados."""
     sesion = SessionLocal()
     try:
         reglas = obtener_reglas(sesion)
         horarios = reglas.dict_horarios()
         ahora = datetime.now()
+        chequeo_costo(sesion, reglas, ahora)
         pendientes = (
             sesion.query(Sorteo)
             .filter(
