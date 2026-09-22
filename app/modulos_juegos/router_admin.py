@@ -88,8 +88,10 @@ class VendedorCrear(BaseModel):
 class VendedorEditar(BaseModel):
     nombre: str | None = None
     telefono: str | None = None
+    codigo: str | None = Field(default=None, max_length=10)
     comision_pct: float | None = Field(default=None, ge=0, le=100)
     datos_transferencia: str | None = None
+    password: str | None = None
     activo: bool | None = None
 
 
@@ -488,16 +490,34 @@ def crear_vendedor(datos: VendedorCrear, sesion: Session = Depends(obtener_sesio
 def listar_vendedores(sesion: Session = Depends(obtener_sesion), admin: Usuario = admin_dep):
     vendedores = sesion.query(Usuario).filter(Usuario.rol == RolUsuario.VENDEDOR).order_by(Usuario.nombre).all()
     return [
-        {"id": v.id, "usuario": v.usuario, "nombre": v.nombre, "codigo": v.codigo, "comision_pct": v.comision_pct, "activo": v.activo}
+        {
+            "id": v.id,
+            "usuario": v.usuario,
+            "nombre": v.nombre,
+            "codigo": v.codigo,
+            "comision_pct": v.comision_pct,
+            "telefono": v.telefono,
+            "datos_transferencia": v.datos_transferencia,
+            "activo": v.activo,
+        }
         for v in vendedores
     ]
 
 
 @router.put("/vendedores/{vendedor_id}")
 def editar_vendedor(vendedor_id: int, datos: VendedorEditar, sesion: Session = Depends(obtener_sesion), admin: Usuario = Depends(requerir_rol(RolUsuario.ADMIN_PRINCIPAL))):
+    """Edicion completa del vendedor con las mismas opciones que al crearlo."""
     vendedor = sesion.get(Usuario, vendedor_id)
     if vendedor is None or vendedor.rol != RolUsuario.VENDEDOR:
         raise HTTPException(status_code=404, detail="Vendedor no encontrado")
+    if datos.codigo is not None:
+        codigo = datos.codigo.upper()
+        otro = sesion.query(Usuario).filter(Usuario.codigo == codigo, Usuario.id != vendedor_id).first()
+        if otro:
+            raise HTTPException(status_code=400, detail="El codigo ya existe")
+        vendedor.codigo = codigo
+    if datos.password:
+        vendedor.password_hash = hash_password(datos.password)
     for campo in ("nombre", "telefono", "comision_pct", "datos_transferencia", "activo"):
         valor = getattr(datos, campo)
         if valor is not None:
@@ -505,7 +525,13 @@ def editar_vendedor(vendedor_id: int, datos: VendedorEditar, sesion: Session = D
     sesion.commit()
     auditoria.registrar(sesion, "VENDEDOR_EDITADO", detalle=vendedor.usuario, usuario=admin)
     sesion.commit()
-    return {"id": vendedor.id, "usuario": vendedor.usuario, "comision_pct": vendedor.comision_pct, "activo": vendedor.activo}
+    return {
+        "id": vendedor.id,
+        "usuario": vendedor.usuario,
+        "codigo": vendedor.codigo,
+        "comision_pct": vendedor.comision_pct,
+        "activo": vendedor.activo,
+    }
 
 
 # ---------- RESUMEN GENERAL ----------
