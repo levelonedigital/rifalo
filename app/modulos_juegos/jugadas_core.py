@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from app.core import auditoria
 from app.modulos_juegos.modalidades import obtener
 from app.modelos.juegos import EstadoSorteo, Jugada, Sorteo
@@ -7,6 +9,17 @@ from app.modelos.usuario import Usuario
 def precio_de(sorteo: Sorteo) -> float:
     """Precio de la jugada: el del sorteo si esta configurado."""
     return sorteo.precio_jugada or 0.0
+
+
+def momento_cierre(sorteo: Sorteo):
+    """Fecha y hora limite para anotarse, o None si el sorteo no tiene cierre configurado."""
+    if not sorteo.hora_cierre or ":" not in sorteo.hora_cierre:
+        return None
+    try:
+        hora, minuto = (int(x) for x in sorteo.hora_cierre.split(":"))
+    except ValueError:
+        return None
+    return sorteo.fecha.replace(hour=hora, minute=minuto, second=0, microsecond=0)
 
 
 def validar_numeros(sorteo: Sorteo, numeros) -> str | None:
@@ -19,7 +32,7 @@ def validar_numeros(sorteo: Sorteo, numeros) -> str | None:
         if not isinstance(n, int) or n < 0 or n > 99:
             return "Los numeros deben estar entre 0 y 99"
     if not modalidad.permite_repetidos and len(set(numeros)) != len(numeros):
-        return "La modalidad no permite numeros repetidos"
+        return "En una misma jugada no puede repetirse un numero"
     return None
 
 
@@ -32,9 +45,15 @@ def crear_jugada(
     jugador_id=None,
     jugador_nombre=None,
 ) -> Jugada:
-    """Valida y crea una jugada pendiente. Acepta sorteos programados o reprogramando."""
+    """Valida y crea una jugada pendiente. Acepta sorteos programados o reprogramando,
+    siempre que no haya pasado el horario de cierre para anotarse."""
     if sorteo.estado not in (EstadoSorteo.PROGRAMADO, EstadoSorteo.REPROGRAMANDO):
         raise ValueError("El sorteo no esta abierto para cargar jugadas")
+    cierre = momento_cierre(sorteo)
+    if cierre is not None:
+        ahora = datetime.now(cierre.tzinfo) if cierre.tzinfo else datetime.now()
+        if ahora > cierre:
+            raise ValueError("El horario de cierre para anotarse ya paso en este sorteo")
     error = validar_numeros(sorteo, numeros)
     if error:
         raise ValueError(error)
