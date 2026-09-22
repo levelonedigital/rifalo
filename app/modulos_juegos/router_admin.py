@@ -108,6 +108,7 @@ def listar_modalidades():
 
 @router.post("/sorteos")
 def crear_sorteo(datos: SorteoCrear, sesion: Session = Depends(obtener_sesion), admin: Usuario = Depends(requerir_permiso("configurar_sorteos"))):
+    """Crea el sorteo en PREPARACION (inactivo). El admin lo revisa/edita y luego lo activa."""
     if datos.fecha.weekday() == 6:
         raise HTTPException(status_code=400, detail="Los domingos no hay sorteos")
     modalidad = obtener(datos.modalidad)
@@ -127,6 +128,7 @@ def crear_sorteo(datos: SorteoCrear, sesion: Session = Depends(obtener_sesion), 
         horario=datos.horario,
         fecha=datos.fecha,
         hora_cierre=hora_cierre,
+        estado=EstadoSorteo.PREPARACION,
         premio_fijo=datos.premio_fijo,
         pozo_inicial=pozo,
         precio_jugada=datos.precio_jugada,
@@ -140,9 +142,37 @@ def crear_sorteo(datos: SorteoCrear, sesion: Session = Depends(obtener_sesion), 
     sesion.add(sorteo)
     sesion.commit()
     sesion.refresh(sorteo)
-    auditoria.registrar(sesion, "SORTEO_CREADO", detalle=f"{sorteo.modalidad} {sorteo.horario} id={sorteo.id} pozo={pozo}", usuario=admin)
+    auditoria.registrar(sesion, "SORTEO_CREADO", detalle=f"{sorteo.modalidad} {sorteo.horario} id={sorteo.id} pozo={pozo} (en preparacion)", usuario=admin)
     sesion.commit()
     return {"id": sorteo.id, "modalidad": sorteo.modalidad, "horario": sorteo.horario, "pozo_inicial": pozo}
+
+
+@router.post("/sorteos/{sorteo_id}/activar")
+def activar_sorteo(sorteo_id: int, sesion: Session = Depends(obtener_sesion), admin: Usuario = Depends(requerir_permiso("configurar_sorteos"))):
+    sorteo = sesion.get(Sorteo, sorteo_id)
+    if sorteo is None:
+        raise HTTPException(status_code=404, detail="Sorteo no encontrado")
+    if sorteo.estado != EstadoSorteo.PREPARACION:
+        raise HTTPException(status_code=400, detail="Solo se puede activar un sorteo en preparacion")
+    sorteo.estado = EstadoSorteo.PROGRAMADO
+    sesion.commit()
+    auditoria.registrar(sesion, "SORTEO_ACTIVADO", detalle=f"sorteo={sorteo.id}", usuario=admin)
+    sesion.commit()
+    return {"ok": True, "estado": sorteo.estado.value}
+
+
+@router.post("/sorteos/{sorteo_id}/desactivar")
+def desactivar_sorteo(sorteo_id: int, sesion: Session = Depends(obtener_sesion), admin: Usuario = Depends(requerir_permiso("configurar_sorteos"))):
+    sorteo = sesion.get(Sorteo, sorteo_id)
+    if sorteo is None:
+        raise HTTPException(status_code=404, detail="Sorteo no encontrado")
+    if sorteo.estado != EstadoSorteo.PROGRAMADO:
+        raise HTTPException(status_code=400, detail="Solo se puede desactivar un sorteo programado (activo)")
+    sorteo.estado = EstadoSorteo.PREPARACION
+    sesion.commit()
+    auditoria.registrar(sesion, "SORTEO_DESACTIVADO", detalle=f"sorteo={sorteo.id}", usuario=admin)
+    sesion.commit()
+    return {"ok": True, "estado": sorteo.estado.value}
 
 
 @router.put("/sorteos/{sorteo_id}")
@@ -352,9 +382,10 @@ def pozo_vacante(sorteo_id: int, datos: PozoVacanteCrear, sesion: Session = Depe
     if datos.fecha.weekday() == 6:
         raise HTTPException(status_code=400, detail="Los domingos no hay sorteos")
     nuevo = motor.crear_pozo_vacante(sesion, sorteo, datos.fecha, motor.obtener_reglas(sesion))
+    nuevo.estado = EstadoSorteo.PREPARACION
     sesion.commit()
     sesion.refresh(nuevo)
-    auditoria.registrar(sesion, "POZO_VACANTE_CREADO", detalle=f"origen={sorteo.id} nuevo={nuevo.id}", usuario=admin)
+    auditoria.registrar(sesion, "POZO_VACANTE_CREADO", detalle=f"origen={sorteo.id} nuevo={nuevo.id} (en preparacion)", usuario=admin)
     sesion.commit()
     return {"id": nuevo.id, "pozo_inicial": nuevo.pozo_inicial, "participantes": nuevo.participantes}
 
