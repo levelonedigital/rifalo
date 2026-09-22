@@ -6,7 +6,7 @@ from app.core.database import Base
 
 
 class RolUsuario(str, enum.Enum):
-    """Jerarquia: Admin -> Vendedor -> Revendedor. Jugador se registra con codigo de vendedor."""
+    """Jerarquia: Admin -> Vendedor -> Revendedor. Jugador se registra con codigo de vendedor o revendedor."""
     ADMIN_PRINCIPAL = "admin_principal"
     ADMIN = "admin"
     VENDEDOR = "vendedor"
@@ -42,8 +42,10 @@ class Usuario(Base):
 
     # Padre en la jerarquia:
     #  - REVENDEDOR: su vendedor duenio
-    #  - JUGADOR: el vendedor con cuyo codigo se registro
+    #  - JUGADOR: el vendedor duenio de la linea (siempre)
     padre_id = Column(Integer, ForeignKey("usuarios.id"), nullable=True)
+    # JUGADOR registrado por un revendedor: ese revendedor (para comisiones y gestion)
+    revendedor_padre_id = Column(Integer, ForeignKey("usuarios.id"), nullable=True)
 
     def lista_permisos(self):
         if not self.permisos:
