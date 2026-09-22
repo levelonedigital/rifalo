@@ -74,7 +74,15 @@ def cargar_jugada(datos: JugadaCrear, sesion: Session = Depends(obtener_sesion),
     if sorteo is None:
         raise HTTPException(status_code=404, detail="Sorteo no encontrado")
     try:
-        jugada = crear_jugada(sesion, sorteo, datos.numeros, vendedor, jugador_id=jugador.id, jugador_nombre=jugador.nombre)
+        jugada = crear_jugada(
+            sesion,
+            sorteo,
+            datos.numeros,
+            vendedor,
+            revendedor_id=jugador.revendedor_padre_id,
+            jugador_id=jugador.id,
+            jugador_nombre=jugador.nombre,
+        )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     return {
