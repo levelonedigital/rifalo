@@ -3,11 +3,14 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.core import auditoria
+from app.core.config import Configuracion
 from app.core.database import obtener_sesion
 from app.core.dependencias import obtener_usuario_actual, requerir_rol
+from app.core.security import hash_password
 from app.modulos_juegos.modalidades import obtener
 from app.modulos_juegos.motor import obtener_reglas
-from app.modelos.juegos import Aviso, PlantillaSorteo
+from app.modelos.auditoria import LogAuditoria
+from app.modelos.juegos import Aviso, Jugada, PlantillaSorteo, ReglasSistema, Sorteo
 from app.modelos.usuario import RolUsuario, Usuario
 
 router = APIRouter(prefix="/admin", tags=["config"])
@@ -34,6 +37,10 @@ class PlantillaCrear(BaseModel):
     vendedor_pct: float | None = Field(default=None, ge=0, le=100)
     premio_fijo: float | None = Field(default=None, gt=0)
     descripcion: str | None = None
+
+
+class ResetConfirm(BaseModel):
+    confirmacion: str
 
 
 # ---------- CONFIGURACION DE SISTEMA (horarios y busqueda) ----------
@@ -135,3 +142,34 @@ def borrar_aviso(aviso_id: int, sesion: Session = Depends(obtener_sesion), admin
         sesion.delete(aviso)
         sesion.commit()
     return {"ok": True}
+
+
+# ---------- RESET DE FABRICA (solo admin principal, con confirmacion) ----------
+
+@router.post("/reset-total")
+def reset_total(datos: ResetConfirm, sesion: Session = Depends(obtener_sesion), admin: Usuario = Depends(requerir_rol(RolUsuario.ADMIN_PRINCIPAL))):
+    """Borra todos los datos (jugadas, sorteos, avisos, guias, auditoria, usuarios)
+    y recrea el admin inicial. Irreversible."""
+    if datos.confirmacion != "BORRAR TODO":
+        raise HTTPException(status_code=400, detail="Confirmacion invalida: escribi BORRAR TODO")
+    sesion.query(Jugada).delete()
+    sesion.query(Sorteo).delete()
+    sesion.query(Aviso).delete()
+    sesion.query(PlantillaSorteo).delete()
+    sesion.query(LogAuditoria).delete()
+    sesion.query(ReglasSistema).delete()
+    sesion.query(Usuario).delete()
+    sesion.commit()
+    admin_nuevo = Usuario(
+        usuario=Configuracion.ADMIN_INICIAL_USUARIO,
+        password_hash=hash_password(Configuracion.ADMIN_INICIAL_PASSWORD),
+        nombre="Administrador Principal",
+        rol=RolUsuario.ADMIN_PRINCIPAL,
+        activo=True,
+        requiere_2fa=False,
+    )
+    sesion.add(admin_nuevo)
+    sesion.commit()
+    obtener_reglas(sesion)
+    sesion.commit()
+    return {"ok": True, "detalle": "Base vacia. Admin inicial recreado."}
