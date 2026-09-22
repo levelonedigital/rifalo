@@ -34,6 +34,7 @@ def _sorteo_out(s: Sorteo):
         "cantidad_numeros": modalidad.cantidad_numeros if modalidad else 0,
         "horario": s.horario,
         "fecha": s.fecha.isoformat(),
+        "hora_cierre": s.hora_cierre,
         "pozo": s.pozo_actual,
         "precio_jugada": s.precio_jugada,
         "solo_participantes": s.solo_participantes,
