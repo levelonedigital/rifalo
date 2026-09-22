@@ -32,7 +32,9 @@ class RevendedorCrear(BaseModel):
 class RevendedorEditar(BaseModel):
     nombre: str | None = None
     telefono: str | None = None
+    codigo: str | None = Field(default=None, max_length=10)
     comision_pct: float | None = Field(default=None, ge=0, le=100)
+    password: str | None = None
     activo: bool | None = None
 
 
@@ -115,31 +117,46 @@ def crear_revendedor(datos: RevendedorCrear, sesion: Session = Depends(obtener_s
 def listar_revendedores(sesion: Session = Depends(obtener_sesion), vendedor: Usuario = vendedor_dep):
     revs = sesion.query(Usuario).filter(Usuario.padre_id == vendedor.id, Usuario.rol == RolUsuario.REVENDEDOR).all()
     return [
-        {"id": r.id, "usuario": r.usuario, "nombre": r.nombre, "codigo": r.codigo, "comision_pct": r.comision_pct, "activo": r.activo}
+        {
+            "id": r.id,
+            "usuario": r.usuario,
+            "nombre": r.nombre,
+            "codigo": r.codigo,
+            "comision_pct": r.comision_pct,
+            "telefono": r.telefono,
+            "activo": r.activo,
+        }
         for r in revs
     ]
 
 
 @router.put("/revendedores/{revendedor_id}")
 def editar_revendedor(revendedor_id: int, datos: RevendedorEditar, sesion: Session = Depends(obtener_sesion), vendedor: Usuario = vendedor_dep):
+    """El vendedor edita su revendedor con las mismas opciones que al crearlo."""
     rev = sesion.get(Usuario, revendedor_id)
     if rev is None or rev.padre_id != vendedor.id or rev.rol != RolUsuario.REVENDEDOR:
         raise HTTPException(status_code=404, detail="Revendedor no encontrado en tu linea")
     reglas = obtener_reglas(sesion)
+    if datos.codigo is not None:
+        codigo = datos.codigo.upper()
+        otro = sesion.query(Usuario).filter(Usuario.codigo == codigo, Usuario.id != revendedor_id).first()
+        if otro:
+            raise HTTPException(status_code=400, detail="El codigo ya existe")
+        rev.codigo = codigo
+    if datos.password:
+        rev.password_hash = hash_password(datos.password)
     if datos.comision_pct is not None:
         if datos.comision_pct > _comision_propia(vendedor, reglas):
             raise HTTPException(status_code=400, detail="La comision no puede superar la tuya")
         rev.comision_pct = datos.comision_pct
-    if datos.nombre is not None:
-        rev.nombre = datos.nombre
-    if datos.telefono is not None:
-        rev.telefono = datos.telefono
-    if datos.activo is not None:
-        rev.activo = datos.activo
+    for campo in ("nombre", "telefono", "activo"):
+        valor = getattr(datos, campo)
+        if valor is not None:
+            setattr(rev, campo, valor)
     sesion.commit()
     auditoria.registrar(sesion, "REVENDEDOR_EDITADO", detalle=rev.usuario, usuario=vendedor)
     sesion.commit()
-    return {"id": rev.id, "usuario": rev.usuario, "comision_pct": rev.comision_pct, "activo": rev.activo}
+    return {"id": rev.id, "usuario": rev.usuario, "codigo": rev.codigo, "comision_pct": rev.comision_pct, "activo": rev.activo}
 
 
 # ---------- JUGADORES PROPIOS ----------
