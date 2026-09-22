@@ -788,7 +788,7 @@ async function cargarSorteos() {
       html += "<tr><td>" + s.id + "</td><td>" + (s.imagen_url ? "<img src='" + s.imagen_url + "' style='width:44px;height:44px;object-fit:cover;border-radius:4px'>" : "-") + "</td><td>" + s.modalidad + (s.solo_participantes ? " VACANTE" : "") + "</td><td>" + s.horario + "</td><td>" + s.fecha.slice(0,10) + "</td><td>" + (s.hora_cierre || "sin limite") + "</td><td>" + s.estado + (s.busqueda_agotada ? " (manual)" : "") + "</td><td>$" + s.pozo + "</td><td>$" + (s.recaudado || 0) + " / $" + s.costo + (s.costo_cubierto ? " ✔" : " ✘") + "</td><td>";
       html += "<button class='secundario' onclick='seleccionarSorteo(" + s.id + ")'>Detalles</button>";
       if (s.estado === "preparacion") html += "<button onclick='activarSorteo(" + s.id + ")'>Activar</button>";
-      if (s.estado === "programado") html += "<button class='secundario' onclick='desactivarSorteo(" + s.id + ")'>Desactivar</button><button class='secundario' onclick='cerrarSorteo(" + s.id + ")'>Cerrar</button><button class='peligro' onclick='cancelarHorario(" + s.id + ")'>Cancelar horario</button>";
+      if (s.estado === "programado") html += "<button class='secundario' onclick='desactivarSorteo(" + s.id + ")'>Desactivar</button><button class='peligro' onclick='cancelarHorario(" + s.id + ")'>Cancelar horario</button>";
       if (s.estado === "cerrado") html += "<button onclick='cargarResultado(" + s.id + ")'>Cargar 20 nums</button><button class='peligro' onclick='cancelarHorario(" + s.id + ")'>Cancelar horario</button>";
       if (s.estado === "reprogramando") {
         html += "<button onclick='prepararReprog(" + s.id + ")'>Reprogramar</button>";
@@ -1455,7 +1455,6 @@ async function cargarJJugadas() {
 const _params = new URLSearchParams(window.location.search);
 const _cod = _params.get("codigo");
 if (_cod) {
-  // Por link de registro: solo se muestra el formulario de registro, con el codigo bloqueado.
   document.getElementById("bloque-login").style.display = "none";
   document.getElementById("login-msg").style.display = "none";
   document.getElementById("form-registro").style.display = "block";
