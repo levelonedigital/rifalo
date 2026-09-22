@@ -77,15 +77,15 @@
       <h2>Crear sorteo</h2>
       <div class="grilla">
         <div><label>Modalidad</label><select id="sorteo-modalidad" onchange="pintarReglasModalidad()"></select></div>
-        <div><label>Horario</label><select id="sorteo-horario"></select></div>
-        <div><label>Fecha</label><input id="sorteo-fecha" type="datetime-local" min="2026-01-01T00:00" max="2035-12-31T23:59"></div>
+        <div><label>Horario oficial del resultado</label><select id="sorteo-horario"></select></div>
+        <div><label>Dia del sorteo</label><input id="sorteo-fecha" type="date" min="2026-01-01" max="2035-12-31"></div>
+        <div><label>Horario de cierre para anotarse (HH:MM)</label><input id="sorteo-cierre" type="time"></div>
         <div><label>Precio de la jugada</label><input id="sorteo-precio" type="number"></div>
         <div><label>Pozo base (congelado hasta recaudarlo)</label><input id="sorteo-pozobase" type="number"></div>
         <div><label>% administrador (casa)</label><input id="sorteo-casa" type="number"></div>
         <div><label>% vendedores (linea de venta)</label><input id="sorteo-vend" type="number"></div>
         <div id="caja-premio-fijo" style="display:none"><label>Premio fijo (rifa)</label><input id="sorteo-premio" type="number"></div>
         <div id="caja-minimo" style="display:none"><label>Minimo a cubrir (rifa, vacio = premio fijo)</label><input id="sorteo-minimo" type="number"></div>
-        <div><label>Pozo inicial (vacio = pozo base)</label><input id="sorteo-pozoinicial" type="number"></div>
         <div><label>Imagen de presentacion (URL, opcional)</label><input id="sorteo-imagen" placeholder="https://... foto del premio o cartel del pozo"></div>
       </div>
       <label>Detalle visible para los jugadores (reglas y condiciones de este sorteo)</label>
@@ -108,7 +108,7 @@
         <h2>Reprogramar sorteo con hora cancelada</h2>
         <div class="grilla">
           <div><label>Sorteo a reprogramar</label><select id="reprog-sorteo"></select></div>
-          <div><label>Nueva fecha y hora</label><input id="reprog-fecha" type="datetime-local" min="2026-01-01T00:00" max="2035-12-31T23:59"></div>
+          <div><label>Nuevo dia del sorteo</label><input id="reprog-fecha" type="date" min="2026-01-01" max="2035-12-31"></div>
         </div>
         <button onclick="reprogramarSorteo()">Confirmar reprogramacion</button>
       </div>
@@ -352,7 +352,7 @@ function pintarModo() {
   const s = SORT_CACHE[SORT_ACTUAL];
   caja.style.display = "block";
   caja.innerHTML = "Estas trabajando con el SORTEO #" + SORT_ACTUAL +
-    (s ? " (" + s.modalidad + " " + s.horario + " " + s.fecha.slice(0,16).replace("T"," ") + ", estado " + s.estado + ")" : "") +
+    (s ? " (" + s.modalidad + " " + s.horario + " " + s.fecha.slice(0,10) + ", estado " + s.estado + ")" : "") +
     ". Todas las pestanas muestran solo este sorteo. <button class='peligro' onclick='salirSorteo()'>Salir del sorteo</button>";
 }
 
@@ -519,7 +519,7 @@ function pintarReglasModalidad() {
 function pintarReglasSelect(idSelect, idCaja, idImagen) {
   const id = document.getElementById(idSelect).value;
   const s = SORTEOS_ABIERTOS_CACHE[idSelect] && SORTEOS_ABIERTOS_CACHE[idSelect][id];
-  document.getElementById(idCaja).textContent = s ? (s.nombre_modalidad + ": " + (s.detalle || s.reglas) + " | Precio jugada: $" + s.precio_jugada + " | Pozo: $" + s.pozo + (s.reprogramando ? " | REPROGRAMANDO: aguarda nuevo horario" : "")) : "";
+  document.getElementById(idCaja).textContent = s ? (s.nombre_modalidad + ": " + (s.detalle || s.reglas) + " | Precio jugada: $" + s.precio_jugada + " | Pozo: $" + s.pozo + " | Cierre para anotarse: " + (s.hora_cierre || "sin limite") + (s.reprogramando ? " | REPROGRAMANDO: aguarda nuevo horario" : "")) : "";
   const img = document.getElementById(idImagen);
   if (img) {
     if (s && s.imagen_url) { img.src = s.imagen_url; img.style.display = "block"; }
@@ -574,14 +574,14 @@ function leerFormSorteo() {
     pozo_base: parseFloat(document.getElementById("sorteo-pozobase").value || 0),
     casa_pct: parseFloat(document.getElementById("sorteo-casa").value),
   };
+  const cierre = document.getElementById("sorteo-cierre").value;
+  if (cierre) cuerpo.hora_cierre = cierre;
   const vend = document.getElementById("sorteo-vend").value;
   if (vend) cuerpo.vendedor_pct = parseFloat(vend);
   const premio = document.getElementById("sorteo-premio").value;
   if (premio) cuerpo.premio_fijo = parseFloat(premio);
   const minimo = document.getElementById("sorteo-minimo").value;
   if (minimo) cuerpo.minimo_cubrir = parseFloat(minimo);
-  const pin = document.getElementById("sorteo-pozoinicial").value;
-  if (pin) cuerpo.pozo_inicial = parseFloat(pin);
   const img = document.getElementById("sorteo-imagen").value;
   if (img) cuerpo.imagen_url = img;
   const detalle = document.getElementById("sorteo-detalle").value;
@@ -600,14 +600,14 @@ function empezarEdicion(id) {
   if (!s) return;
   sorteo_edit_id = id;
   document.getElementById("sorteo-horario").value = s.horario;
-  document.getElementById("sorteo-fecha").value = s.fecha.slice(0,16);
+  document.getElementById("sorteo-fecha").value = s.fecha.slice(0,10);
+  document.getElementById("sorteo-cierre").value = s.hora_cierre || "";
   document.getElementById("sorteo-precio").value = s.precio_jugada;
   document.getElementById("sorteo-pozobase").value = s.pozo_base;
   document.getElementById("sorteo-casa").value = s.casa_pct;
   document.getElementById("sorteo-vend").value = s.vendedor_pct ?? "";
   document.getElementById("sorteo-premio").value = s.premio_fijo ?? "";
   document.getElementById("sorteo-minimo").value = s.minimo_cubrir ?? "";
-  document.getElementById("sorteo-pozoinicial").value = "";
   document.getElementById("sorteo-imagen").value = s.imagen_url || "";
   document.getElementById("sorteo-detalle").value = s.detalle || "";
   document.getElementById("btn-crear").style.display = "none";
@@ -627,7 +627,6 @@ function cancelarEdicion() {
 async function guardarEdicion() {
   const cuerpo = leerFormSorteo();
   delete cuerpo.modalidad;
-  delete cuerpo.pozo_inicial;
   try {
     await api("/admin/sorteos/" + sorteo_edit_id, "PUT", cuerpo);
     aviso("Sorteo #" + sorteo_edit_id + " actualizado");
@@ -648,7 +647,7 @@ async function guardarPlantilla() {
   const cuerpo = leerFormSorteo();
   cuerpo.nombre = nombre;
   delete cuerpo.fecha;
-  delete cuerpo.pozo_inicial;
+  delete cuerpo.hora_cierre;
   delete cuerpo.imagen_url;
   delete cuerpo.detalle;
   try { await api("/admin/plantillas", "POST", cuerpo); aviso("Guia guardada: " + nombre); cargarPlantillas(); }
@@ -677,7 +676,7 @@ async function cargarPlantillaSel() {
   document.getElementById("sorteo-casa").value = p.casa_pct;
   document.getElementById("sorteo-vend").value = p.vendedor_pct ?? "";
   document.getElementById("sorteo-premio").value = p.premio_fijo ?? "";
-  aviso("Guia cargada, pone la fecha y crea el sorteo");
+  aviso("Guia cargada, pone el dia y el cierre y crea el sorteo");
 }
 
 async function borrarPlantillaSel() {
@@ -691,10 +690,10 @@ async function cargarSorteos() {
   try {
     const sorteos = await api("/admin/sorteos", "GET");
     sorteos.forEach(s => { SORT_CACHE[s.id] = s; });
-    let html = "<table><tr><th>#</th><th>Img</th><th>Modalidad</th><th>Horario</th><th>Fecha</th><th>Estado</th><th>Pozo</th><th>Recaudado / costo</th><th>Acciones</th></tr>";
+    let html = "<table><tr><th>#</th><th>Img</th><th>Modalidad</th><th>Horario</th><th>Dia</th><th>Cierre</th><th>Estado</th><th>Pozo</th><th>Recaudado / costo</th><th>Acciones</th></tr>";
     let opcionesReprog = "";
     sorteos.forEach(s => {
-      html += "<tr><td>" + s.id + "</td><td>" + (s.imagen_url ? "<img src='" + s.imagen_url + "' style='width:44px;height:44px;object-fit:cover;border-radius:4px'>" : "-") + "</td><td>" + s.modalidad + (s.solo_participantes ? " VACANTE" : "") + "</td><td>" + s.horario + "</td><td>" + s.fecha.slice(0,16).replace("T"," ") + "</td><td>" + s.estado + (s.busqueda_agotada ? " (manual)" : "") + "</td><td>$" + s.pozo + "</td><td>$" + (s.recaudado || 0) + " / $" + s.costo + (s.costo_cubierto ? " ✔" : " ✘") + "</td><td>";
+      html += "<tr><td>" + s.id + "</td><td>" + (s.imagen_url ? "<img src='" + s.imagen_url + "' style='width:44px;height:44px;object-fit:cover;border-radius:4px'>" : "-") + "</td><td>" + s.modalidad + (s.solo_participantes ? " VACANTE" : "") + "</td><td>" + s.horario + "</td><td>" + s.fecha.slice(0,10) + "</td><td>" + (s.hora_cierre || "sin limite") + "</td><td>" + s.estado + (s.busqueda_agotada ? " (manual)" : "") + "</td><td>$" + s.pozo + "</td><td>$" + (s.recaudado || 0) + " / $" + s.costo + (s.costo_cubierto ? " ✔" : " ✘") + "</td><td>";
       html += "<button class='secundario' onclick='seleccionarSorteo(" + s.id + ")'>Detalles</button>";
       if (s.estado !== "liquidado") {
         html += "<button class='secundario' onclick='empezarEdicion(" + s.id + ")'>Editar</button>";
@@ -704,7 +703,7 @@ async function cargarSorteos() {
       if (s.estado === "cerrado") html += "<button onclick='cargarResultado(" + s.id + ")'>Cargar 20 nums</button><button class='peligro' onclick='cancelarHorario(" + s.id + ")'>Cancelar horario</button>";
       if (s.estado === "reprogramando") {
         html += "<button onclick='prepararReprog(" + s.id + ")'>Reprogramar</button>";
-        opcionesReprog += "<option value='" + s.id + "'>#" + s.id + " " + s.modalidad + " " + s.horario + " " + s.fecha.slice(0,16).replace("T"," ") + "</option>";
+        opcionesReprog += "<option value='" + s.id + "'>#" + s.id + " " + s.modalidad + " " + s.horario + " " + s.fecha.slice(0,10) + "</option>";
       }
       if (s.estado === "liquidado") html += "<button class='secundario' onclick='pozoVacante(" + s.id + ")'>Pozo vacante</button>";
       html += "</td></tr>";
@@ -733,10 +732,10 @@ async function reprogramarSorteo() {
   const id = document.getElementById("reprog-sorteo").value;
   const fecha = document.getElementById("reprog-fecha").value;
   if (!id) { aviso("No hay sorteos con hora cancelada para reprogramar", true); return; }
-  if (!fecha) { aviso("Elegi la nueva fecha y hora en el calendario", true); return; }
+  if (!fecha) { aviso("Elegi el nuevo dia en el calendario", true); return; }
   try {
     await api("/admin/sorteos/" + id + "/reprogramar", "POST", { fecha: fecha });
-    aviso("Sorteo #" + id + " reprogramado: se aviso a los jugadores con el nuevo horario");
+    aviso("Sorteo #" + id + " reprogramado: se aviso a los jugadores con el nuevo dia");
     cargarSorteos();
     cargarAvisos();
   } catch (e) { aviso(e.message, true); }
@@ -760,7 +759,7 @@ async function cargarResultado(id) {
 }
 
 async function pozoVacante(id) {
-  const fecha = prompt("Fecha del sorteo vacante (AAAA-MM-DDTHH:MM):");
+  const fecha = prompt("Dia del sorteo vacante (AAAA-MM-DD):");
   if (!fecha) return;
   try { const d = await api("/admin/sorteos/" + id + "/pozo-vacante", "POST", { fecha: fecha }); aviso("Pozo vacante #" + d.id + " creado con $" + d.pozo_inicial); cargarSorteos(); }
   catch (e) { aviso(e.message, true); }
@@ -784,7 +783,7 @@ async function llenarSelectJugadasSorteos() {
     const sorteos = await api("/admin/sorteos", "GET");
     sorteos.forEach(s => { SORT_CACHE[s.id] = s; });
     document.getElementById("jugadas-sorteo").innerHTML = "<option value=''>Elegi un sorteo para ver sus jugadas...</option>" +
-      sorteos.map(s => "<option value='" + s.id + "'>#" + s.id + " " + s.modalidad + " " + s.horario + " " + s.fecha.slice(0,16).replace("T"," ") + " (" + s.estado + ")</option>").join("");
+      sorteos.map(s => "<option value='" + s.id + "'>#" + s.id + " " + s.modalidad + " " + s.horario + " " + s.fecha.slice(0,10) + " (" + s.estado + ")</option>").join("");
   } catch (e) { aviso(e.message, true); }
 }
 
@@ -816,7 +815,7 @@ async function verJugada(id) {
     const s = j.sorteo || {};
     document.getElementById("jugada-detalle").textContent =
       "JUGADA #" + j.id +
-      "\nSorteo: #" + (s.id || "-") + " " + (s.modalidad || "") + " " + (s.horario || "") + " " + ((s.fecha || "").slice(0,16).replace("T"," ")) + " (" + (s.estado || "") + ")" +
+      "\nSorteo: #" + (s.id || "-") + " " + (s.modalidad || "") + " " + (s.horario || "") + " " + ((s.fecha || "").slice(0,10)) + " (" + (s.estado || "") + ")" +
       "\nVendedor: " + j.vendedor +
       "\nRevendedor: " + (j.revendedor || "sin revendedor") +
       "\nJugador: " + (j.jugador_nombre || "-") + (j.jugador_usuario ? " (usuario " + j.jugador_usuario + ")" : "") +
@@ -959,7 +958,7 @@ async function llenarSelectSorteos(ruta, idSelect) {
     SORTEOS_ABIERTOS_CACHE[idSelect] = {};
     sorteos.forEach(s => { SORTEOS_ABIERTOS_CACHE[idSelect][s.id] = s; });
     document.getElementById(idSelect).innerHTML = sorteos.map(s =>
-      "<option value='" + s.id + "'>#" + s.id + " " + s.nombre_modalidad + " " + s.horario + " " + s.fecha.slice(0,16).replace("T"," ") + " - $" + s.precio_jugada + " - pozo $" + s.pozo + (s.solo_participantes ? " (VACANTE)" : "") + (s.reprogramando ? " (REPROGRAMANDO)" : "") + "</option>"
+      "<option value='" + s.id + "'>#" + s.id + " " + s.nombre_modalidad + " " + s.horario + " " + s.fecha.slice(0,10) + " - $" + s.precio_jugada + " - pozo $" + s.pozo + " - cierre " + (s.hora_cierre || "sin limite") + (s.solo_participantes ? " (VACANTE)" : "") + (s.reprogramando ? " (REPROGRAMANDO)" : "") + "</option>"
     ).join("") || "<option value=''>No hay sorteos abiertos</option>";
     if (previo) document.getElementById(idSelect).value = previo;
     const idImg = idSelect.replace("-sorteo", "-imagen");
@@ -1053,8 +1052,8 @@ async function alternarVRev(id, activo) {
 async function cargarRSorteos() {
   try {
     const ss = await api("/revendedor/sorteos", "GET");
-    let html = "<table><tr><th>#</th><th>Img</th><th>Sorteo</th><th>Horario</th><th>Fecha</th><th>Precio</th><th>Pozo</th></tr>";
-    ss.forEach(s => { html += "<tr><td>" + s.id + "</td><td>" + (s.imagen_url ? "<img src='" + s.imagen_url + "' style='width:40px;height:40px;object-fit:cover;border-radius:4px'>" : "-") + "</td><td>" + s.nombre_modalidad + (s.reprogramando ? " (REPROGRAMANDO)" : "") + "<div class='chico'>" + (s.detalle || "") + "</div></td><td>" + s.horario + "</td><td>" + s.fecha.slice(0,16).replace("T"," ") + "</td><td>$" + s.precio_jugada + "</td><td>$" + s.pozo + "</td></tr>"; });
+    let html = "<table><tr><th>#</th><th>Img</th><th>Sorteo</th><th>Horario</th><th>Dia</th><th>Cierre</th><th>Precio</th><th>Pozo</th></tr>";
+    ss.forEach(s => { html += "<tr><td>" + s.id + "</td><td>" + (s.imagen_url ? "<img src='" + s.imagen_url + "' style='width:40px;height:40px;object-fit:cover;border-radius:4px'>" : "-") + "</td><td>" + s.nombre_modalidad + (s.reprogramando ? " (REPROGRAMANDO)" : "") + "<div class='chico'>" + (s.detalle || "") + "</div></td><td>" + s.horario + "</td><td>" + s.fecha.slice(0,10) + "</td><td>" + (s.hora_cierre || "sin limite") + "</td><td>$" + s.precio_jugada + "</td><td>$" + s.pozo + "</td></tr>"; });
     document.getElementById("lista-rsorteos").innerHTML = html + "</table>";
   } catch (e) { aviso(e.message, true); }
 }
@@ -1086,8 +1085,8 @@ async function cargarRResumen() {
 async function cargarJSorteos() {
   try {
     const ss = await api("/jugador/sorteos", "GET");
-    let html = "<table><tr><th>#</th><th>Img</th><th>Sorteo</th><th>Horario</th><th>Fecha</th><th>Precio</th><th>Pozo</th></tr>";
-    ss.forEach(s => { html += "<tr><td>" + s.id + "</td><td>" + (s.imagen_url ? "<img src='" + s.imagen_url + "' style='width:40px;height:40px;object-fit:cover;border-radius:4px'>" : "-") + "</td><td>" + s.nombre_modalidad + (s.reprogramando ? " (REPROGRAMANDO)" : "") + "<div class='chico'>" + (s.detalle || "") + "</div></td><td>" + s.horario + "</td><td>" + s.fecha.slice(0,16).replace("T"," ") + "</td><td>$" + s.precio_jugada + "</td><td>$" + s.pozo + "</td></tr>"; });
+    let html = "<table><tr><th>#</th><th>Img</th><th>Sorteo</th><th>Horario</th><th>Dia</th><th>Cierre</th><th>Precio</th><th>Pozo</th></tr>";
+    ss.forEach(s => { html += "<tr><td>" + s.id + "</td><td>" + (s.imagen_url ? "<img src='" + s.imagen_url + "' style='width:40px;height:40px;object-fit:cover;border-radius:4px'>" : "-") + "</td><td>" + s.nombre_modalidad + (s.reprogramando ? " (REPROGRAMANDO)" : "") + "<div class='chico'>" + (s.detalle || "") + "</div></td><td>" + s.horario + "</td><td>" + s.fecha.slice(0,10) + "</td><td>" + (s.hora_cierre || "sin limite") + "</td><td>$" + s.precio_jugada + "</td><td>$" + s.pozo + "</td></tr>"; });
     document.getElementById("lista-jsorteos").innerHTML = html + "</table>";
   } catch (e) { aviso(e.message, true); }
 }
