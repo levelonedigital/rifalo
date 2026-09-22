@@ -43,12 +43,14 @@
   <!-- LOGIN -->
   <div id="zona-login" class="tarjeta">
     <h1>RIFALO</h1>
-    <p class="chico">Ingreso por rol: admin, vendedor, revendedor o jugador</p>
-    <label>Usuario</label><input id="login-usuario">
-    <label>Contrasenia</label><input id="login-password" type="password">
-    <label>Codigo 2FA (solo si lo tenes activado)</label><input id="login-2fa">
-    <button onclick="login()">Entrar</button>
-    <button class="secundario" onclick="mostrarRegistro()">Soy jugador: registrarme</button>
+    <div id="bloque-login">
+      <p class="chico">Ingreso por rol: admin, vendedor, revendedor o jugador</p>
+      <label>Usuario</label><input id="login-usuario">
+      <label>Contrasenia</label><input id="login-password" type="password">
+      <label>Codigo 2FA (solo si lo tenes activado)</label><input id="login-2fa">
+      <button onclick="login()">Entrar</button>
+      <button class="secundario" onclick="mostrarRegistro()">Soy jugador: registrarme</button>
+    </div>
     <div id="login-error" class="mensaje error"></div>
     <div id="login-msg" class="mensaje"></div>
     <div id="form-registro" style="display:none; margin-top:14px">
@@ -60,6 +62,7 @@
       <label>Alias o CBU (para cobrarte tus premios)</label><input id="reg-cobro" placeholder="tu.alias o CBU de 22 digitos">
       <div class="check-linea"><input type="checkbox" id="reg-transferencia" checked><span>Cobrar mis premios por transferencia</span></div>
       <button onclick="registrarJugador()">Registrarme</button>
+      <div id="reg-msg" class="mensaje"></div>
     </div>
   </div>
 
@@ -195,8 +198,13 @@
       <label>Sorteo</label><select id="v-sorteo" onchange="pintarReglasSelect('v-sorteo','v-reglas','v-imagen')"></select>
       <img id="v-imagen" style="display:none; max-width:220px; border-radius:6px; margin:6px 0">
       <div id="v-reglas" class="reglas-box"></div>
+      <label>Jugador registrado en tu linea</label>
+      <select id="v-jugador-select" onchange="toggleJugadorManual('v')">
+        <option value="">Jugador no registrado (escribir nombre abajo)</option>
+      </select>
+      <label>Nombre del jugador (solo si no esta registrado)</label>
+      <input id="v-jugador">
       <label>Numeros (separados por coma)</label><input id="v-numeros">
-      <label>Nombre del jugador</label><input id="v-jugador">
       <button onclick="vCargarJugada()">Cargar</button>
     </div>
     <div id="seccion-vpendientes" class="tarjeta" style="display:none">
@@ -261,8 +269,13 @@
       <label>Sorteo</label><select id="r-sorteo" onchange="pintarReglasSelect('r-sorteo','r-reglas','r-imagen')"></select>
       <img id="r-imagen" style="display:none; max-width:220px; border-radius:6px; margin:6px 0">
       <div id="r-reglas" class="reglas-box"></div>
+      <label>Jugador registrado en tu linea</label>
+      <select id="r-jugador-select" onchange="toggleJugadorManual('r')">
+        <option value="">Jugador no registrado (escribir nombre abajo)</option>
+      </select>
+      <label>Nombre del jugador (solo si no esta registrado)</label>
+      <input id="r-jugador">
       <label>Numeros (separados por coma)</label><input id="r-numeros">
-      <label>Nombre del jugador</label><input id="r-jugador">
       <button onclick="rCargarJugada()">Cargar</button>
     </div>
     <div id="seccion-rjugadas" class="tarjeta" style="display:none">
@@ -377,6 +390,12 @@ function loginMsg(t, err) {
   c.textContent = t;
 }
 
+function regMsg(t, err) {
+  const c = document.getElementById("reg-msg");
+  c.className = "mensaje " + (err ? "error" : "ok");
+  c.textContent = t;
+}
+
 function parseNumeros(texto) {
   return texto.split(/[,\s]+/).filter(x => x).map(x => parseInt(x, 10));
 }
@@ -463,15 +482,14 @@ async function registrarJugador() {
     if (!r.ok) {
       const det = typeof d.detail === "string" ? d.detail : JSON.stringify(d.detail);
       if (det.includes("ya existe")) {
-        loginMsg("Ya estas registrado: ingresa con tu usuario y contrasenia.");
+        regMsg("El usuario ya existe, elegi otro.", true);
       } else {
-        loginMsg(det || "Error de registro", true);
+        regMsg(det || "Error de registro", true);
       }
       return;
     }
-    loginMsg(d.detalle + ". Ya podes ingresar con tu usuario y contrasenia.");
-    document.getElementById("form-registro").style.display = "none";
-  } catch (e) { loginMsg(e.message, true); }
+    regMsg("Registro listo: ya podes ingresar con tu usuario y contrasenia. Tus premios se acreditan en tu alias/CBU.");
+  } catch (e) { regMsg(e.message, true); }
 }
 
 function salir() {
@@ -516,13 +534,13 @@ function irTab(nombre) {
     resumen: cargarResumen,
     auditoria: cargarAuditoria,
     vresumen: cargarVResumen,
-    vcargar: () => llenarSelectSorteos("/vendedor/sorteos", "v-sorteo"),
+    vcargar: () => { llenarSelectSorteos("/vendedor/sorteos", "v-sorteo"); cargarSelectJugadores("v"); },
     vpendientes: cargarVPendientes,
     vjugadas: cargarVJugadas,
     vrevendedores: cargarVRevendedores,
     vjugadores: cargarVJugadores,
     rsorteos: cargarRSorteos,
-    rcargar: () => llenarSelectSorteos("/revendedor/sorteos", "r-sorteo"),
+    rcargar: () => { llenarSelectSorteos("/revendedor/sorteos", "r-sorteo"); cargarSelectJugadores("r"); },
     rjugadas: cargarRJugadas,
     rresumen: cargarRResumen,
     rjugadores: cargarRJugadores,
@@ -531,6 +549,29 @@ function irTab(nombre) {
     jjugadas: cargarJJugadas,
   };
   if (acciones[nombre]) acciones[nombre]();
+}
+
+// ---------- SELECTOR DE JUGADORES AL CARGAR JUGADA ----------
+async function cargarSelectJugadores(pref) {
+  const ruta = pref === "v" ? "/vendedor/jugadores" : "/revendedor/jugadores";
+  try {
+    const js = await api(ruta, "GET");
+    const sel = document.getElementById(pref + "-jugador-select");
+    sel.innerHTML = "<option value=''>Jugador no registrado (escribir nombre abajo)</option>" +
+      js.filter(j => j.activo).map(j => "<option value='" + j.id + "'>" + j.nombre + " (" + j.usuario + ")</option>").join("");
+    document.getElementById(pref + "-jugador").disabled = false;
+  } catch (e) { /* ignora */ }
+}
+
+function toggleJugadorManual(pref) {
+  const sel = document.getElementById(pref + "-jugador-select");
+  const input = document.getElementById(pref + "-jugador");
+  if (sel.value) {
+    input.value = "";
+    input.disabled = true;
+  } else {
+    input.disabled = false;
+  }
 }
 
 // ---------- MODALIDADES Y REGLAS VISIBLES ----------
@@ -1209,11 +1250,13 @@ async function cargarVResumen() {
 }
 
 async function vCargarJugada() {
+  const selJugador = document.getElementById("v-jugador-select").value;
   const cuerpo = {
     sorteo_id: parseInt(document.getElementById("v-sorteo").value),
     numeros: parseNumeros(document.getElementById("v-numeros").value),
-    jugador_nombre: document.getElementById("v-jugador").value || null,
   };
+  if (selJugador) cuerpo.jugador_id = parseInt(selJugador);
+  else cuerpo.jugador_nombre = document.getElementById("v-jugador").value || null;
   try { const d = await api("/vendedor/jugadas", "POST", cuerpo); aviso("Jugada #" + d.id + " cargada"); document.getElementById("v-numeros").value = ""; }
   catch (e) { aviso(e.message, true); }
 }
@@ -1258,11 +1301,13 @@ async function cargarRSorteos() {
   } catch (e) { aviso(e.message, true); }
 }
 async function rCargarJugada() {
+  const selJugador = document.getElementById("r-jugador-select").value;
   const cuerpo = {
     sorteo_id: parseInt(document.getElementById("r-sorteo").value),
     numeros: parseNumeros(document.getElementById("r-numeros").value),
-    jugador_nombre: document.getElementById("r-jugador").value || null,
   };
+  if (selJugador) cuerpo.jugador_id = parseInt(selJugador);
+  else cuerpo.jugador_nombre = document.getElementById("r-jugador").value || null;
   try { const d = await api("/revendedor/jugadas", "POST", cuerpo); aviso("Jugada #" + d.id + " cargada, la aprueba tu vendedor"); document.getElementById("r-numeros").value = ""; }
   catch (e) { aviso(e.message, true); }
 }
@@ -1410,8 +1455,13 @@ async function cargarJJugadas() {
 const _params = new URLSearchParams(window.location.search);
 const _cod = _params.get("codigo");
 if (_cod) {
+  // Por link de registro: solo se muestra el formulario de registro, con el codigo bloqueado.
+  document.getElementById("bloque-login").style.display = "none";
+  document.getElementById("login-msg").style.display = "none";
   document.getElementById("form-registro").style.display = "block";
-  document.getElementById("reg-codigo").value = _cod;
+  const inputCod = document.getElementById("reg-codigo");
+  inputCod.value = _cod;
+  inputCod.readOnly = true;
 }
 
 if (token) { mostrarPanel(); }
