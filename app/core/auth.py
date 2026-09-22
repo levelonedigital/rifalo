@@ -64,14 +64,29 @@ def login(datos: DatosLogin, sesion: Session = Depends(obtener_sesion)):
 
 @router.post("/registro-jugador")
 def registro_jugador(datos: RegistroJugador, sesion: Session = Depends(obtener_sesion)):
-    """Un jugador se registra con el codigo de su vendedor, dejando sus datos de cobro."""
+    """Un jugador se registra con el codigo de su vendedor o de un revendedor.
+
+    Si el codigo es de un revendedor, el jugador queda en la linea del vendedor duenio
+    y atado a ese revendedor (sus jugadas le computan la comision al revendedor).
+    """
+    codigo = datos.codigo_vendedor.upper()
     vendedor = (
         sesion.query(Usuario)
-        .filter(Usuario.codigo == datos.codigo_vendedor.upper(), Usuario.rol == RolUsuario.VENDEDOR)
+        .filter(Usuario.codigo == codigo, Usuario.rol == RolUsuario.VENDEDOR)
         .first()
     )
+    revendedor = None
     if vendedor is None or not vendedor.activo:
-        raise HTTPException(status_code=400, detail="Codigo de vendedor invalido")
+        revendedor = (
+            sesion.query(Usuario)
+            .filter(Usuario.codigo == codigo, Usuario.rol == RolUsuario.REVENDEDOR)
+            .first()
+        )
+        if revendedor is None or not revendedor.activo or revendedor.padre_id is None:
+            raise HTTPException(status_code=400, detail="Codigo de vendedor invalido")
+        vendedor = sesion.get(Usuario, revendedor.padre_id)
+        if vendedor is None or not vendedor.activo:
+            raise HTTPException(status_code=400, detail="Codigo invalido: el vendedor duenio del revendedor no esta activo")
     if sesion.query(Usuario).filter(Usuario.usuario == datos.usuario).first():
         raise HTTPException(status_code=400, detail="El nombre de usuario ya existe")
     jugador = Usuario(
@@ -81,15 +96,23 @@ def registro_jugador(datos: RegistroJugador, sesion: Session = Depends(obtener_s
         telefono=datos.telefono,
         rol=RolUsuario.JUGADOR,
         padre_id=vendedor.id,
+        revendedor_padre_id=revendedor.id if revendedor else None,
         activo=True,
         datos_cobro=datos.datos_cobro,
         cobro_transferencia=datos.cobro_transferencia,
     )
     sesion.add(jugador)
     sesion.commit()
-    auditoria.registrar(sesion, "REGISTRO_JUGADOR", detalle=f"jugador={jugador.usuario} vendedor={vendedor.usuario} cobro={jugador.datos_cobro}", usuario=vendedor)
+    via = f"revendedor={revendedor.usuario}" if revendedor else "vendedor directo"
+    auditoria.registrar(
+        sesion,
+        "REGISTRO_JUGADOR",
+        detalle=f"jugador={jugador.usuario} vendedor={vendedor.usuario} {via} cobro={jugador.datos_cobro}",
+        usuario=vendedor,
+    )
     sesion.commit()
-    return {"ok": True, "detalle": f"Jugador registrado con el vendedor {vendedor.nombre}"}
+    quien = revendedor.nombre if revendedor else vendedor.nombre
+    return {"ok": True, "detalle": f"Jugador registrado con {quien}"}
 
 
 @router.get("/me")
