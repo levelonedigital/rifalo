@@ -53,6 +53,15 @@ class JugadorCrear(BaseModel):
     telefono: str | None = None
 
 
+class JugadorEditar(BaseModel):
+    nombre: str | None = None
+    telefono: str | None = None
+    datos_cobro: str | None = Field(default=None, min_length=1)
+    cobro_transferencia: bool | None = None
+    password: str | None = None
+    activo: bool | None = None
+
+
 def _comision_propia(vendedor: Usuario, reglas) -> float:
     return vendedor.comision_pct if vendedor.comision_pct is not None else reglas.vendedor_pct
 
@@ -159,7 +168,7 @@ def editar_revendedor(revendedor_id: int, datos: RevendedorEditar, sesion: Sessi
     return {"id": rev.id, "usuario": rev.usuario, "codigo": rev.codigo, "comision_pct": rev.comision_pct, "activo": rev.activo}
 
 
-# ---------- JUGADORES PROPIOS ----------
+# ---------- JUGADORES PROPIOS (crear, editar, eliminar) ----------
 
 @router.post("/jugadores")
 def crear_jugador(datos: JugadorCrear, sesion: Session = Depends(obtener_sesion), vendedor: Usuario = vendedor_dep):
@@ -187,17 +196,55 @@ def crear_jugador(datos: JugadorCrear, sesion: Session = Depends(obtener_sesion)
 @router.get("/jugadores")
 def listar_jugadores(sesion: Session = Depends(obtener_sesion), vendedor: Usuario = vendedor_dep):
     jugadores = sesion.query(Usuario).filter(Usuario.padre_id == vendedor.id, Usuario.rol == RolUsuario.JUGADOR).all()
-    return [
-        {
-            "id": j.id,
-            "usuario": j.usuario,
-            "nombre": j.nombre,
-            "activo": j.activo,
-            "datos_cobro": j.datos_cobro,
-            "cobro_transferencia": bool(j.cobro_transferencia),
-        }
-        for j in jugadores
-    ]
+    salida = []
+    for j in jugadores:
+        rev = sesion.get(Usuario, j.revendedor_padre_id) if j.revendedor_padre_id else None
+        salida.append(
+            {
+                "id": j.id,
+                "usuario": j.usuario,
+                "nombre": j.nombre,
+                "telefono": j.telefono,
+                "activo": j.activo,
+                "datos_cobro": j.datos_cobro,
+                "cobro_transferencia": bool(j.cobro_transferencia),
+                "revendedor": rev.usuario if rev else None,
+            }
+        )
+    return salida
+
+
+@router.put("/jugadores/{jugador_id}")
+def editar_jugador(jugador_id: int, datos: JugadorEditar, sesion: Session = Depends(obtener_sesion), vendedor: Usuario = vendedor_dep):
+    jugador = sesion.get(Usuario, jugador_id)
+    if jugador is None or jugador.padre_id != vendedor.id or jugador.rol != RolUsuario.JUGADOR:
+        raise HTTPException(status_code=404, detail="Jugador no encontrado en tu linea")
+    if datos.password:
+        jugador.password_hash = hash_password(datos.password)
+    for campo in ("nombre", "telefono", "datos_cobro", "cobro_transferencia", "activo"):
+        valor = getattr(datos, campo)
+        if valor is not None:
+            setattr(jugador, campo, valor)
+    sesion.commit()
+    auditoria.registrar(sesion, "JUGADOR_EDITADO", detalle=jugador.usuario, usuario=vendedor)
+    sesion.commit()
+    return {"id": jugador.id, "usuario": jugador.usuario, "activo": jugador.activo}
+
+
+@router.delete("/jugadores/{jugador_id}")
+def eliminar_jugador(jugador_id: int, sesion: Session = Depends(obtener_sesion), vendedor: Usuario = vendedor_dep):
+    jugador = sesion.get(Usuario, jugador_id)
+    if jugador is None or jugador.padre_id != vendedor.id or jugador.rol != RolUsuario.JUGADOR:
+        raise HTTPException(status_code=404, detail="Jugador no encontrado en tu linea")
+    jugadas = sesion.query(Jugada).filter(Jugada.jugador_id == jugador_id).count()
+    if jugadas > 0:
+        raise HTTPException(status_code=400, detail=f"El jugador tiene {jugadas} jugadas: no se puede eliminar. Editalo y desactivalo.")
+    nombre = jugador.usuario
+    sesion.delete(jugador)
+    sesion.commit()
+    auditoria.registrar(sesion, "JUGADOR_ELIMINADO", detalle=nombre, usuario=vendedor)
+    sesion.commit()
+    return {"ok": True}
 
 
 # ---------- JUGADAS (numeros ocultos) ----------
