@@ -56,7 +56,7 @@
       <label>Usuario</label><input id="reg-usuario">
       <label>Contrasenia</label><input id="reg-password" type="password">
       <label>Nombre y apellido</label><input id="reg-nombre">
-      <label>Codigo de tu vendedor (ej: V1)</label><input id="reg-codigo">
+      <label>Codigo de tu vendedor o revendedor</label><input id="reg-codigo">
       <label>Alias o CBU (para cobrarte tus premios)</label><input id="reg-cobro" placeholder="tu.alias o CBU de 22 digitos">
       <div class="check-linea"><input type="checkbox" id="reg-transferencia" checked><span>Cobrar mis premios por transferencia</span></div>
       <button onclick="registrarJugador()">Registrarme</button>
@@ -226,10 +226,11 @@
       <div id="lista-vrevendedores"></div>
     </div>
     <div id="seccion-vjugadores" class="tarjeta" style="display:none">
+      <div id="vjug-edit-bar" class="modo-box" style="display:none"></div>
       <h2>Tu link de registro para compartir</h2>
       <div class="grilla">
         <div><input id="v-link" readonly></div>
-        <div><button class="secundario" onclick="copiarLink()">Copiar link</button></div>
+        <div><button class="secundario" onclick="copiarLink('v-link')">Copiar link</button></div>
       </div>
       <p class="chico">Comparti este link: quien lo abra llega al registro de jugador con tu codigo ya cargado.</p>
 
@@ -274,6 +275,30 @@
       <button class="secundario" onclick="cargarRResumen()">Actualizar</button>
       <div id="caja-rresumen"></div>
     </div>
+    <div id="seccion-rjugadores" class="tarjeta" style="display:none">
+      <div id="rjug-edit-bar" class="modo-box" style="display:none"></div>
+      <h2>Tu link de registro para compartir</h2>
+      <div class="grilla">
+        <div><input id="r-link" readonly></div>
+        <div><button class="secundario" onclick="copiarLink('r-link')">Copiar link</button></div>
+      </div>
+      <p class="chico">Comparti este link: quien lo abra queda como jugador tuyo y de tu vendedor.</p>
+
+      <h2>Cargar jugador a mano</h2>
+      <div class="grilla">
+        <div><label>Usuario</label><input id="rj-usuario"></div>
+        <div><label>Contrasenia</label><input id="rj-password" type="password"></div>
+        <div><label>Nombre y apellido</label><input id="rj-nombre"></div>
+        <div><label>Telefono</label><input id="rj-telefono"></div>
+        <div><label>Alias o CBU (para pagarle premios)</label><input id="rj-cobro"></div>
+      </div>
+      <div class="check-linea"><input type="checkbox" id="rj-transferencia" checked><span>Cobra sus premios por transferencia</span></div>
+      <button onclick="crearRJugador()">Cargar jugador a mano</button>
+
+      <h2>Jugadores mios</h2>
+      <button class="secundario" onclick="cargarRJugadores()">Actualizar</button>
+      <div id="lista-rjugadores"></div>
+    </div>
 
     <!-- JUGADOR -->
     <div id="seccion-jsorteos" class="tarjeta" style="display:none">
@@ -307,11 +332,15 @@ let SORTEOS_ABIERTOS_CACHE = {};
 let SORT_CACHE = {};
 let VEND_CACHE = {};
 let REV_CACHE = {};
+let VJUG_CACHE = {};
+let RJUG_CACHE = {};
 let SORT_ACTUAL = null;
 let TAB_ACTUAL = null;
 let sorteo_edit_id = null;
 let vendedor_edit_id = null;
 let rev_edit_id = null;
+let vjug_edit_id = null;
+let rjug_edit_id = null;
 let avisosTimer = null;
 let refrescoTimer = null;
 
@@ -319,7 +348,7 @@ const TABS_POR_ROL = {
   admin_principal: [["sorteos","Sorteos"],["vendedores","Vendedores"],["jugadas","Jugadas"],["resumen","Resumen"],["auditoria","Auditoria"]],
   admin: [["sorteos","Sorteos"],["jugadas","Jugadas"],["resumen","Resumen"],["auditoria","Auditoria"]],
   vendedor: [["vresumen","Mi resumen"],["vcargar","Cargar jugada"],["vpendientes","Aprobar"],["vjugadas","Mis jugadas"],["vrevendedores","Mis revendedores"],["vjugadores","Mis jugadores"]],
-  revendedor: [["rsorteos","Sorteos"],["rcargar","Cargar jugada"],["rjugadas","Mis jugadas"],["rresumen","Mi resumen"]],
+  revendedor: [["rsorteos","Sorteos"],["rcargar","Cargar jugada"],["rjugadas","Mis jugadas"],["rresumen","Mi resumen"],["rjugadores","Mis jugadores"]],
   jugador: [["jsorteos","Sorteos"],["jcargar","Mi jugada"],["jjugadas","Mis jugadas"]],
 };
 
@@ -440,7 +469,7 @@ async function registrarJugador() {
       }
       return;
     }
-    loginMsg("Registro listo: ya podes ingresar con tu usuario y contrasenia. Tus premios se acreditan en tu alias/CBU.");
+    loginMsg(d.detalle + ". Ya podes ingresar con tu usuario y contrasenia.");
     document.getElementById("form-registro").style.display = "none";
   } catch (e) { loginMsg(e.message, true); }
 }
@@ -496,6 +525,7 @@ function irTab(nombre) {
     rcargar: () => llenarSelectSorteos("/revendedor/sorteos", "r-sorteo"),
     rjugadas: cargarRJugadas,
     rresumen: cargarRResumen,
+    rjugadores: cargarRJugadores,
     jsorteos: cargarJSorteos,
     jcargar: () => llenarSelectSorteos("/jugador/sorteos", "j-sorteo"),
     jjugadas: cargarJJugadas,
@@ -972,7 +1002,7 @@ async function cargarAuditoria() {
   } catch (e) { aviso(e.message, true); }
 }
 
-// ---------- LINK DE REGISTRO DEL VENDEDOR ----------
+// ---------- LINKS DE REGISTRO ----------
 async function cargarLinkVendedor() {
   try {
     const me = await api("/auth/me", "GET");
@@ -980,15 +1010,22 @@ async function cargarLinkVendedor() {
   } catch (e) { /* ignora */ }
 }
 
-function copiarLink() {
-  const input = document.getElementById("v-link");
+async function cargarLinkRevendedor() {
+  try {
+    const me = await api("/auth/me", "GET");
+    document.getElementById("r-link").value = window.location.origin + "/panel?codigo=" + (me.codigo || "");
+  } catch (e) { /* ignora */ }
+}
+
+function copiarLink(idInput) {
+  const input = document.getElementById(idInput);
   input.select();
   input.setSelectionRange(0, 99999);
   document.execCommand("copy");
   aviso("Link copiado: pegalo donde quieras compartirlo");
 }
 
-// ---------- VENDEDOR: JUGADORES ----------
+// ---------- VENDEDOR: JUGADORES (crear, editar, eliminar) ----------
 async function crearVJugador() {
   const cuerpo = {
     usuario: document.getElementById("vj-usuario").value,
@@ -1006,12 +1043,69 @@ async function cargarVJugadores() {
   cargarLinkVendedor();
   try {
     const js = await api("/vendedor/jugadores", "GET");
-    let html = "<table><tr><th>#</th><th>Usuario</th><th>Nombre</th><th>Alias/CBU</th><th>Cobra por transferencia</th><th>Activo</th></tr>";
+    VJUG_CACHE = {};
+    js.forEach(j => { VJUG_CACHE[j.id] = j; });
+    let html = "<table><tr><th>#</th><th>Usuario</th><th>Nombre</th><th>Alias/CBU</th><th>Transf.</th><th>Via</th><th>Activo</th><th>Acciones</th></tr>";
     js.forEach(j => {
-      html += "<tr><td>" + j.id + "</td><td>" + j.usuario + "</td><td>" + j.nombre + "</td><td>" + (j.datos_cobro || "-") + "</td><td>" + (j.cobro_transferencia ? "si" : "no") + "</td><td>" + (j.activo ? "si" : "no") + "</td></tr>";
+      html += "<tr><td>" + j.id + "</td><td>" + j.usuario + "</td><td>" + j.nombre + "</td><td>" + (j.datos_cobro || "-") + "</td><td>" + (j.cobro_transferencia ? "si" : "no") + "</td><td>" + (j.revendedor || "directo") + "</td><td>" + (j.activo ? "si" : "no") + "</td><td><button class='secundario' onclick='empezarEdicionVJugador(" + j.id + ")'>Editar</button><button class='peligro' onclick='eliminarVJugador(" + j.id + ")'>Eliminar</button></td></tr>";
     });
     document.getElementById("lista-vjugadores").innerHTML = html + "</table>";
   } catch (e) { aviso(e.message, true); }
+}
+
+function empezarEdicionVJugador(id) {
+  const j = VJUG_CACHE[id];
+  if (!j) return;
+  vjug_edit_id = id;
+  const bar = document.getElementById("vjug-edit-bar");
+  bar.style.display = "block";
+  bar.innerHTML =
+    "Editando jugador " + j.usuario + "." +
+    "<div class='grilla'>" +
+    "<div><label>Nombre y apellido</label><input id='vje-nombre'></div>" +
+    "<div><label>Telefono</label><input id='vje-telefono'></div>" +
+    "<div><label>Alias o CBU</label><input id='vje-cobro'></div>" +
+    "<div><label>Nueva contrasenia (vacio = no cambiar)</label><input id='vje-password' type='password'></div>" +
+    "</div>" +
+    "<div class='check-linea'><input type='checkbox' id='vje-transferencia'><span>Cobra por transferencia</span></div>" +
+    "<div class='check-linea'><input type='checkbox' id='vje-activo'><span>Jugador activo</span></div>" +
+    "<button onclick='guardarEdicionVJugador()'>Guardar cambios</button><button class='peligro' onclick='cancelarEdicionVJugador()'>Cancelar</button>";
+  document.getElementById("vje-nombre").value = j.nombre || "";
+  document.getElementById("vje-telefono").value = j.telefono || "";
+  document.getElementById("vje-cobro").value = j.datos_cobro || "";
+  document.getElementById("vje-password").value = "";
+  document.getElementById("vje-transferencia").checked = Boolean(j.cobro_transferencia);
+  document.getElementById("vje-activo").checked = Boolean(j.activo);
+  bar.scrollIntoView({ behavior: "smooth" });
+}
+
+function cancelarEdicionVJugador() {
+  vjug_edit_id = null;
+  document.getElementById("vjug-edit-bar").style.display = "none";
+}
+
+async function guardarEdicionVJugador() {
+  const cuerpo = {
+    nombre: document.getElementById("vje-nombre").value,
+    telefono: document.getElementById("vje-telefono").value || null,
+    datos_cobro: document.getElementById("vje-cobro").value,
+    cobro_transferencia: document.getElementById("vje-transferencia").checked,
+    activo: document.getElementById("vje-activo").checked,
+  };
+  const pass = document.getElementById("vje-password").value;
+  if (pass) cuerpo.password = pass;
+  try {
+    await api("/vendedor/jugadores/" + vjug_edit_id, "PUT", cuerpo);
+    aviso("Jugador actualizado");
+    cancelarEdicionVJugador();
+    cargarVJugadores();
+  } catch (e) { aviso(e.message, true); }
+}
+
+async function eliminarVJugador(id) {
+  if (!confirm("Eliminar el jugador? Solo se puede si todavia no tiene jugadas.")) return;
+  try { await api("/vendedor/jugadores/" + id, "DELETE"); aviso("Jugador eliminado"); cargarVJugadores(); }
+  catch (e) { aviso(e.message, true); }
 }
 
 // ---------- VENDEDOR: REVENDEDORES (crear y editar completo) ----------
@@ -1185,6 +1279,89 @@ async function cargarRResumen() {
     const r = await api("/revendedor/resumen", "GET");
     document.getElementById("caja-rresumen").innerHTML = "<table><tr><th>Jugadas aprobadas</th><th>Vendido</th><th>Tu comision</th></tr><tr><td>" + r.jugadas_aprobadas + "</td><td>$" + r.vendido + "</td><td>$" + r.mi_comision + "</td></tr></table>";
   } catch (e) { aviso(e.message, true); }
+}
+
+// ---------- REVENDEDOR: JUGADORES (crear, editar, eliminar) ----------
+async function crearRJugador() {
+  const cuerpo = {
+    usuario: document.getElementById("rj-usuario").value,
+    password: document.getElementById("rj-password").value,
+    nombre: document.getElementById("rj-nombre").value,
+    telefono: document.getElementById("rj-telefono").value || null,
+    datos_cobro: document.getElementById("rj-cobro").value,
+    cobro_transferencia: document.getElementById("rj-transferencia").checked,
+  };
+  try { await api("/revendedor/jugadores", "POST", cuerpo); aviso("Jugador cargado a tu linea"); cargarRJugadores(); }
+  catch (e) { aviso(e.message, true); }
+}
+
+async function cargarRJugadores() {
+  cargarLinkRevendedor();
+  try {
+    const js = await api("/revendedor/jugadores", "GET");
+    RJUG_CACHE = {};
+    js.forEach(j => { RJUG_CACHE[j.id] = j; });
+    let html = "<table><tr><th>#</th><th>Usuario</th><th>Nombre</th><th>Alias/CBU</th><th>Transf.</th><th>Activo</th><th>Acciones</th></tr>";
+    js.forEach(j => {
+      html += "<tr><td>" + j.id + "</td><td>" + j.usuario + "</td><td>" + j.nombre + "</td><td>" + (j.datos_cobro || "-") + "</td><td>" + (j.cobro_transferencia ? "si" : "no") + "</td><td>" + (j.activo ? "si" : "no") + "</td><td><button class='secundario' onclick='empezarEdicionRJugador(" + j.id + ")'>Editar</button><button class='peligro' onclick='eliminarRJugador(" + j.id + ")'>Eliminar</button></td></tr>";
+    });
+    document.getElementById("lista-rjugadores").innerHTML = html + "</table>";
+  } catch (e) { aviso(e.message, true); }
+}
+
+function empezarEdicionRJugador(id) {
+  const j = RJUG_CACHE[id];
+  if (!j) return;
+  rjug_edit_id = id;
+  const bar = document.getElementById("rjug-edit-bar");
+  bar.style.display = "block";
+  bar.innerHTML =
+    "Editando jugador " + j.usuario + "." +
+    "<div class='grilla'>" +
+    "<div><label>Nombre y apellido</label><input id='rje-nombre'></div>" +
+    "<div><label>Telefono</label><input id='rje-telefono'></div>" +
+    "<div><label>Alias o CBU</label><input id='rje-cobro'></div>" +
+    "<div><label>Nueva contrasenia (vacio = no cambiar)</label><input id='rje-password' type='password'></div>" +
+    "</div>" +
+    "<div class='check-linea'><input type='checkbox' id='rje-transferencia'><span>Cobra por transferencia</span></div>" +
+    "<div class='check-linea'><input type='checkbox' id='rje-activo'><span>Jugador activo</span></div>" +
+    "<button onclick='guardarEdicionRJugador()'>Guardar cambios</button><button class='peligro' onclick='cancelarEdicionRJugador()'>Cancelar</button>";
+  document.getElementById("rje-nombre").value = j.nombre || "";
+  document.getElementById("rje-telefono").value = j.telefono || "";
+  document.getElementById("rje-cobro").value = j.datos_cobro || "";
+  document.getElementById("rje-password").value = "";
+  document.getElementById("rje-transferencia").checked = Boolean(j.cobro_transferencia);
+  document.getElementById("rje-activo").checked = Boolean(j.activo);
+  bar.scrollIntoView({ behavior: "smooth" });
+}
+
+function cancelarEdicionRJugador() {
+  rjug_edit_id = null;
+  document.getElementById("rjug-edit-bar").style.display = "none";
+}
+
+async function guardarEdicionRJugador() {
+  const cuerpo = {
+    nombre: document.getElementById("rje-nombre").value,
+    telefono: document.getElementById("rje-telefono").value || null,
+    datos_cobro: document.getElementById("rje-cobro").value,
+    cobro_transferencia: document.getElementById("rje-transferencia").checked,
+    activo: document.getElementById("rje-activo").checked,
+  };
+  const pass = document.getElementById("rje-password").value;
+  if (pass) cuerpo.password = pass;
+  try {
+    await api("/revendedor/jugadores/" + rjug_edit_id, "PUT", cuerpo);
+    aviso("Jugador actualizado");
+    cancelarEdicionRJugador();
+    cargarRJugadores();
+  } catch (e) { aviso(e.message, true); }
+}
+
+async function eliminarRJugador(id) {
+  if (!confirm("Eliminar el jugador? Solo se puede si todavia no tiene jugadas.")) return;
+  try { await api("/revendedor/jugadores/" + id, "DELETE"); aviso("Jugador eliminado"); cargarRJugadores(); }
+  catch (e) { aviso(e.message, true); }
 }
 
 // ---------- JUGADOR ----------
