@@ -6,10 +6,11 @@ from app.core.database import Base
 
 
 class EstadoSorteo(str, enum.Enum):
-    PROGRAMADO = "programado"
+    PREPARACION = "preparacion"          # inactivo: el admin lo arma y edita, nadie mas lo ve
+    PROGRAMADO = "programado"            # activo: visible y abierto a jugadas
     CERRADO = "cerrado"
     LIQUIDADO = "liquidado"
-    REPROGRAMANDO = "reprogramando"   # hora cancelada, jugadas y pozo siguen en juego
+    REPROGRAMANDO = "reprogramando"      # hora cancelada, jugadas y pozo siguen en juego
 
 
 class EstadoJugada(str, enum.Enum):
@@ -67,7 +68,7 @@ class Sorteo(Base):
     horario = Column(String(20), nullable=False)
     fecha = Column(DateTime(timezone=True), nullable=False)   # solo el dia del sorteo
     hora_cierre = Column(String(5), nullable=True)   # HH:MM limite para anotarse (lo configura el admin)
-    estado = Column(Enum(EstadoSorteo, name="estado_sorteo"), default=EstadoSorteo.PROGRAMADO)
+    estado = Column(Enum(EstadoSorteo, name="estado_sorteo"), default=EstadoSorteo.PREPARACION)
     resultados = Column(String(200), nullable=True)  # 20 numeros oficiales separados por coma
     premio_fijo = Column(Float, nullable=True)
     pozo_inicial = Column(Float, default=0.0)
