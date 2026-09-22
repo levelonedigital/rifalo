@@ -1,3 +1,4 @@
+import re
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -20,6 +21,15 @@ admin_dep = Depends(requerir_rol(RolUsuario.ADMIN_PRINCIPAL, RolUsuario.ADMIN))
 
 ESTADOS_VENDIDOS = [EstadoJugada.APROBADA, EstadoJugada.GANADORA, EstadoJugada.PERDEDORA]
 NUMEROS_OCULTOS = "••• (numeros ocultos)"
+HORA_RE = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
+
+
+def validar_hora_cierre(valor):
+    if valor is None:
+        return None
+    if not HORA_RE.match(valor):
+        raise HTTPException(status_code=400, detail="Horario de cierre invalido: usa HH:MM (ej: 20:00)")
+    return valor
 
 
 def detalle_por_defecto(modalidad) -> str:
@@ -31,6 +41,7 @@ class SorteoCrear(BaseModel):
     modalidad: str
     horario: str
     fecha: datetime
+    hora_cierre: str | None = None
     premio_fijo: float | None = Field(default=None, gt=0)
     pozo_inicial: float | None = Field(default=None, ge=0)
     precio_jugada: float = Field(gt=0)
@@ -45,6 +56,7 @@ class SorteoCrear(BaseModel):
 class SorteoEditar(BaseModel):
     horario: str | None = None
     fecha: datetime | None = None
+    hora_cierre: str | None = None
     precio_jugada: float | None = Field(default=None, gt=0)
     pozo_base: float | None = Field(default=None, ge=0)
     casa_pct: float | None = Field(default=None, ge=0, le=100)
@@ -108,11 +120,13 @@ def crear_sorteo(datos: SorteoCrear, sesion: Session = Depends(obtener_sesion), 
         datos.vendedor_pct = reglas.vendedor_pct
     if datos.casa_pct + datos.vendedor_pct > 100:
         raise HTTPException(status_code=400, detail="Casa + vendedores no puede superar el 100%")
+    hora_cierre = validar_hora_cierre(datos.hora_cierre)
     pozo = datos.pozo_inicial if datos.pozo_inicial is not None else datos.pozo_base
     sorteo = Sorteo(
         modalidad=datos.modalidad,
         horario=datos.horario,
         fecha=datos.fecha,
+        hora_cierre=hora_cierre,
         premio_fijo=datos.premio_fijo,
         pozo_inicial=pozo,
         precio_jugada=datos.precio_jugada,
@@ -140,6 +154,8 @@ def editar_sorteo(sorteo_id: int, datos: SorteoEditar, sesion: Session = Depends
         raise HTTPException(status_code=400, detail="Un sorteo liquidado no se puede editar")
     reglas = motor.obtener_reglas(sesion)
     cambios = datos.model_dump(exclude_none=True)
+    if "hora_cierre" in cambios:
+        cambios["hora_cierre"] = validar_hora_cierre(cambios["hora_cierre"])
     if "horario" in cambios and cambios["horario"] not in reglas.dict_horarios():
         raise HTTPException(status_code=400, detail="Horario inexistente en las reglas")
     if "casa_pct" in cambios and "vendedor_pct" in cambios and cambios["casa_pct"] + cambios["vendedor_pct"] > 100:
@@ -181,6 +197,7 @@ def listar_sorteos(sesion: Session = Depends(obtener_sesion), admin: Usuario = D
                 "modalidad": s.modalidad,
                 "horario": s.horario,
                 "fecha": s.fecha.isoformat(),
+                "hora_cierre": s.hora_cierre,
                 "estado": s.estado.value,
                 "resultados": s.resultados,
                 "pozo": s.pozo_actual,
@@ -258,7 +275,7 @@ def cancelar_horario(sorteo_id: int, sesion: Session = Depends(obtener_sesion), 
     sorteo.estado = EstadoSorteo.REPROGRAMANDO
     aviso = Aviso(
         texto=(
-            f"Sorteo #{sorteo.id} ({sorteo.modalidad} {sorteo.horario} {sorteo.fecha.strftime('%d/%m %H:%M')}): "
+            f"Sorteo #{sorteo.id} ({sorteo.modalidad} {sorteo.horario} {sorteo.fecha.strftime('%d/%m')}): "
             f"jugada cancelada por no cumplir los requisitos. Aguarda nuevo horario."
         ),
         destino="todos",
@@ -286,7 +303,7 @@ def reprogramar(sorteo_id: int, datos: Reprogramar, sesion: Session = Depends(ob
     aviso = Aviso(
         texto=(
             f"Sorteo #{sorteo.id} ({sorteo.modalidad} {sorteo.horario}) reprogramado: "
-            f"nuevo horario {datos.fecha.strftime('%d/%m/%Y %H:%M')}."
+            f"nuevo dia {datos.fecha.strftime('%d/%m/%Y')}."
         ),
         destino="todos",
     )
