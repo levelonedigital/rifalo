@@ -74,7 +74,7 @@
     <!-- ADMIN: SORTEOS -->
     <div id="seccion-sorteos" class="tarjeta" style="display:none">
       <div id="editar-bar" class="modo-box" style="display:none"></div>
-      <h2>Crear sorteo</h2>
+      <h2>Crear sorteo (nace en preparacion, inactivo)</h2>
       <div class="grilla">
         <div><label>Modalidad</label><select id="sorteo-modalidad" onchange="pintarReglasModalidad()"></select></div>
         <div><label>Horario oficial del resultado</label><select id="sorteo-horario"></select></div>
@@ -591,7 +591,21 @@ function leerFormSorteo() {
 
 async function crearSorteo() {
   const cuerpo = leerFormSorteo();
-  try { const d = await api("/admin/sorteos", "POST", cuerpo); aviso("Sorteo #" + d.id + " creado con pozo $" + d.pozo_inicial); cargarSorteos(); }
+  try {
+    const d = await api("/admin/sorteos", "POST", cuerpo);
+    aviso("Sorteo #" + d.id + " creado EN PREPARACION (inactivo). Revisalo, editalo si hace falta y recien ahi activalo.");
+    cargarSorteos();
+  }
+  catch (e) { aviso(e.message, true); }
+}
+
+async function activarSorteo(id) {
+  try { await api("/admin/sorteos/" + id + "/activar", "POST"); aviso("Sorteo #" + id + " ACTIVADO: ya lo ven vendedores, revendedores y jugadores"); cargarSorteos(); }
+  catch (e) { aviso(e.message, true); }
+}
+
+async function desactivarSorteo(id) {
+  try { await api("/admin/sorteos/" + id + "/desactivar", "POST"); aviso("Sorteo #" + id + " desactivado: vuelve a preparacion, nadie mas lo ve"); cargarSorteos(); }
   catch (e) { aviso(e.message, true); }
 }
 
@@ -695,15 +709,16 @@ async function cargarSorteos() {
     sorteos.forEach(s => {
       html += "<tr><td>" + s.id + "</td><td>" + (s.imagen_url ? "<img src='" + s.imagen_url + "' style='width:44px;height:44px;object-fit:cover;border-radius:4px'>" : "-") + "</td><td>" + s.modalidad + (s.solo_participantes ? " VACANTE" : "") + "</td><td>" + s.horario + "</td><td>" + s.fecha.slice(0,10) + "</td><td>" + (s.hora_cierre || "sin limite") + "</td><td>" + s.estado + (s.busqueda_agotada ? " (manual)" : "") + "</td><td>$" + s.pozo + "</td><td>$" + (s.recaudado || 0) + " / $" + s.costo + (s.costo_cubierto ? " ✔" : " ✘") + "</td><td>";
       html += "<button class='secundario' onclick='seleccionarSorteo(" + s.id + ")'>Detalles</button>";
-      if (s.estado !== "liquidado") {
-        html += "<button class='secundario' onclick='empezarEdicion(" + s.id + ")'>Editar</button>";
-        html += "<button class='peligro' onclick='borrarSorteo(" + s.id + ")'>Borrar</button>";
-      }
-      if (s.estado === "programado") html += "<button class='secundario' onclick='cerrarSorteo(" + s.id + ")'>Cerrar</button><button class='peligro' onclick='cancelarHorario(" + s.id + ")'>Cancelar horario</button>";
+      if (s.estado === "preparacion") html += "<button onclick='activarSorteo(" + s.id + ")'>Activar</button>";
+      if (s.estado === "programado") html += "<button class='secundario' onclick='desactivarSorteo(" + s.id + ")'>Desactivar</button><button class='secundario' onclick='cerrarSorteo(" + s.id + ")'>Cerrar</button><button class='peligro' onclick='cancelarHorario(" + s.id + ")'>Cancelar horario</button>";
       if (s.estado === "cerrado") html += "<button onclick='cargarResultado(" + s.id + ")'>Cargar 20 nums</button><button class='peligro' onclick='cancelarHorario(" + s.id + ")'>Cancelar horario</button>";
       if (s.estado === "reprogramando") {
         html += "<button onclick='prepararReprog(" + s.id + ")'>Reprogramar</button>";
         opcionesReprog += "<option value='" + s.id + "'>#" + s.id + " " + s.modalidad + " " + s.horario + " " + s.fecha.slice(0,10) + "</option>";
+      }
+      if (s.estado !== "liquidado") {
+        html += "<button class='secundario' onclick='empezarEdicion(" + s.id + ")'>Editar</button>";
+        html += "<button class='peligro' onclick='borrarSorteo(" + s.id + ")'>Borrar</button>";
       }
       if (s.estado === "liquidado") html += "<button class='secundario' onclick='pozoVacante(" + s.id + ")'>Pozo vacante</button>";
       html += "</td></tr>";
@@ -751,7 +766,7 @@ async function cargarResultado(id) {
       const porJugada = Math.round((d.pozo_pagado / d.ganadoras.length) * 100) / 100;
       detalle = "Liquidado.\nGanadoras: jugadas " + d.ganadoras.join(", ") + ".\nPozo pagado: $" + d.pozo_pagado + " ($" + porJugada + " por jugada ganadora).";
     } else {
-      detalle = "Liquidado sin ganadoras.\nPozo retenido: $" + d.pozo_sin_ganador + ".\nVos decis que hacer: pozo vacante para los del original o arrancar de cero.";
+      detalle = "Liquidado sin ganadoras.\nPozo retenido: $" + d.pozo_sin_ganador + ".";
     }
     aviso(detalle);
     cargarSorteos();
@@ -761,7 +776,7 @@ async function cargarResultado(id) {
 async function pozoVacante(id) {
   const fecha = prompt("Dia del sorteo vacante (AAAA-MM-DD):");
   if (!fecha) return;
-  try { const d = await api("/admin/sorteos/" + id + "/pozo-vacante", "POST", { fecha: fecha }); aviso("Pozo vacante #" + d.id + " creado con $" + d.pozo_inicial); cargarSorteos(); }
+  try { const d = await api("/admin/sorteos/" + id + "/pozo-vacante", "POST", { fecha: fecha }); aviso("Pozo vacante #" + d.id + " creado en preparacion con $" + d.pozo_inicial + ". Activalo cuando este listo."); cargarSorteos(); }
   catch (e) { aviso(e.message, true); }
 }
 
