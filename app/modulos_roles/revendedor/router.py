@@ -23,6 +23,7 @@ class JugadaCrear(BaseModel):
     sorteo_id: int
     numeros: list[int]
     jugador_nombre: str | None = None
+    jugador_id: int | None = None   # jugador registrado en tu linea (opcional)
 
 
 class JugadorCrear(BaseModel):
@@ -166,8 +167,16 @@ def cargar_jugada(datos: JugadaCrear, sesion: Session = Depends(obtener_sesion),
     sorteo = sesion.get(Sorteo, datos.sorteo_id)
     if sorteo is None:
         raise HTTPException(status_code=404, detail="Sorteo no encontrado")
+    jugador_id = None
+    nombre = datos.jugador_nombre
+    if datos.jugador_id is not None:
+        pj = sesion.get(Usuario, datos.jugador_id)
+        if pj is None or pj.revendedor_padre_id != rev.id or pj.rol != RolUsuario.JUGADOR:
+            raise HTTPException(status_code=400, detail="Jugador invalido para tu linea")
+        jugador_id = pj.id
+        nombre = pj.nombre
     try:
-        jugada = crear_jugada(sesion, sorteo, datos.numeros, vendedor, revendedor_id=rev.id, jugador_nombre=datos.jugador_nombre)
+        jugada = crear_jugada(sesion, sorteo, datos.numeros, vendedor, revendedor_id=rev.id, jugador_id=jugador_id, jugador_nombre=nombre)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     return {"id": jugada.id, "numeros": jugada.numeros, "precio": jugada.precio, "estado": jugada.estado.value}
