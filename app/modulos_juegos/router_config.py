@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.core import auditoria
@@ -148,8 +149,8 @@ def borrar_aviso(aviso_id: int, sesion: Session = Depends(obtener_sesion), admin
 
 @router.post("/reset-total")
 def reset_total(datos: ResetConfirm, sesion: Session = Depends(obtener_sesion), admin: Usuario = Depends(requerir_rol(RolUsuario.ADMIN_PRINCIPAL))):
-    """Borra todos los datos (jugadas, sorteos, avisos, guias, auditoria, usuarios)
-    y recrea el admin inicial. Irreversible."""
+    """Borra todos los datos (jugadas, sorteos, avisos, guias, auditoria, usuarios),
+    reinicia los contadores de numeros y recrea el admin inicial. Irreversible."""
     if datos.confirmacion != "BORRAR TODO":
         raise HTTPException(status_code=400, detail="Confirmacion invalida: escribi BORRAR TODO")
     sesion.query(Jugada).delete()
@@ -159,6 +160,10 @@ def reset_total(datos: ResetConfirm, sesion: Session = Depends(obtener_sesion), 
     sesion.query(LogAuditoria).delete()
     sesion.query(ReglasSistema).delete()
     sesion.query(Usuario).delete()
+    sesion.commit()
+    for modelo in (Jugada, Sorteo, Aviso, PlantillaSorteo, ReglasSistema, LogAuditoria, Usuario):
+        tabla = modelo.__tablename__
+        sesion.execute(text(f"SELECT setval(pg_get_serial_sequence('{tabla}', 'id'), 1, false)"))
     sesion.commit()
     admin_nuevo = Usuario(
         usuario=Configuracion.ADMIN_INICIAL_USUARIO,
@@ -172,4 +177,4 @@ def reset_total(datos: ResetConfirm, sesion: Session = Depends(obtener_sesion), 
     sesion.commit()
     obtener_reglas(sesion)
     sesion.commit()
-    return {"ok": True, "detalle": "Base vacia. Admin inicial recreado."}
+    return {"ok": True, "detalle": "Base vacia, contadores en 1. Admin inicial recreado."}
