@@ -65,7 +65,8 @@ class Sorteo(Base):
     id = Column(Integer, primary_key=True, index=True)
     modalidad = Column(String(30), nullable=False)   # clave de la modalidad (plugin)
     horario = Column(String(20), nullable=False)
-    fecha = Column(DateTime(timezone=True), nullable=False)
+    fecha = Column(DateTime(timezone=True), nullable=False)   # solo el dia del sorteo
+    hora_cierre = Column(String(5), nullable=True)   # HH:MM limite para anotarse (lo configura el admin)
     estado = Column(Enum(EstadoSorteo, name="estado_sorteo"), default=EstadoSorteo.PROGRAMADO)
     resultados = Column(String(200), nullable=True)  # 20 numeros oficiales separados por coma
     premio_fijo = Column(Float, nullable=True)
