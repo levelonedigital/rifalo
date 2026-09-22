@@ -131,6 +131,7 @@
 
     <!-- ADMIN: VENDEDORES -->
     <div id="seccion-vendedores" class="tarjeta" style="display:none">
+      <div id="vended-edit-bar" class="modo-box" style="display:none"></div>
       <h2>Crear vendedor</h2>
       <div class="grilla">
         <div><label>Usuario</label><input id="vend-usuario"></div>
@@ -210,11 +211,13 @@
       <div id="lista-vjugadas"></div>
     </div>
     <div id="seccion-vrevendedores" class="tarjeta" style="display:none">
+      <div id="vrev-edit-bar" class="modo-box" style="display:none"></div>
       <h2>Crear revendedor (se paga de tu comision)</h2>
       <div class="grilla">
         <div><label>Usuario</label><input id="vrev-usuario"></div>
         <div><label>Contrasenia</label><input id="vrev-password" type="password"></div>
         <div><label>Nombre</label><input id="vrev-nombre"></div>
+        <div><label>Telefono</label><input id="vrev-telefono"></div>
         <div><label>Codigo</label><input id="vrev-codigo"></div>
         <div><label>Comision % (menor o igual a la tuya)</label><input id="vrev-comision" type="number"></div>
       </div>
@@ -302,9 +305,13 @@ let rol = localStorage.getItem("rifalo_rol") || null;
 let MODALIDADES = [];
 let SORTEOS_ABIERTOS_CACHE = {};
 let SORT_CACHE = {};
+let VEND_CACHE = {};
+let REV_CACHE = {};
 let SORT_ACTUAL = null;
 let TAB_ACTUAL = null;
 let sorteo_edit_id = null;
+let vendedor_edit_id = null;
+let rev_edit_id = null;
 let avisosTimer = null;
 let refrescoTimer = null;
 
@@ -780,6 +787,75 @@ async function pozoVacante(id) {
   catch (e) { aviso(e.message, true); }
 }
 
+// ---------- ADMIN: VENDEDORES (crear y editar completo) ----------
+async function crearVendedor() {
+  const cuerpo = {
+    usuario: document.getElementById("vend-usuario").value,
+    password: document.getElementById("vend-password").value,
+    nombre: document.getElementById("vend-nombre").value,
+    telefono: document.getElementById("vend-telefono").value || null,
+    codigo: document.getElementById("vend-codigo").value,
+    comision_pct: parseFloat(document.getElementById("vend-comision").value),
+    datos_transferencia: document.getElementById("vend-transferencia").value || null,
+  };
+  try { await api("/admin/vendedores", "POST", cuerpo); aviso("Vendedor creado"); cargarVendedores(); }
+  catch (e) { aviso(e.message, true); }
+}
+
+async function cargarVendedores() {
+  try {
+    const vs = await api("/admin/vendedores", "GET");
+    VEND_CACHE = {};
+    vs.forEach(v => { VEND_CACHE[v.id] = v; });
+    let html = "<table><tr><th>#</th><th>Usuario</th><th>Nombre</th><th>Codigo</th><th>Comision</th><th>Activo</th><th>Acciones</th></tr>";
+    vs.forEach(v => {
+      html += "<tr><td>" + v.id + "</td><td>" + v.usuario + "</td><td>" + v.nombre + "</td><td>" + v.codigo + "</td><td>" + v.comision_pct + "%</td><td>" + (v.activo ? "si" : "no") + "</td><td><button class='secundario' onclick='empezarEdicionVendedor(" + v.id + ")'>Editar</button></td></tr>";
+    });
+    document.getElementById("lista-vendedores").innerHTML = html + "</table>";
+  } catch (e) { aviso(e.message, true); }
+}
+
+function empezarEdicionVendedor(id) {
+  const v = VEND_CACHE[id];
+  if (!v) return;
+  vendedor_edit_id = id;
+  document.getElementById("ve-nombre").value = v.nombre || "";
+  document.getElementById("ve-telefono").value = v.telefono || "";
+  document.getElementById("ve-codigo").value = v.codigo || "";
+  document.getElementById("ve-comision").value = v.comision_pct;
+  document.getElementById("ve-transferencia").value = v.datos_transferencia || "";
+  document.getElementById("ve-password").value = "";
+  document.getElementById("ve-activo").checked = Boolean(v.activo);
+  const bar = document.getElementById("vended-edit-bar");
+  bar.style.display = "block";
+  bar.innerHTML = "Editando vendedor " + v.usuario + ". <button onclick='guardarEdicionVendedor()'>Guardar cambios</button><button class='peligro' onclick='cancelarEdicionVendedor()'>Cancelar</button>";
+  bar.scrollIntoView({ behavior: "smooth" });
+}
+
+function cancelarEdicionVendedor() {
+  vendedor_edit_id = null;
+  document.getElementById("vended-edit-bar").style.display = "none";
+}
+
+async function guardarEdicionVendedor() {
+  const cuerpo = {
+    nombre: document.getElementById("ve-nombre").value,
+    telefono: document.getElementById("ve-telefono").value || null,
+    codigo: document.getElementById("ve-codigo").value,
+    comision_pct: parseFloat(document.getElementById("ve-comision").value),
+    datos_transferencia: document.getElementById("ve-transferencia").value || null,
+    activo: document.getElementById("ve-activo").checked,
+  };
+  const pass = document.getElementById("ve-password").value;
+  if (pass) cuerpo.password = pass;
+  try {
+    await api("/admin/vendedores/" + vendedor_edit_id, "PUT", cuerpo);
+    aviso("Vendedor actualizado");
+    cancelarEdicionVendedor();
+    cargarVendedores();
+  } catch (e) { aviso(e.message, true); }
+}
+
 // ---------- ADMIN: JUGADAS (por sorteo o por modo sorteo) ----------
 async function iniciarJugadas() {
   if (SORT_ACTUAL) {
@@ -885,44 +961,6 @@ async function cargarAuditoria() {
   } catch (e) { aviso(e.message, true); }
 }
 
-// ---------- ADMIN: VENDEDORES ----------
-async function crearVendedor() {
-  const cuerpo = {
-    usuario: document.getElementById("vend-usuario").value,
-    password: document.getElementById("vend-password").value,
-    nombre: document.getElementById("vend-nombre").value,
-    telefono: document.getElementById("vend-telefono").value || null,
-    codigo: document.getElementById("vend-codigo").value,
-    comision_pct: parseFloat(document.getElementById("vend-comision").value),
-    datos_transferencia: document.getElementById("vend-transferencia").value || null,
-  };
-  try { await api("/admin/vendedores", "POST", cuerpo); aviso("Vendedor creado"); cargarVendedores(); }
-  catch (e) { aviso(e.message, true); }
-}
-
-async function cargarVendedores() {
-  try {
-    const vs = await api("/admin/vendedores", "GET");
-    let html = "<table><tr><th>#</th><th>Usuario</th><th>Nombre</th><th>Codigo</th><th>Comision</th><th>Activo</th><th>Acciones</th></tr>";
-    vs.forEach(v => {
-      html += "<tr><td>" + v.id + "</td><td>" + v.usuario + "</td><td>" + v.nombre + "</td><td>" + v.codigo + "</td><td>" + v.comision_pct + "%</td><td>" + (v.activo ? "si" : "no") + "</td><td><button class='secundario' onclick='editarVendedor(" + v.id + "," + v.comision_pct + ")'>Comision</button><button class='" + (v.activo ? "peligro" : "") + "' onclick='alternarVendedor(" + v.id + "," + !v.activo + ")'>" + (v.activo ? "Desactivar" : "Activar") + "</button></td></tr>";
-    });
-    document.getElementById("lista-vendedores").innerHTML = html + "</table>";
-  } catch (e) { aviso(e.message, true); }
-}
-
-async function editarVendedor(id, actual) {
-  const nueva = prompt("Nueva comision % (actual " + actual + "%):");
-  if (nueva === null) return;
-  try { await api("/admin/vendedores/" + id, "PUT", { comision_pct: parseFloat(nueva) }); aviso("Comision actualizada"); cargarVendedores(); }
-  catch (e) { aviso(e.message, true); }
-}
-
-async function alternarVendedor(id, activo) {
-  try { await api("/admin/vendedores/" + id, "PUT", { activo: activo }); aviso("Vendedor " + (activo ? "activado" : "desactivado")); cargarVendedores(); }
-  catch (e) { aviso(e.message, true); }
-}
-
 // ---------- LINK DE REGISTRO DEL VENDEDOR ----------
 async function cargarLinkVendedor() {
   try {
@@ -962,6 +1000,72 @@ async function cargarVJugadores() {
       html += "<tr><td>" + j.id + "</td><td>" + j.usuario + "</td><td>" + j.nombre + "</td><td>" + (j.datos_cobro || "-") + "</td><td>" + (j.cobro_transferencia ? "si" : "no") + "</td><td>" + (j.activo ? "si" : "no") + "</td></tr>";
     });
     document.getElementById("lista-vjugadores").innerHTML = html + "</table>";
+  } catch (e) { aviso(e.message, true); }
+}
+
+// ---------- VENDEDOR: REVENDEDORES (crear y editar completo) ----------
+async function crearVRevendedor() {
+  const cuerpo = {
+    usuario: document.getElementById("vrev-usuario").value,
+    password: document.getElementById("vrev-password").value,
+    nombre: document.getElementById("vrev-nombre").value,
+    telefono: document.getElementById("vrev-telefono").value || null,
+    codigo: document.getElementById("vrev-codigo").value,
+    comision_pct: parseFloat(document.getElementById("vrev-comision").value),
+  };
+  try { await api("/vendedor/revendedores", "POST", cuerpo); aviso("Revendedor creado"); cargarVRevendedores(); }
+  catch (e) { aviso(e.message, true); }
+}
+
+async function cargarVRevendedores() {
+  try {
+    const rs = await api("/vendedor/revendedores", "GET");
+    REV_CACHE = {};
+    rs.forEach(r => { REV_CACHE[r.id] = r; });
+    let html = "<table><tr><th>#</th><th>Usuario</th><th>Nombre</th><th>Codigo</th><th>Comision</th><th>Activo</th><th>Acciones</th></tr>";
+    rs.forEach(r => {
+      html += "<tr><td>" + r.id + "</td><td>" + r.usuario + "</td><td>" + r.nombre + "</td><td>" + r.codigo + "</td><td>" + r.comision_pct + "%</td><td>" + (r.activo ? "si" : "no") + "</td><td><button class='secundario' onclick='empezarEdicionVRev(" + r.id + ")'>Editar</button></td></tr>";
+    });
+    document.getElementById("lista-vrevendedores").innerHTML = html + "</table>";
+  } catch (e) { aviso(e.message, true); }
+}
+
+function empezarEdicionVRev(id) {
+  const r = REV_CACHE[id];
+  if (!r) return;
+  rev_edit_id = id;
+  document.getElementById("vre-nombre").value = r.nombre || "";
+  document.getElementById("vre-telefono").value = r.telefono || "";
+  document.getElementById("vre-codigo").value = r.codigo || "";
+  document.getElementById("vre-comision").value = r.comision_pct;
+  document.getElementById("vre-password").value = "";
+  document.getElementById("vre-activo").checked = Boolean(r.activo);
+  const bar = document.getElementById("vrev-edit-bar");
+  bar.style.display = "block";
+  bar.innerHTML = "Editando revendedor " + r.usuario + ". <button onclick='guardarEdicionVRev()'>Guardar cambios</button><button class='peligro' onclick='cancelarEdicionVRev()'>Cancelar</button>";
+  bar.scrollIntoView({ behavior: "smooth" });
+}
+
+function cancelarEdicionVRev() {
+  rev_edit_id = null;
+  document.getElementById("vrev-edit-bar").style.display = "none";
+}
+
+async function guardarEdicionVRev() {
+  const cuerpo = {
+    nombre: document.getElementById("vre-nombre").value,
+    telefono: document.getElementById("vre-telefono").value || null,
+    codigo: document.getElementById("vre-codigo").value,
+    comision_pct: parseFloat(document.getElementById("vre-comision").value),
+    activo: document.getElementById("vre-activo").checked,
+  };
+  const pass = document.getElementById("vre-password").value;
+  if (pass) cuerpo.password = pass;
+  try {
+    await api("/vendedor/revendedores/" + rev_edit_id, "PUT", cuerpo);
+    aviso("Revendedor actualizado");
+    cancelarEdicionVRev();
+    cargarVRevendedores();
   } catch (e) { aviso(e.message, true); }
 }
 
@@ -1027,40 +1131,6 @@ async function cargarVJugadas() {
     js.forEach(j => { html += "<tr><td>" + j.id + "</td><td>" + j.sorteo_id + "</td><td>" + j.numeros + "</td><td>$" + j.precio + "</td><td>" + j.estado + "</td><td>$" + (j.premio ?? "-") + "</td><td>$" + (j.mi_comision ?? "-") + "</td></tr>"; });
     document.getElementById("lista-vjugadas").innerHTML = html + "</table>";
   } catch (e) { aviso(e.message, true); }
-}
-
-async function crearVRevendedor() {
-  const cuerpo = {
-    usuario: document.getElementById("vrev-usuario").value,
-    password: document.getElementById("vrev-password").value,
-    nombre: document.getElementById("vrev-nombre").value,
-    codigo: document.getElementById("vrev-codigo").value,
-    comision_pct: parseFloat(document.getElementById("vrev-comision").value),
-  };
-  try { await api("/vendedor/revendedores", "POST", cuerpo); aviso("Revendedor creado"); cargarVRevendedores(); }
-  catch (e) { aviso(e.message, true); }
-}
-
-async function cargarVRevendedores() {
-  try {
-    const rs = await api("/vendedor/revendedores", "GET");
-    let html = "<table><tr><th>#</th><th>Usuario</th><th>Nombre</th><th>Codigo</th><th>Comision</th><th>Activo</th><th>Acciones</th></tr>";
-    rs.forEach(r => {
-      html += "<tr><td>" + r.id + "</td><td>" + r.usuario + "</td><td>" + r.nombre + "</td><td>" + r.codigo + "</td><td>" + r.comision_pct + "%</td><td>" + (r.activo ? "si" : "no") + "</td><td><button class='secundario' onclick='editarVRev(" + r.id + "," + r.comision_pct + ")'>Comision</button><button class='" + (r.activo ? "peligro" : "") + "' onclick='alternarVRev(" + r.id + "," + !r.activo + ")'>" + (r.activo ? "Desactivar" : "Activar") + "</button></td></tr>";
-    });
-    document.getElementById("lista-vrevendedores").innerHTML = html + "</table>";
-  } catch (e) { aviso(e.message, true); }
-}
-
-async function editarVRev(id, actual) {
-  const nueva = prompt("Nueva comision % para tu revendedor (actual " + actual + "%, no puede superar la tuya):");
-  if (nueva === null) return;
-  try { await api("/vendedor/revendedores/" + id, "PUT", { comision_pct: parseFloat(nueva) }); aviso("Comision actualizada"); cargarVRevendedores(); }
-  catch (e) { aviso(e.message, true); }
-}
-async function alternarVRev(id, activo) {
-  try { await api("/vendedor/revendedores/" + id, "PUT", { activo: activo }); aviso("Revendedor " + (activo ? "activado" : "desactivado")); cargarVRevendedores(); }
-  catch (e) { aviso(e.message, true); }
 }
 
 // ---------- REVENDEDOR ----------
