@@ -634,7 +634,7 @@ function empezarEdicion(id) {
   document.getElementById("btn-crear").style.display = "none";
   const bar = document.getElementById("editar-bar");
   bar.style.display = "block";
-  bar.innerHTML = "Editando sorteo #" + id + ". Modificá los campos y guarda. <button onclick='guardarEdicion()'>Guardar cambios</button><button class='peligro' onclick='cancelarEdicion()'>Cancelar edicion</button>";
+  bar.innerHTML = "Editando sorteo #" + id + ". Modificá los campos del formulario de arriba y guarda. <button onclick='guardarEdicion()'>Guardar cambios</button><button class='peligro' onclick='cancelarEdicion()'>Cancelar edicion</button>";
   document.getElementById("editar-bar").scrollIntoView({ behavior: "smooth" });
 }
 
@@ -819,6 +819,20 @@ function empezarEdicionVendedor(id) {
   const v = VEND_CACHE[id];
   if (!v) return;
   vendedor_edit_id = id;
+  const bar = document.getElementById("vended-edit-bar");
+  bar.style.display = "block";
+  bar.innerHTML =
+    "Editando vendedor " + v.usuario + "." +
+    "<div class='grilla'>" +
+    "<div><label>Nombre</label><input id='ve-nombre'></div>" +
+    "<div><label>Telefono</label><input id='ve-telefono'></div>" +
+    "<div><label>Codigo</label><input id='ve-codigo'></div>" +
+    "<div><label>Comision %</label><input id='ve-comision' type='number'></div>" +
+    "<div><label>Nueva contrasenia (vacio = no cambiar)</label><input id='ve-password' type='password'></div>" +
+    "<div><label>Datos de transferencia</label><input id='ve-transferencia'></div>" +
+    "</div>" +
+    "<div class='check-linea'><input type='checkbox' id='ve-activo'><span>Vendedor activo</span></div>" +
+    "<button onclick='guardarEdicionVendedor()'>Guardar cambios</button><button class='peligro' onclick='cancelarEdicionVendedor()'>Cancelar</button>";
   document.getElementById("ve-nombre").value = v.nombre || "";
   document.getElementById("ve-telefono").value = v.telefono || "";
   document.getElementById("ve-codigo").value = v.codigo || "";
@@ -826,9 +840,6 @@ function empezarEdicionVendedor(id) {
   document.getElementById("ve-transferencia").value = v.datos_transferencia || "";
   document.getElementById("ve-password").value = "";
   document.getElementById("ve-activo").checked = Boolean(v.activo);
-  const bar = document.getElementById("vended-edit-bar");
-  bar.style.display = "block";
-  bar.innerHTML = "Editando vendedor " + v.usuario + ". <button onclick='guardarEdicionVendedor()'>Guardar cambios</button><button class='peligro' onclick='cancelarEdicionVendedor()'>Cancelar</button>";
   bar.scrollIntoView({ behavior: "smooth" });
 }
 
@@ -1034,15 +1045,25 @@ function empezarEdicionVRev(id) {
   const r = REV_CACHE[id];
   if (!r) return;
   rev_edit_id = id;
+  const bar = document.getElementById("vrev-edit-bar");
+  bar.style.display = "block";
+  bar.innerHTML =
+    "Editando revendedor " + r.usuario + "." +
+    "<div class='grilla'>" +
+    "<div><label>Nombre</label><input id='vre-nombre'></div>" +
+    "<div><label>Telefono</label><input id='vre-telefono'></div>" +
+    "<div><label>Codigo</label><input id='vre-codigo'></div>" +
+    "<div><label>Comision % (menor o igual a la tuya)</label><input id='vre-comision' type='number'></div>" +
+    "<div><label>Nueva contrasenia (vacio = no cambiar)</label><input id='vre-password' type='password'></div>" +
+    "</div>" +
+    "<div class='check-linea'><input type='checkbox' id='vre-activo'><span>Revendedor activo</span></div>" +
+    "<button onclick='guardarEdicionVRev()'>Guardar cambios</button><button class='peligro' onclick='cancelarEdicionVRev()'>Cancelar</button>";
   document.getElementById("vre-nombre").value = r.nombre || "";
   document.getElementById("vre-telefono").value = r.telefono || "";
   document.getElementById("vre-codigo").value = r.codigo || "";
   document.getElementById("vre-comision").value = r.comision_pct;
   document.getElementById("vre-password").value = "";
   document.getElementById("vre-activo").checked = Boolean(r.activo);
-  const bar = document.getElementById("vrev-edit-bar");
-  bar.style.display = "block";
-  bar.innerHTML = "Editando revendedor " + r.usuario + ". <button onclick='guardarEdicionVRev()'>Guardar cambios</button><button class='peligro' onclick='cancelarEdicionVRev()'>Cancelar</button>";
   bar.scrollIntoView({ behavior: "smooth" });
 }
 
