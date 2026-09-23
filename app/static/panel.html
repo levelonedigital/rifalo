@@ -19,6 +19,7 @@
   button { margin: 6px 4px 0 0; padding: 8px 14px; border: none; border-radius: 6px; background: #22c55e; color: #052e16; font-weight: bold; cursor: pointer; }
   button.secundario { background: #334155; color: #e2e8f0; }
   button.peligro { background: #dc2626; color: #fff; }
+  button.wa { background: #25D366; color: #fff; }
   table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 13px; }
   th, td { padding: 6px 6px; border-bottom: 1px solid #334155; text-align: left; }
   th { color: #93c5fd; }
@@ -33,6 +34,8 @@
   .aviso-box { background: #713f12; border: 1px solid #fbbf24; color: #fef3c7; border-radius: 6px; padding: 8px; margin: 6px 0; font-size: 13px; }
   .modo-box { background: #1e3a8a; border: 2px solid #60a5fa; color: #dbeafe; border-radius: 6px; padding: 10px; margin: 8px 0; font-size: 14px; }
   .cobro-box { background: #14532d; border: 1px solid #22c55e; color: #dcfce7; border-radius: 6px; padding: 10px; margin: 8px 0; font-size: 13px; }
+  .wa-links { background: #0f172a; border: 1px solid #25D366; border-radius: 6px; padding: 10px; margin-top: 8px; }
+  .wa-links a { color: #25D366; display: inline-block; margin: 4px 8px 4px 0; text-decoration: underline; }
   .grilla { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
   @media (max-width: 700px) { .grilla { grid-template-columns: 1fr; } }
 </style>
@@ -58,6 +61,7 @@
       <label>Usuario</label><input id="reg-usuario">
       <label>Contrasenia</label><input id="reg-password" type="password">
       <label>Nombre y apellido</label><input id="reg-nombre">
+      <label>Telefono (con prefijo, ej: 5491123456789)</label><input id="reg-telefono">
       <label>Codigo de tu vendedor o revendedor</label><input id="reg-codigo">
       <label>Alias o CBU (para cobrarte tus premios)</label><input id="reg-cobro" placeholder="tu.alias o CBU de 22 digitos">
       <div class="check-linea"><input type="checkbox" id="reg-transferencia" checked><span>Cobrar mis premios por transferencia</span></div>
@@ -247,7 +251,7 @@
         <div><label>Usuario</label><input id="vj-usuario"></div>
         <div><label>Contrasenia</label><input id="vj-password" type="password"></div>
         <div><label>Nombre y apellido</label><input id="vj-nombre"></div>
-        <div><label>Telefono</label><input id="vj-telefono"></div>
+        <div><label>Telefono (con prefijo, ej: 5491123456789)</label><input id="vj-telefono"></div>
         <div><label>Alias o CBU (para pagarle premios)</label><input id="vj-cobro"></div>
       </div>
       <div class="check-linea"><input type="checkbox" id="vj-transferencia" checked><span>Cobra sus premios por transferencia</span></div>
@@ -255,6 +259,8 @@
 
       <h2>Jugadores registrados conmigo</h2>
       <button class="secundario" onclick="cargarVJugadores()">Actualizar</button>
+      <button class="wa" onclick="mostrarTodosWhatsApp('v')">Enviar mensaje a todos</button>
+      <div id="vjugadores-wa-links"></div>
       <div id="lista-vjugadores"></div>
     </div>
 
@@ -302,7 +308,7 @@
         <div><label>Usuario</label><input id="rj-usuario"></div>
         <div><label>Contrasenia</label><input id="rj-password" type="password"></div>
         <div><label>Nombre y apellido</label><input id="rj-nombre"></div>
-        <div><label>Telefono</label><input id="rj-telefono"></div>
+        <div><label>Telefono (con prefijo, ej: 5491123456789)</label><input id="rj-telefono"></div>
         <div><label>Alias o CBU (para pagarle premios)</label><input id="rj-cobro"></div>
       </div>
       <div class="check-linea"><input type="checkbox" id="rj-transferencia" checked><span>Cobra sus premios por transferencia</span></div>
@@ -310,6 +316,8 @@
 
       <h2>Jugadores mios</h2>
       <button class="secundario" onclick="cargarRJugadores()">Actualizar</button>
+      <button class="wa" onclick="mostrarTodosWhatsApp('r')">Enviar mensaje a todos</button>
+      <div id="rjugadores-wa-links"></div>
       <div id="lista-rjugadores"></div>
     </div>
 
@@ -400,6 +408,15 @@ function parseNumeros(texto) {
   return texto.split(/[,\s]+/).filter(x => x).map(x => parseInt(x, 10));
 }
 
+function waLink(telefono, mensaje) {
+  // Normaliza: quita espacios, guiones, +. Si no empieza con 54 se asume Argentina.
+  let t = (telefono || "").replace(/[\s\-\(\)\+]/g, "");
+  if (!t) return null;
+  if (!t.startsWith("54")) t = "54" + t;
+  const msg = encodeURIComponent(mensaje || "");
+  return "https://wa.me/" + t + (msg ? "?text=" + msg : "");
+}
+
 // ---------- MODO SORTEO ----------
 function pintarModo() {
   const caja = document.getElementById("zona-modo");
@@ -428,7 +445,7 @@ function salirSorteo() {
   if (TAB_ACTUAL) irTab(TAB_ACTUAL);
 }
 
-// ---------- AVISOS (carteles) ----------
+// ---------- AVISOS ----------
 async function cargarAvisos() {
   try {
     const as = await api("/admin/avisos", "GET");
@@ -472,6 +489,7 @@ async function registrarJugador() {
     usuario: document.getElementById("reg-usuario").value,
     password: document.getElementById("reg-password").value,
     nombre: document.getElementById("reg-nombre").value,
+    telefono: document.getElementById("reg-telefono").value,
     codigo_vendedor: document.getElementById("reg-codigo").value,
     datos_cobro: document.getElementById("reg-cobro").value,
     cobro_transferencia: document.getElementById("reg-transferencia").checked,
@@ -574,7 +592,7 @@ function toggleJugadorManual(pref) {
   }
 }
 
-// ---------- MODALIDADES Y REGLAS VISIBLES ----------
+// ---------- MODALIDADES Y REGLAS ----------
 async function cargarModalidades() {
   MODALIDADES = await api("/admin/modalidades", "GET");
   const sel = document.getElementById("sorteo-modalidad");
@@ -811,11 +829,6 @@ function prepararReprog(id) {
   document.getElementById("bloque-reprog").scrollIntoView({ behavior: "smooth" });
 }
 
-async function cerrarSorteo(id) {
-  try { await api("/admin/sorteos/" + id + "/cerrar", "POST"); aviso("Sorteo cerrado: el buscador automatico ya puede trabajar"); cargarSorteos(); }
-  catch (e) { aviso(e.message, true); }
-}
-
 async function cancelarHorario(id) {
   try { await api("/admin/sorteos/" + id + "/cancelar-horario", "POST"); aviso("Horario cancelado: jugadas y pozo siguen en juego, se aviso a los jugadores"); cargarSorteos(); cargarAvisos(); }
   catch (e) { aviso(e.message, true); }
@@ -858,7 +871,7 @@ async function pozoVacante(id) {
   catch (e) { aviso(e.message, true); }
 }
 
-// ---------- ADMIN: VENDEDORES (crear y editar completo) ----------
+// ---------- ADMIN: VENDEDORES ----------
 async function crearVendedor() {
   const cuerpo = {
     usuario: document.getElementById("vend-usuario").value,
@@ -938,7 +951,7 @@ async function guardarEdicionVendedor() {
   } catch (e) { aviso(e.message, true); }
 }
 
-// ---------- ADMIN: JUGADAS (por sorteo o por modo sorteo) ----------
+// ---------- ADMIN: JUGADAS ----------
 async function iniciarJugadas() {
   if (SORT_ACTUAL) {
     document.getElementById("jugadas-selector").style.display = "none";
@@ -1001,7 +1014,7 @@ async function verJugada(id) {
   } catch (e) { aviso(e.message, true); }
 }
 
-// ---------- ADMIN: RESUMEN (general o del sorteo en modo) ----------
+// ---------- ADMIN: RESUMEN ----------
 async function cargarResumen() {
   try {
     if (SORT_ACTUAL) {
@@ -1017,7 +1030,7 @@ async function cargarResumen() {
   } catch (e) { aviso(e.message, true); }
 }
 
-// ---------- ADMIN: AUDITORIA (toda o solo del sorteo en modo) ----------
+// ---------- ADMIN: AUDITORIA ----------
 function coincideSorteo(log, id, idsJugadas) {
   const d = log.detalle || "";
   if (d.includes("sorteo=" + id)) return true;
@@ -1066,13 +1079,33 @@ function copiarLink(idInput) {
   aviso("Link copiado: pegalo donde quieras compartirlo");
 }
 
-// ---------- VENDEDOR: JUGADORES (crear, editar, eliminar) ----------
+// ---------- WHATSAPP ----------
+function mostrarTodosWhatsApp(pref) {
+  const cache = pref === "v" ? VJUG_CACHE : RJUG_CACHE;
+  const contId = pref === "v" ? "vjugadores-wa-links" : "rjugadores-wa-links";
+  const cont = document.getElementById(contId);
+  const jugadores = Object.values(cache).filter(j => j.activo && j.telefono);
+  if (!jugadores.length) {
+    cont.innerHTML = "<div class='wa-links'>No hay jugadores activos con telefono cargado.</div>";
+    return;
+  }
+  const msg = "Hola {nombre}, te escribo de RIFALO.";
+  let html = "<div class='wa-links'><b>Hace click en cada link para abrir WhatsApp con ese jugador:</b><br>";
+  jugadores.forEach(j => {
+    const link = waLink(j.telefono, msg.replace("{nombre}", j.nombre || ""));
+    if (link) html += "<a href='" + link + "' target='_blank'>" + j.nombre + " (" + j.telefono + ")</a>";
+  });
+  html += "</div>";
+  cont.innerHTML = html;
+}
+
+// ---------- VENDEDOR: JUGADORES ----------
 async function crearVJugador() {
   const cuerpo = {
     usuario: document.getElementById("vj-usuario").value,
     password: document.getElementById("vj-password").value,
     nombre: document.getElementById("vj-nombre").value,
-    telefono: document.getElementById("vj-telefono").value || null,
+    telefono: document.getElementById("vj-telefono").value,
     datos_cobro: document.getElementById("vj-cobro").value,
     cobro_transferencia: document.getElementById("vj-transferencia").checked,
   };
@@ -1086,11 +1119,14 @@ async function cargarVJugadores() {
     const js = await api("/vendedor/jugadores", "GET");
     VJUG_CACHE = {};
     js.forEach(j => { VJUG_CACHE[j.id] = j; });
-    let html = "<table><tr><th>#</th><th>Usuario</th><th>Nombre</th><th>Alias/CBU</th><th>Transf.</th><th>Via</th><th>Activo</th><th>Acciones</th></tr>";
+    let html = "<table><tr><th>#</th><th>Usuario</th><th>Nombre</th><th>Telefono</th><th>Alias/CBU</th><th>Transf.</th><th>Via</th><th>Activo</th><th>Acciones</th></tr>";
     js.forEach(j => {
-      html += "<tr><td>" + j.id + "</td><td>" + j.usuario + "</td><td>" + j.nombre + "</td><td>" + (j.datos_cobro || "-") + "</td><td>" + (j.cobro_transferencia ? "si" : "no") + "</td><td>" + (j.revendedor || "directo") + "</td><td>" + (j.activo ? "si" : "no") + "</td><td><button class='secundario' onclick='empezarEdicionVJugador(" + j.id + ")'>Editar</button><button class='peligro' onclick='eliminarVJugador(" + j.id + ")'>Eliminar</button></td></tr>";
+      const link = waLink(j.telefono, "Hola " + (j.nombre || "") + ", te escribo de RIFALO.");
+      const waBtn = link ? "<a class='wa' href='" + link + "' target='_blank' style='display:inline-block;padding:4px 8px;border-radius:4px;background:#25D366;color:#fff;text-decoration:none;font-size:11px'>WhatsApp</a>" : "";
+      html += "<tr><td>" + j.id + "</td><td>" + j.usuario + "</td><td>" + j.nombre + "</td><td>" + (j.telefono || "-") + "</td><td>" + (j.datos_cobro || "-") + "</td><td>" + (j.cobro_transferencia ? "si" : "no") + "</td><td>" + (j.revendedor || "directo") + "</td><td>" + (j.activo ? "si" : "no") + "</td><td><button class='secundario' onclick='empezarEdicionVJugador(" + j.id + ")'>Editar</button><button class='peligro' onclick='eliminarVJugador(" + j.id + ")'>Eliminar</button> " + waBtn + "</td></tr>";
     });
     document.getElementById("lista-vjugadores").innerHTML = html + "</table>";
+    document.getElementById("vjugadores-wa-links").innerHTML = "";
   } catch (e) { aviso(e.message, true); }
 }
 
@@ -1149,7 +1185,7 @@ async function eliminarVJugador(id) {
   catch (e) { aviso(e.message, true); }
 }
 
-// ---------- VENDEDOR: REVENDEDORES (crear y editar completo) ----------
+// ---------- VENDEDOR: REVENDEDORES ----------
 async function crearVRevendedor() {
   const cuerpo = {
     usuario: document.getElementById("vrev-usuario").value,
@@ -1170,7 +1206,7 @@ async function cargarVRevendedores() {
     rs.forEach(r => { REV_CACHE[r.id] = r; });
     let html = "<table><tr><th>#</th><th>Usuario</th><th>Nombre</th><th>Codigo</th><th>Comision</th><th>Activo</th><th>Acciones</th></tr>";
     rs.forEach(r => {
-      html += "<tr><td>" + r.id + "</td><td>" + r.usuario + "</td><td>" + r.nombre + "</td><td>" + r.codigo + "</td><td>" + r.comision_pct + "%</td><td>" + (r.activo ? "si" : "no") + "</td><td><button class='secundario' onclick='empezarEdicionVRev(" + r.id + ")'>Editar</button></td></tr>";
+      html += "<tr><td>" + r.id + "</td><td>" + r.usuario + "</td><td>" + r.nombre + "</td><td>" + r.codigo + "</td><td>" + r.comision_pct + "%</td><td>" + (r.activo ? "si" : "no") + "</td><td><button class='secundario' onclick='empezarEdicionVRev(" + r.id + ")'>Editar</button><button class='peligro' onclick='eliminarVRev(" + r.id + ")'>Eliminar</button></td></tr>";
     });
     document.getElementById("lista-vrevendedores").innerHTML = html + "</table>";
   } catch (e) { aviso(e.message, true); }
@@ -1225,7 +1261,13 @@ async function guardarEdicionVRev() {
   } catch (e) { aviso(e.message, true); }
 }
 
-// ---------- SELECTS DE SORTEOS ABIERTOS (vendedor/rev/jugador) ----------
+async function eliminarVRev(id) {
+  if (!confirm("Eliminar el revendedor? Solo se puede si no tiene jugadores ni jugadas.")) return;
+  try { await api("/vendedor/revendedores/" + id, "DELETE"); aviso("Revendedor eliminado"); cargarVRevendedores(); }
+  catch (e) { aviso(e.message, true); }
+}
+
+// ---------- SELECTS DE SORTEOS ----------
 async function llenarSelectSorteos(ruta, idSelect) {
   try {
     const previo = document.getElementById(idSelect).value;
@@ -1326,13 +1368,13 @@ async function cargarRResumen() {
   } catch (e) { aviso(e.message, true); }
 }
 
-// ---------- REVENDEDOR: JUGADORES (crear, editar, eliminar) ----------
+// ---------- REVENDEDOR: JUGADORES ----------
 async function crearRJugador() {
   const cuerpo = {
     usuario: document.getElementById("rj-usuario").value,
     password: document.getElementById("rj-password").value,
     nombre: document.getElementById("rj-nombre").value,
-    telefono: document.getElementById("rj-telefono").value || null,
+    telefono: document.getElementById("rj-telefono").value,
     datos_cobro: document.getElementById("rj-cobro").value,
     cobro_transferencia: document.getElementById("rj-transferencia").checked,
   };
@@ -1346,11 +1388,14 @@ async function cargarRJugadores() {
     const js = await api("/revendedor/jugadores", "GET");
     RJUG_CACHE = {};
     js.forEach(j => { RJUG_CACHE[j.id] = j; });
-    let html = "<table><tr><th>#</th><th>Usuario</th><th>Nombre</th><th>Alias/CBU</th><th>Transf.</th><th>Activo</th><th>Acciones</th></tr>";
+    let html = "<table><tr><th>#</th><th>Usuario</th><th>Nombre</th><th>Telefono</th><th>Alias/CBU</th><th>Transf.</th><th>Activo</th><th>Acciones</th></tr>";
     js.forEach(j => {
-      html += "<tr><td>" + j.id + "</td><td>" + j.usuario + "</td><td>" + j.nombre + "</td><td>" + (j.datos_cobro || "-") + "</td><td>" + (j.cobro_transferencia ? "si" : "no") + "</td><td>" + (j.activo ? "si" : "no") + "</td><td><button class='secundario' onclick='empezarEdicionRJugador(" + j.id + ")'>Editar</button><button class='peligro' onclick='eliminarRJugador(" + j.id + ")'>Eliminar</button></td></tr>";
+      const link = waLink(j.telefono, "Hola " + (j.nombre || "") + ", te escribo de RIFALO.");
+      const waBtn = link ? "<a class='wa' href='" + link + "' target='_blank' style='display:inline-block;padding:4px 8px;border-radius:4px;background:#25D366;color:#fff;text-decoration:none;font-size:11px'>WhatsApp</a>" : "";
+      html += "<tr><td>" + j.id + "</td><td>" + j.usuario + "</td><td>" + j.nombre + "</td><td>" + (j.telefono || "-") + "</td><td>" + (j.datos_cobro || "-") + "</td><td>" + (j.cobro_transferencia ? "si" : "no") + "</td><td>" + (j.activo ? "si" : "no") + "</td><td><button class='secundario' onclick='empezarEdicionRJugador(" + j.id + ")'>Editar</button><button class='peligro' onclick='eliminarRJugador(" + j.id + ")'>Eliminar</button> " + waBtn + "</td></tr>";
     });
     document.getElementById("lista-rjugadores").innerHTML = html + "</table>";
+    document.getElementById("rjugadores-wa-links").innerHTML = "";
   } catch (e) { aviso(e.message, true); }
 }
 
