@@ -2,7 +2,7 @@ import re
 import threading
 import time
 import unicodedata
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import requests
 
@@ -12,7 +12,23 @@ from app.core.database import SessionLocal
 from app.modulos_juegos.motor import liquidar_sorteo, obtener_reglas
 from app.modelos.juegos import Aviso, EstadoSorteo, Sorteo
 
-_intentos = {}  # {sorteo_id: {"primero": datetime, "lecturas": [lista_nums, ...]}}
+_intentos = {}
+
+
+def _zona():
+    """Zona horaria oficial del sistema (Argentina). Con respaldo a UTC-3 fijo."""
+    try:
+        from zoneinfo import ZoneInfo
+        return ZoneInfo(Configuracion.ZONA_HORARIA)
+    except Exception:
+        return timezone(timedelta(hours=-3))
+
+
+def _momento_horario(sorteo: Sorteo, hhmm: str) -> datetime:
+    """Datetime del sorteo en hora de Argentina a partir de un HH:MM."""
+    hora, minuto = (int(x) for x in hhmm.split(":"))
+    f = sorteo.fecha
+    return datetime(f.year, f.month, f.day, hora, minuto, 0, tzinfo=_zona())
 
 
 def _normalizar(texto: str) -> str:
@@ -68,8 +84,7 @@ def chequeo_costo(sesion, reglas, ahora: datetime):
         hhmm = reglas.dict_horarios().get(sorteo.horario)
         if not hhmm:
             continue
-        hora, minuto = (int(x) for x in hhmm.split(":"))
-        momento = sorteo.fecha.replace(hour=hora, minute=minuto, second=0, microsecond=0)
+        momento = _momento_horario(sorteo, hhmm)
         if momento - timedelta(minutes=30) <= ahora < momento:
             costo = costo_a_cubrir(sorteo)
             if (sorteo.recaudado or 0.0) < costo:
@@ -111,12 +126,12 @@ def _actualizar_semanal(sesion, sorteo_dia: Sorteo, reglas):
 
 
 def ciclo():
-    """Una pasada: cierre automatico, alerta de costo y busqueda con triple check."""
+    """Una pasada: cierre automatico, alerta de costo y busqueda con triple check (hora de Argentina)."""
     sesion = SessionLocal()
     try:
         reglas = obtener_reglas(sesion)
         horarios = reglas.dict_horarios()
-        ahora = datetime.now()
+        ahora = datetime.now(_zona())
         chequeo_costo(sesion, reglas, ahora)
 
         # 1) CIERRE AUTOMATICO: al llegar el horario oficial, el sorteo se cierra solo.
@@ -129,8 +144,7 @@ def ciclo():
             hhmm = horarios.get(sorteo.horario)
             if not hhmm:
                 continue
-            hora, minuto = (int(x) for x in hhmm.split(":"))
-            momento = sorteo.fecha.replace(hour=hora, minute=minuto, second=0, microsecond=0)
+            momento = _momento_horario(sorteo, hhmm)
             if ahora >= momento:
                 sorteo.estado = EstadoSorteo.CERRADO
                 auditoria.registrar(sesion, "SORTEO_CERRADO_AUTO", detalle=f"sorteo={sorteo.id} horario={sorteo.horario}")
@@ -151,23 +165,20 @@ def ciclo():
             hhmm = horarios.get(sorteo.horario)
             if not hhmm:
                 continue
-            hora, minuto = (int(x) for x in hhmm.split(":"))
-            momento = sorteo.fecha.replace(hour=hora, minute=minuto, second=0, microsecond=0)
+            momento = _momento_horario(sorteo, hhmm)
             if ahora < momento + timedelta(minutes=reglas.busqueda_inicio_min or 5):
                 continue
-            
+
             estado = _intentos.setdefault(sorteo.id, {"primero": ahora, "lecturas": []})
-            
-            # Leer números de la página oficial
+
             numeros = obtener_resultado_oficial(sorteo.horario)
             if numeros:
                 estado["lecturas"].append(numeros)
-                
-                # TRIPLE CHECK: solo liquidar si los últimos 3 intentos dieron los mismos números
+
+                # TRIPLE CHECK: solo liquidar si los ultimos 3 intentos dieron los mismos numeros.
                 if len(estado["lecturas"]) >= 3:
                     ultimas_tres = estado["lecturas"][-3:]
                     if ultimas_tres[0] == ultimas_tres[1] == ultimas_tres[2]:
-                        # Confirmado: los 3 intentos coinciden
                         sorteo.resultados = ",".join(f"{n:02d}" for n in numeros)
                         auditoria.registrar(sesion, "RESULTADO_AUTOMATICO", detalle=f"sorteo={sorteo.id} nums={sorteo.resultados} (confirmado en 3 lecturas)")
                         sesion.commit()
@@ -177,12 +188,10 @@ def ciclo():
                         _actualizar_semanal(sesion, sorteo, reglas)
                         _intentos.pop(sorteo.id, None)
                     else:
-                        # No coinciden: limpiar y seguir reintentando
                         estado["lecturas"] = [numeros]
                         auditoria.registrar(sesion, "RESULTADO_INCONSISTENTE", detalle=f"sorteo={sorteo.id}: numeros varian entre lecturas, reintentando")
                         sesion.commit()
-            
-            # Si pasó la ventana de tiempo sin confirmar, avisar al admin
+
             elif ahora - estado["primero"] > timedelta(minutes=reglas.busqueda_duracion_min or 30):
                 sorteo.busqueda_agotada = True
                 aviso = Aviso(
