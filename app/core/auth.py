@@ -26,15 +26,14 @@ class RegistroJugador(BaseModel):
     usuario: str
     password: str
     nombre: str
+    telefono: str = Field(min_length=5)
     codigo_vendedor: str
-    telefono: str | None = None
-    datos_cobro: str = Field(min_length=1)   # alias o CBU, obligatorio
-    cobro_transferencia: bool = True         # cobrar premios por transferencia
+    datos_cobro: str = Field(min_length=1)
+    cobro_transferencia: bool = True
 
 
 @router.post("/login", response_model=DatosLoginOk)
 def login(datos: DatosLogin, sesion: Session = Depends(obtener_sesion)):
-    """Inicio de sesion. El 2FA se exige solo si el usuario ya lo configuro."""
     usuario = sesion.query(Usuario).filter(Usuario.usuario == datos.usuario).first()
     if usuario is None or not security.verificar_password(datos.password, usuario.password_hash):
         auditoria.registrar(sesion, "LOGIN_FALLIDO", detalle=f"usuario intentado: {datos.usuario}")
@@ -64,11 +63,7 @@ def login(datos: DatosLogin, sesion: Session = Depends(obtener_sesion)):
 
 @router.post("/registro-jugador")
 def registro_jugador(datos: RegistroJugador, sesion: Session = Depends(obtener_sesion)):
-    """Un jugador se registra con el codigo de su vendedor o de un revendedor.
-
-    Si el codigo es de un revendedor, el jugador queda en la linea del vendedor duenio
-    y atado a ese revendedor (sus jugadas le computan la comision al revendedor).
-    """
+    """Un jugador se registra con el codigo de su vendedor o de un revendedor."""
     codigo = datos.codigo_vendedor.upper()
     vendedor = (
         sesion.query(Usuario)
