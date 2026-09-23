@@ -1,9 +1,19 @@
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 from app.core import auditoria
+from app.core.config import Configuracion
 from app.modulos_juegos.modalidades import obtener
 from app.modelos.juegos import EstadoSorteo, Jugada, Sorteo
 from app.modelos.usuario import Usuario
+
+
+def _zona():
+    """Zona horaria oficial del sistema (Argentina). Con respaldo a UTC-3 fijo."""
+    try:
+        from zoneinfo import ZoneInfo
+        return ZoneInfo(Configuracion.ZONA_HORARIA)
+    except Exception:
+        return timezone(timedelta(hours=-3))
 
 
 def precio_de(sorteo: Sorteo) -> float:
@@ -12,14 +22,15 @@ def precio_de(sorteo: Sorteo) -> float:
 
 
 def momento_cierre(sorteo: Sorteo):
-    """Fecha y hora limite para anotarse, o None si el sorteo no tiene cierre configurado."""
+    """Fecha y hora limite para anotarse, en la zona horaria oficial. None si no tiene cierre."""
     if not sorteo.hora_cierre or ":" not in sorteo.hora_cierre:
         return None
     try:
         hora, minuto = (int(x) for x in sorteo.hora_cierre.split(":"))
     except ValueError:
         return None
-    return sorteo.fecha.replace(hour=hora, minute=minuto, second=0, microsecond=0)
+    f = sorteo.fecha
+    return datetime(f.year, f.month, f.day, hora, minuto, 0, tzinfo=_zona())
 
 
 def validar_numeros(sorteo: Sorteo, numeros) -> str | None:
@@ -40,18 +51,18 @@ def crear_jugada(
     sesion,
     sorteo: Sorteo,
     numeros,
-    vendedor_dueno: Usuario,
+    vendedor: Usuario,
     revendedor_id=None,
     jugador_id=None,
     jugador_nombre=None,
 ) -> Jugada:
     """Valida y crea una jugada pendiente. Acepta sorteos programados o reprogramando,
-    siempre que no haya pasado el horario de cierre para anotarse."""
+    siempre que no haya pasado el horario de cierre para anotarse (hora de Argentina)."""
     if sorteo.estado not in (EstadoSorteo.PROGRAMADO, EstadoSorteo.REPROGRAMANDO):
         raise ValueError("El sorteo no esta abierto para cargar jugadas")
     cierre = momento_cierre(sorteo)
     if cierre is not None:
-        ahora = datetime.now(cierre.tzinfo) if cierre.tzinfo else datetime.now()
+        ahora = datetime.now(_zona())
         if ahora > cierre:
             raise ValueError("El horario de cierre para anotarse ya paso en este sorteo")
     error = validar_numeros(sorteo, numeros)
@@ -64,7 +75,7 @@ def crear_jugada(
             raise ValueError("Sorteo de pozo vacante: solo pueden jugar quienes participaron del original")
     jugada = Jugada(
         sorteo_id=sorteo.id,
-        vendedor_id=vendedor_dueno.id,
+        vendedor_id=vendedor.id,
         revendedor_id=revendedor_id,
         jugador_id=jugador_id,
         jugador_nombre=jugador_nombre,
@@ -78,7 +89,7 @@ def crear_jugada(
         sesion,
         "JUGADA_CARGADA",
         detalle=f"sorteo={sorteo.id} numeros={jugada.numeros} precio={jugada.precio}",
-        usuario=vendedor_dueno,
+        usuario=vendedor,
     )
     sesion.commit()
     return jugada
