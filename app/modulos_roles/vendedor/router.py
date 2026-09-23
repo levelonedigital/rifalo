@@ -42,21 +42,21 @@ class JugadaCrear(BaseModel):
     sorteo_id: int
     numeros: list[int]
     jugador_nombre: str | None = None
-    jugador_id: int | None = None   # jugador registrado en tu linea (opcional)
+    jugador_id: int | None = None
 
 
 class JugadorCrear(BaseModel):
     usuario: str
     password: str
     nombre: str
-    datos_cobro: str = Field(min_length=1)   # alias o CBU, obligatorio
+    telefono: str = Field(min_length=5)
+    datos_cobro: str = Field(min_length=1)
     cobro_transferencia: bool = True
-    telefono: str | None = None
 
 
 class JugadorEditar(BaseModel):
     nombre: str | None = None
-    telefono: str | None = None
+    telefono: str | None = Field(default=None, min_length=5)
     datos_cobro: str | None = Field(default=None, min_length=1)
     cobro_transferencia: bool | None = None
     password: str | None = None
@@ -142,7 +142,6 @@ def listar_revendedores(sesion: Session = Depends(obtener_sesion), vendedor: Usu
 
 @router.put("/revendedores/{revendedor_id}")
 def editar_revendedor(revendedor_id: int, datos: RevendedorEditar, sesion: Session = Depends(obtener_sesion), vendedor: Usuario = vendedor_dep):
-    """El vendedor edita su revendedor con las mismas opciones que al crearlo."""
     rev = sesion.get(Usuario, revendedor_id)
     if rev is None or rev.padre_id != vendedor.id or rev.rol != RolUsuario.REVENDEDOR:
         raise HTTPException(status_code=404, detail="Revendedor no encontrado en tu linea")
@@ -169,11 +168,30 @@ def editar_revendedor(revendedor_id: int, datos: RevendedorEditar, sesion: Sessi
     return {"id": rev.id, "usuario": rev.usuario, "codigo": rev.codigo, "comision_pct": rev.comision_pct, "activo": rev.activo}
 
 
-# ---------- JUGADORES PROPIOS (crear, editar, eliminar) ----------
+@router.delete("/revendedores/{revendedor_id}")
+def eliminar_revendedor(revendedor_id: int, sesion: Session = Depends(obtener_sesion), vendedor: Usuario = vendedor_dep):
+    """Borra un revendedor solo si no tiene jugadores ni jugadas asociadas."""
+    rev = sesion.get(Usuario, revendedor_id)
+    if rev is None or rev.padre_id != vendedor.id or rev.rol != RolUsuario.REVENDEDOR:
+        raise HTTPException(status_code=404, detail="Revendedor no encontrado en tu linea")
+    jugadores = sesion.query(Usuario).filter(Usuario.revendedor_padre_id == rev.id).count()
+    if jugadores > 0:
+        raise HTTPException(status_code=400, detail=f"El revendedor tiene {jugadores} jugadores: no se puede eliminar. Desactivalo.")
+    jugadas = sesion.query(Jugada).filter(Jugada.revendedor_id == rev.id).count()
+    if jugadas > 0:
+        raise HTTPException(status_code=400, detail=f"El revendedor tiene {jugadas} jugadas: no se puede eliminar. Desactivalo.")
+    nombre = rev.usuario
+    sesion.delete(rev)
+    sesion.commit()
+    auditoria.registrar(sesion, "REVENDEDOR_ELIMINADO", detalle=f"{nombre} por {vendedor.usuario}", usuario=vendedor)
+    sesion.commit()
+    return {"ok": True}
+
+
+# ---------- JUGADORES PROPIOS ----------
 
 @router.post("/jugadores")
 def crear_jugador(datos: JugadorCrear, sesion: Session = Depends(obtener_sesion), vendedor: Usuario = vendedor_dep):
-    """El vendedor carga a mano un jugador (por telefono, por ejemplo)."""
     if sesion.query(Usuario).filter(Usuario.usuario == datos.usuario).first():
         raise HTTPException(status_code=400, detail="El nombre de usuario ya existe")
     jugador = Usuario(
@@ -248,7 +266,7 @@ def eliminar_jugador(jugador_id: int, sesion: Session = Depends(obtener_sesion),
     return {"ok": True}
 
 
-# ---------- JUGADAS (numeros ocultos) ----------
+# ---------- JUGADAS ----------
 
 @router.get("/sorteos")
 def sorteos_abiertos(sesion: Session = Depends(obtener_sesion), vendedor: Usuario = vendedor_dep):
@@ -346,7 +364,6 @@ def historial(sesion: Session = Depends(obtener_sesion), vendedor: Usuario = ven
 
 @router.get("/resumen")
 def resumen(sesion: Session = Depends(obtener_sesion), vendedor: Usuario = vendedor_dep):
-    """Cuenta todas las jugadas que llegaste a aprobar (incluidas ya liquidadas)."""
     jugadas = sesion.query(Jugada).filter(Jugada.vendedor_id == vendedor.id, Jugada.estado.in_(ESTADOS_VENDIDOS)).all()
     return {
         "jugadas_aprobadas": len(jugadas),
