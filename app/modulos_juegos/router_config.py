@@ -44,7 +44,7 @@ class ResetConfirm(BaseModel):
     confirmacion: str
 
 
-# ---------- CONFIGURACION DE SISTEMA (horarios y busqueda) ----------
+# ---------- CONFIGURACION DE SISTEMA ----------
 
 @router.get("/sistema")
 def ver_sistema(sesion: Session = Depends(obtener_sesion), admin: Usuario = Depends(requerir_rol(RolUsuario.ADMIN_PRINCIPAL, RolUsuario.ADMIN))):
@@ -72,7 +72,7 @@ def editar_sistema(datos: SistemaEditar, sesion: Session = Depends(obtener_sesio
     return {"ok": True}
 
 
-# ---------- GUIAS GUARDADAS (plantillas de sorteo) ----------
+# ---------- GUIAS GUARDADAS ----------
 
 @router.post("/plantillas")
 def crear_plantilla(datos: PlantillaCrear, sesion: Session = Depends(obtener_sesion), admin: Usuario = Depends(requerir_rol(RolUsuario.ADMIN_PRINCIPAL, RolUsuario.ADMIN))):
@@ -120,11 +120,10 @@ def borrar_plantilla(plantilla_id: int, sesion: Session = Depends(obtener_sesion
     return {"ok": True}
 
 
-# ---------- AVISOS (carteles del panel) ----------
+# ---------- AVISOS ----------
 
 @router.get("/avisos")
 def ver_avisos(sesion: Session = Depends(obtener_sesion), usuario: Usuario = Depends(obtener_usuario_actual)):
-    """Ultimos 5 carteles. Los de destino admin solo los ven administradores."""
     es_admin = usuario.rol in (RolUsuario.ADMIN_PRINCIPAL, RolUsuario.ADMIN)
     consulta = sesion.query(Aviso)
     if not es_admin:
@@ -145,26 +144,43 @@ def borrar_aviso(aviso_id: int, sesion: Session = Depends(obtener_sesion), admin
     return {"ok": True}
 
 
-# ---------- RESET DE FABRICA (solo admin principal, con confirmacion) ----------
+# ---------- RESET DE FABRICA (usa TRUNCATE con RESTART IDENTITY para reiniciar contadores) ----------
+
+TABLAS_A_TRUNCAR = [
+    "jugadas",
+    "sorteos",
+    "avisos",
+    "plantillas_sorteo",
+    "log_auditoria",
+    "reglas_sistema",
+    "usuarios",
+]
+
 
 @router.post("/reset-total")
 def reset_total(datos: ResetConfirm, sesion: Session = Depends(obtener_sesion), admin: Usuario = Depends(requerir_rol(RolUsuario.ADMIN_PRINCIPAL))):
-    """Borra todos los datos (jugadas, sorteos, avisos, guias, auditoria, usuarios),
-    reinicia los contadores de numeros y recrea el admin inicial. Irreversible."""
+    """Borra absolutamente todo y reinicia los contadores de IDs a 1."""
     if datos.confirmacion != "BORRAR TODO":
         raise HTTPException(status_code=400, detail="Confirmacion invalida: escribi BORRAR TODO")
-    sesion.query(Jugada).delete()
-    sesion.query(Sorteo).delete()
-    sesion.query(Aviso).delete()
-    sesion.query(PlantillaSorteo).delete()
-    sesion.query(LogAuditoria).delete()
-    sesion.query(ReglasSistema).delete()
-    sesion.query(Usuario).delete()
+    
+    dialecto = sesion.bind.dialect.name
+    if dialecto == "postgresql":
+        # PostgreSQL: TRUNCATE con RESTART IDENTITY CASCADE
+        nombres = ", ".join(TABLAS_A_TRUNCAR)
+        sesion.execute(text(f"TRUNCATE {nombres} RESTART IDENTITY CASCADE"))
+    else:
+        # SQLite y otros: DELETE y reinicio manual
+        for tabla in TABLAS_A_TRUNCAR:
+            sesion.execute(text(f"DELETE FROM {tabla}"))
+        # SQLite: reiniciar secuencias
+        for tabla in TABLAS_A_TRUNCAR:
+            try:
+                sesion.execute(text(f"DELETE FROM sqlite_sequence WHERE name='{tabla}'"))
+            except Exception:
+                pass
     sesion.commit()
-    for modelo in (Jugada, Sorteo, Aviso, PlantillaSorteo, ReglasSistema, LogAuditoria, Usuario):
-        tabla = modelo.__tablename__
-        sesion.execute(text(f"SELECT setval(pg_get_serial_sequence('{tabla}', 'id'), 1, false)"))
-    sesion.commit()
+    
+    # Recrear admin inicial
     admin_nuevo = Usuario(
         usuario=Configuracion.ADMIN_INICIAL_USUARIO,
         password_hash=hash_password(Configuracion.ADMIN_INICIAL_PASSWORD),
@@ -175,6 +191,9 @@ def reset_total(datos: ResetConfirm, sesion: Session = Depends(obtener_sesion), 
     )
     sesion.add(admin_nuevo)
     sesion.commit()
+    
+    # Recrear reglas de sistema
     obtener_reglas(sesion)
     sesion.commit()
+    
     return {"ok": True, "detalle": "Base vacia, contadores en 1. Admin inicial recreado."}
