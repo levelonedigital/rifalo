@@ -115,15 +115,6 @@
       <h2>Sorteos</h2>
       <div id="lista-sorteos"></div>
 
-      <div id="bloque-reprog" class="tarjeta" style="background:#0f172a; margin-top:16px">
-        <h2>Reprogramar sorteo con hora cancelada</h2>
-        <div class="grilla">
-          <div><label>Sorteo a reprogramar</label><select id="reprog-sorteo"></select></div>
-          <div><label>Nuevo dia del sorteo</label><input id="reprog-fecha" type="date" min="2026-01-01" max="2035-12-31"></div>
-        </div>
-        <button onclick="reprogramarSorteo()">Confirmar reprogramacion</button>
-      </div>
-
       <details style="margin-top:16px">
         <summary style="cursor:pointer; color:#93c5fd">Horarios oficiales y busqueda automatica (solo admin principal)</summary>
         <div class="grilla">
@@ -424,7 +415,7 @@ function waLink(telefono, mensaje) {
   return "https://wa.me/" + t + (msg ? "?text=" + msg : "");
 }
 
-// ---------- MODO SORTEO (ficha completa con pozo cubierto) ----------
+// ---------- MODO SORTEO ----------
 function pintarModo() {
   const caja = document.getElementById("zona-modo");
   if (!SORT_ACTUAL) { caja.style.display = "none"; caja.innerHTML = ""; return; }
@@ -867,17 +858,13 @@ async function cargarSorteos() {
     const sorteos = await api("/admin/sorteos", "GET");
     sorteos.forEach(s => { SORT_CACHE[s.id] = s; });
     let html = "<table><tr><th>#</th><th>Img</th><th>Modalidad</th><th>Horario</th><th>Dia</th><th>Cierre</th><th>Estado</th><th>Pozo</th><th>Cubriendo / costo</th><th>Vendido</th><th>Acciones</th></tr>";
-    let opcionesReprog = "";
     sorteos.forEach(s => {
       html += "<tr><td>" + s.id + "</td><td>" + (s.imagen_url ? "<img src='" + s.imagen_url + "' style='width:44px;height:44px;object-fit:cover;border-radius:4px'>" : "-") + "</td><td>" + s.modalidad + (s.solo_participantes ? " VACANTE" : "") + "</td><td>" + s.horario + "</td><td>" + s.fecha.slice(0,10) + "</td><td>" + (s.hora_cierre || "sin limite") + "</td><td>" + s.estado + (s.busqueda_agotada ? " (manual)" : "") + "</td><td>$" + s.pozo + "</td><td>$" + s.pozo_cubierto + " / $" + s.costo + (s.costo_cubierto ? " ✔" : " ✘") + "</td><td>$" + (s.recaudado || 0) + "</td><td>";
       html += "<button class='secundario' onclick='seleccionarSorteo(" + s.id + ")'>Detalles</button>";
       if (s.estado === "preparacion") html += "<button onclick='activarSorteo(" + s.id + ")'>Activar</button>";
       if (s.estado === "programado") html += "<button class='secundario' onclick='cerrarSorteo(" + s.id + ")'>Cerrar</button><button class='secundario' onclick='desactivarSorteo(" + s.id + ")'>Desactivar</button><button class='peligro' onclick='cancelarHorario(" + s.id + ")'>Cancelar horario</button>";
       if (s.estado === "cerrado") html += "<button onclick='cargarResultado(" + s.id + ")'>Cargar 20 nums</button><button class='peligro' onclick='cancelarHorario(" + s.id + ")'>Cancelar horario</button>";
-      if (s.estado === "reprogramando") {
-        html += "<button onclick='prepararReprog(" + s.id + ")'>Reprogramar</button>";
-        opcionesReprog += "<option value='" + s.id + "'>#" + s.id + " " + s.modalidad + " " + s.horario + " " + s.fecha.slice(0,10) + "</option>";
-      }
+      if (s.estado === "reprogramando") html += "<button onclick='prepararReprog(" + s.id + ")'>Reprogramar</button>";
       if (s.estado !== "liquidado") {
         html += "<button class='secundario' onclick='empezarEdicion(" + s.id + ")'>Editar</button>";
         html += "<button class='peligro' onclick='borrarSorteo(" + s.id + ")'>Borrar</button>";
@@ -886,13 +873,18 @@ async function cargarSorteos() {
       html += "</td></tr>";
     });
     document.getElementById("lista-sorteos").innerHTML = html + "</table>";
-    document.getElementById("reprog-sorteo").innerHTML = opcionesReprog || "<option value=''>No hay sorteos con hora cancelada</option>";
   } catch (e) { aviso(e.message, true); }
 }
 
-function prepararReprog(id) {
-  document.getElementById("reprog-sorteo").value = String(id);
-  document.getElementById("bloque-reprog").scrollIntoView({ behavior: "smooth" });
+async function prepararReprog(id) {
+  const fecha = prompt("Nuevo dia del sorteo (AAAA-MM-DD), ej: 2026-09-23:");
+  if (!fecha) return;
+  try {
+    await api("/admin/sorteos/" + id + "/reprogramar", "POST", { fecha: fecha });
+    aviso("Sorteo #" + id + " reprogramado: se aviso a los jugadores con el nuevo dia");
+    cargarSorteos();
+    cargarAvisos();
+  } catch (e) { aviso(e.message, true); }
 }
 
 async function cerrarSorteo(id) {
@@ -903,19 +895,6 @@ async function cerrarSorteo(id) {
 async function cancelarHorario(id) {
   try { await api("/admin/sorteos/" + id + "/cancelar-horario", "POST"); aviso("Horario cancelado: jugadas y pozo siguen en juego, se aviso a los jugadores"); cargarSorteos(); cargarAvisos(); }
   catch (e) { aviso(e.message, true); }
-}
-
-async function reprogramarSorteo() {
-  const id = document.getElementById("reprog-sorteo").value;
-  const fecha = document.getElementById("reprog-fecha").value;
-  if (!id) { aviso("No hay sorteos con hora cancelada para reprogramar", true); return; }
-  if (!fecha) { aviso("Elegi el nuevo dia en el calendario", true); return; }
-  try {
-    await api("/admin/sorteos/" + id + "/reprogramar", "POST", { fecha: fecha });
-    aviso("Sorteo #" + id + " reprogramado: se aviso a los jugadores con el nuevo dia");
-    cargarSorteos();
-    cargarAvisos();
-  } catch (e) { aviso(e.message, true); }
 }
 
 async function cargarResultado(id) {
