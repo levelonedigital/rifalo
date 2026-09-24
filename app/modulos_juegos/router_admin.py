@@ -10,7 +10,7 @@ from app.core.database import obtener_sesion
 from app.core.dependencias import requerir_permiso, requerir_rol
 from app.core.security import hash_password
 from app.modulos_juegos import buscador, motor
-from app.modulos_juegos.buscador import _actualizar_semanal, costo_a_cubrir
+from app.modulos_juegos.buscador import _actualizar_semanal, costo_a_cubrir, pozo_cubierto_total
 from app.modulos_juegos.modalidades import listar, obtener
 from app.modelos.juegos import Aviso, EstadoJugada, EstadoSorteo, Jugada, Sorteo
 from app.modelos.usuario import RolUsuario, Usuario
@@ -37,13 +37,11 @@ def detalle_por_defecto(modalidad) -> str:
     return base + " Si no se cumplen las condiciones, el sorteo puede pasar a otro horario; se respetan las jugadas."
 
 
-# ---------- ESTADO DEL BUSCADOR (debug visible) ----------
+# ---------- ESTADO DEL BUSCADOR ----------
 
 @router.get("/buscador/estado")
 def estado_buscador(sesion: Session = Depends(obtener_sesion), admin: Usuario = admin_dep):
-    """Muestra en tiempo real qué números está leyendo el buscador para cada sorteo en búsqueda."""
     estado = buscador.estado_busquedas()
-    # Agregamos info de los sorteos cerrados que aún no tienen resultado
     sorteos_pendientes = (
         sesion.query(Sorteo)
         .filter(
@@ -54,7 +52,7 @@ def estado_buscador(sesion: Session = Depends(obtener_sesion), admin: Usuario = 
         )
         .all()
     )
-    resultado = {
+    return {
         "busquedas_en_curso": estado,
         "sorteos_cerrados_sin_resultado": [
             {
@@ -67,7 +65,6 @@ def estado_buscador(sesion: Session = Depends(obtener_sesion), admin: Usuario = 
             for s in sorteos_pendientes
         ],
     }
-    return resultado
 
 
 class SorteoCrear(BaseModel):
@@ -255,6 +252,7 @@ def listar_sorteos(sesion: Session = Depends(obtener_sesion), admin: Usuario = D
     salida = []
     for s in sorteos:
         costo = costo_a_cubrir(s)
+        cubierto = pozo_cubierto_total(s)
         salida.append(
             {
                 "id": s.id,
@@ -266,6 +264,7 @@ def listar_sorteos(sesion: Session = Depends(obtener_sesion), admin: Usuario = D
                 "resultados": s.resultados,
                 "pozo": s.pozo_actual,
                 "recaudado": s.recaudado,
+                "pozo_cubierto": cubierto,
                 "solo_participantes": s.solo_participantes,
                 "busqueda_agotada": s.busqueda_agotada,
                 "precio_jugada": s.precio_jugada,
@@ -276,7 +275,7 @@ def listar_sorteos(sesion: Session = Depends(obtener_sesion), admin: Usuario = D
                 "imagen_url": s.imagen_url,
                 "detalle": s.detalle,
                 "costo": costo,
-                "costo_cubierto": (s.recaudado or 0.0) >= costo,
+                "costo_cubierto": cubierto >= costo,
             }
         )
     return salida
@@ -298,16 +297,17 @@ def resumen_sorteo(sorteo_id: int, sesion: Session = Depends(obtener_sesion), ad
         "estado": sorteo.estado.value,
         "resultados": sorteo.resultados,
         "pozo": sorteo.pozo_actual,
+        "pozo_cubierto": pozo_cubierto_total(sorteo),
         "recaudado": sorteo.recaudado or 0.0,
         "costo": costo_a_cubrir(sorteo),
-        "costo_cubierto": (sorteo.recaudado or 0.0) >= costo_a_cubrir(sorteo),
+        "costo_cubierto": pozo_cubierto_total(sorteo) >= costo_a_cubrir(sorteo),
         "jugadas_cargadas": len(jugadas),
         "jugadas_vendidas": len(vendidas),
         "vendido": round(sum(j.precio for j in vendidas), 2),
         "casa": round(sum(j.monto_casa or 0 for j in vendidas), 2),
         "vendedores": round(sum(j.monto_vendedor or 0 for j in vendidas), 2),
         "revendedores": round(sum(j.monto_revendedor or 0 for j in vendidas), 2),
-        "pozo_aportado": round(sum(j.monto_pozo or 0 for j in vendidas), 2),
+        "pozo_aportado": round(sum((j.monto_pozo or 0) + (j.monto_cubrir or 0) for j in vendidas), 2),
         "premios_pagados": round(sum(j.premio or 0 for j in ganadoras), 2),
         "ganadoras": [j.id for j in ganadoras],
     }
@@ -421,7 +421,7 @@ def pozo_vacante(sorteo_id: int, datos: PozoVacanteCrear, sesion: Session = Depe
     return {"id": nuevo.id, "pozo_inicial": nuevo.pozo_inicial, "participantes": nuevo.participantes}
 
 
-# ---------- JUGADAS (numeros ocultos para todos) ----------
+# ---------- JUGADAS ----------
 
 @router.get("/jugadas")
 def ver_jugadas(
@@ -484,6 +484,7 @@ def ver_jugada(jugada_id: int, sesion: Session = Depends(obtener_sesion), admin:
         "monto_vendedor": j.monto_vendedor,
         "monto_revendedor": j.monto_revendedor,
         "monto_pozo": j.monto_pozo,
+        "monto_cubrir": j.monto_cubrir,
         "creada_en": j.creada_en.isoformat() if j.creada_en else None,
     }
 
