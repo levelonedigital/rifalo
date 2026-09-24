@@ -9,7 +9,7 @@ from app.core import auditoria
 from app.core.database import obtener_sesion
 from app.core.dependencias import requerir_permiso, requerir_rol
 from app.core.security import hash_password
-from app.modulos_juegos import motor
+from app.modulos_juegos import buscador, motor
 from app.modulos_juegos.buscador import _actualizar_semanal, costo_a_cubrir
 from app.modulos_juegos.modalidades import listar, obtener
 from app.modelos.juegos import Aviso, EstadoJugada, EstadoSorteo, Jugada, Sorteo
@@ -35,6 +35,39 @@ def validar_hora_cierre(valor):
 def detalle_por_defecto(modalidad) -> str:
     base = modalidad.resumen_reglas if modalidad else ""
     return base + " Si no se cumplen las condiciones, el sorteo puede pasar a otro horario; se respetan las jugadas."
+
+
+# ---------- ESTADO DEL BUSCADOR (debug visible) ----------
+
+@router.get("/buscador/estado")
+def estado_buscador(sesion: Session = Depends(obtener_sesion), admin: Usuario = admin_dep):
+    """Muestra en tiempo real qué números está leyendo el buscador para cada sorteo en búsqueda."""
+    estado = buscador.estado_busquedas()
+    # Agregamos info de los sorteos cerrados que aún no tienen resultado
+    sorteos_pendientes = (
+        sesion.query(Sorteo)
+        .filter(
+            Sorteo.estado == EstadoSorteo.CERRADO,
+            Sorteo.resultados.is_(None),
+            Sorteo.busqueda_agotada.is_(False),
+            Sorteo.modalidad != "semanal",
+        )
+        .all()
+    )
+    resultado = {
+        "busquedas_en_curso": estado,
+        "sorteos_cerrados_sin_resultado": [
+            {
+                "id": s.id,
+                "modalidad": s.modalidad,
+                "horario": s.horario,
+                "fecha": s.fecha.isoformat(),
+                "hora_cierre": s.hora_cierre,
+            }
+            for s in sorteos_pendientes
+        ],
+    }
+    return resultado
 
 
 class SorteoCrear(BaseModel):
@@ -110,7 +143,6 @@ def listar_modalidades():
 
 @router.post("/sorteos")
 def crear_sorteo(datos: SorteoCrear, sesion: Session = Depends(obtener_sesion), admin: Usuario = Depends(requerir_permiso("configurar_sorteos"))):
-    """Crea el sorteo en PREPARACION (inactivo). El admin lo revisa/edita y luego lo activa."""
     if datos.fecha.weekday() == 6:
         raise HTTPException(status_code=400, detail="Los domingos no hay sorteos")
     modalidad = obtener(datos.modalidad)
@@ -252,7 +284,6 @@ def listar_sorteos(sesion: Session = Depends(obtener_sesion), admin: Usuario = D
 
 @router.get("/sorteos/{sorteo_id}/resumen")
 def resumen_sorteo(sorteo_id: int, sesion: Session = Depends(obtener_sesion), admin: Usuario = admin_dep):
-    """Resumen completo de un unico sorteo: vendido, reparto y premios."""
     sorteo = sesion.get(Sorteo, sorteo_id)
     if sorteo is None:
         raise HTTPException(status_code=404, detail="Sorteo no encontrado")
@@ -298,7 +329,6 @@ def cerrar_sorteo(sorteo_id: int, sesion: Session = Depends(obtener_sesion), adm
 
 @router.post("/sorteos/{sorteo_id}/cancelar-horario")
 def cancelar_horario(sorteo_id: int, sesion: Session = Depends(obtener_sesion), admin: Usuario = Depends(requerir_permiso("configurar_sorteos"))):
-    """Cancela la hora del sorteo. Jugadas y pozo siguen en juego, esperando nuevo horario."""
     sorteo = sesion.get(Sorteo, sorteo_id)
     if sorteo is None:
         raise HTTPException(status_code=404, detail="Sorteo no encontrado")
@@ -321,7 +351,6 @@ def cancelar_horario(sorteo_id: int, sesion: Session = Depends(obtener_sesion), 
 
 @router.post("/sorteos/{sorteo_id}/reprogramar")
 def reprogramar(sorteo_id: int, datos: Reprogramar, sesion: Session = Depends(obtener_sesion), admin: Usuario = Depends(requerir_permiso("configurar_sorteos"))):
-    """Fija el nuevo horario de un sorteo reprogramando. Jugadas y pozo quedan intactos."""
     sorteo = sesion.get(Sorteo, sorteo_id)
     if sorteo is None:
         raise HTTPException(status_code=404, detail="Sorteo no encontrado")
@@ -427,7 +456,6 @@ def ver_jugadas(
 
 @router.get("/jugadas/{jugada_id}")
 def ver_jugada(jugada_id: int, sesion: Session = Depends(obtener_sesion), admin: Usuario = admin_dep):
-    """Ficha individual de una jugada. Los numeros quedan ocultos por privacidad."""
     j = sesion.get(Jugada, jugada_id)
     if j is None:
         raise HTTPException(status_code=404, detail="Jugada no encontrada")
@@ -490,34 +518,16 @@ def crear_vendedor(datos: VendedorCrear, sesion: Session = Depends(obtener_sesio
 def listar_vendedores(sesion: Session = Depends(obtener_sesion), admin: Usuario = admin_dep):
     vendedores = sesion.query(Usuario).filter(Usuario.rol == RolUsuario.VENDEDOR).order_by(Usuario.nombre).all()
     return [
-        {
-            "id": v.id,
-            "usuario": v.usuario,
-            "nombre": v.nombre,
-            "codigo": v.codigo,
-            "comision_pct": v.comision_pct,
-            "telefono": v.telefono,
-            "datos_transferencia": v.datos_transferencia,
-            "activo": v.activo,
-        }
+        {"id": v.id, "usuario": v.usuario, "nombre": v.nombre, "codigo": v.codigo, "comision_pct": v.comision_pct, "activo": v.activo}
         for v in vendedores
     ]
 
 
 @router.put("/vendedores/{vendedor_id}")
 def editar_vendedor(vendedor_id: int, datos: VendedorEditar, sesion: Session = Depends(obtener_sesion), admin: Usuario = Depends(requerir_rol(RolUsuario.ADMIN_PRINCIPAL))):
-    """Edicion completa del vendedor con las mismas opciones que al crearlo."""
     vendedor = sesion.get(Usuario, vendedor_id)
     if vendedor is None or vendedor.rol != RolUsuario.VENDEDOR:
         raise HTTPException(status_code=404, detail="Vendedor no encontrado")
-    if datos.codigo is not None:
-        codigo = datos.codigo.upper()
-        otro = sesion.query(Usuario).filter(Usuario.codigo == codigo, Usuario.id != vendedor_id).first()
-        if otro:
-            raise HTTPException(status_code=400, detail="El codigo ya existe")
-        vendedor.codigo = codigo
-    if datos.password:
-        vendedor.password_hash = hash_password(datos.password)
     for campo in ("nombre", "telefono", "comision_pct", "datos_transferencia", "activo"):
         valor = getattr(datos, campo)
         if valor is not None:
@@ -525,20 +535,13 @@ def editar_vendedor(vendedor_id: int, datos: VendedorEditar, sesion: Session = D
     sesion.commit()
     auditoria.registrar(sesion, "VENDEDOR_EDITADO", detalle=vendedor.usuario, usuario=admin)
     sesion.commit()
-    return {
-        "id": vendedor.id,
-        "usuario": vendedor.usuario,
-        "codigo": vendedor.codigo,
-        "comision_pct": vendedor.comision_pct,
-        "activo": vendedor.activo,
-    }
+    return {"id": vendedor.id, "usuario": vendedor.usuario, "comision_pct": vendedor.comision_pct, "activo": vendedor.activo}
 
 
 # ---------- RESUMEN GENERAL ----------
 
 @router.get("/resumen-general")
 def resumen_general(sesion: Session = Depends(obtener_sesion), admin: Usuario = admin_dep):
-    """Cuenta todas las jugadas que llegaron a aprobadas (incluidas ya liquidadas)."""
     jugadas = sesion.query(Jugada).filter(Jugada.estado.in_(ESTADOS_VENDIDOS)).all()
     return {
         "jugadas_aprobadas": len(jugadas),
