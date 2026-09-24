@@ -406,12 +406,6 @@ function aviso(t, err) {
   c.textContent = t;
 }
 
-function loginMsg(t, err) {
-  const c = document.getElementById("login-msg");
-  c.className = "mensaje " + (err ? "error" : "ok");
-  c.textContent = t;
-}
-
 function regMsg(t, err) {
   const c = document.getElementById("reg-msg");
   c.className = "mensaje " + (err ? "error" : "ok");
@@ -430,7 +424,7 @@ function waLink(telefono, mensaje) {
   return "https://wa.me/" + t + (msg ? "?text=" + msg : "");
 }
 
-// ---------- MODO SORTEO (ficha completa visible) ----------
+// ---------- MODO SORTEO (ficha completa con pozo cubierto) ----------
 function pintarModo() {
   const caja = document.getElementById("zona-modo");
   if (!SORT_ACTUAL) { caja.style.display = "none"; caja.innerHTML = ""; return; }
@@ -444,8 +438,8 @@ function pintarModo() {
     "<b>FICHA DEL SORTEO #" + s.id + "</b><br>" +
     "Modalidad: " + s.modalidad + " | Horario oficial: " + s.horario + " | Dia: " + s.fecha.slice(0,10) + " | Cierre para anotarse: " + (s.hora_cierre || "sin limite") + "<br>" +
     "Estado: " + s.estado + (s.busqueda_agotada ? " (busqueda agotada, carga manual)" : "") + " | Precio jugada: $" + s.precio_jugada + " | Casa: " + s.casa_pct + "% | Vendedores: " + s.vendedor_pct + "%<br>" +
-    "Pozo: $" + s.pozo + " | Recaudado: $" + (s.recaudado || 0) + " | Costo a cubrir: $" + s.costo + (s.costo_cubierto ? " (CUBIERTO)" : " (SIN CUBRIR)") + "<br>" +
-    "Resultados: " + (s.resultados || "sin cargar") + "<br>" +
+    "Pozo mostrado: $" + s.pozo + " | <b>Pozo cubierto (sobrantes): $" + s.pozo_cubierto + " de $" + s.costo + "</b> " + (s.costo_cubierto ? "✔ CUBIERTO" : "✘ SIN CUBRIR") + "<br>" +
+    "Vendido total: $" + s.recaudado + " | Resultados: " + (s.resultados || "sin cargar") + "<br>" +
     "<span class='chico'>Las pestanas Jugadas, Resumen y Auditoria muestran solo este sorteo.</span> " +
     "<button class='secundario' onclick='refrescarModo()'>Actualizar ficha</button> <button class='peligro' onclick='salirSorteo()'>Salir del sorteo</button>";
 }
@@ -607,18 +601,14 @@ async function cargarEstadoBuscador() {
   try {
     const d = await api("/admin/buscador/estado", "GET");
     let html = "";
-
     if (d.sorteos_cerrados_sin_resultado && d.sorteos_cerrados_sin_resultado.length > 0) {
       html += "<h3 style='color:#93c5fd;margin-top:8px'>Sorteos cerrados esperando resultado</h3>";
       d.sorteos_cerrados_sin_resultado.forEach(s => {
-        html += "<div class='buscador-box'>";
-        html += "<b>Sorteo #" + s.id + "</b> - " + s.modalidad + " " + s.horario + " (" + s.fecha.slice(0,10) + ")";
-        html += "</div>";
+        html += "<div class='buscador-box'><b>Sorteo #" + s.id + "</b> - " + s.modalidad + " " + s.horario + " (" + s.fecha.slice(0,10) + ")</div>";
       });
     } else {
       html += "<p class='chico'>No hay sorteos cerrados esperando resultado.</p>";
     }
-
     if (d.busquedas_en_curso && Object.keys(d.busquedas_en_curso).length > 0) {
       html += "<h3 style='color:#93c5fd;margin-top:16px'>Búsquedas en curso</h3>";
       for (const [sorteoId, estado] of Object.entries(d.busquedas_en_curso)) {
@@ -628,9 +618,9 @@ async function cargarEstadoBuscador() {
           html += "<span class='nums'>Última lectura: " + estado.ultima_lectura.map(n => String(n).padStart(2,'0')).join(", ") + "</span><br>";
         }
         if (estado.coinciden_ultimas_tres) {
-          html += "<span class='ok'>Las últimas 3 lecturas coinciden - confirmando resultado</span>";
+          html += "<span class='ok'>✔ Las últimas 3 lecturas coinciden - confirmando resultado</span>";
         } else if (estado.cantidad_lecturas >= 2) {
-          html += "<span class='warn'>Lecturas aún no coinciden (" + estado.cantidad_lecturas + "/3)</span>";
+          html += "<span class='warn'>⚠ Lecturas aún no coinciden (" + estado.cantidad_lecturas + "/3)</span>";
         } else {
           html += "<span class='chico'>Esperando más lecturas...</span>";
         }
@@ -639,14 +629,13 @@ async function cargarEstadoBuscador() {
     } else {
       html += "<p class='chico' style='margin-top:12px'>No hay búsquedas en curso en este momento.</p>";
     }
-
     cont.innerHTML = html;
   } catch (e) {
     cont.innerHTML = "<p class='mensaje error'>Error al cargar el estado: " + e.message + "</p>";
   }
 }
 
-// ---------- SELECTOR DE JUGADORES AL CARGAR JUGADA ----------
+// ---------- SELECTOR DE JUGADORES ----------
 async function cargarSelectJugadores(pref) {
   const ruta = pref === "v" ? "/vendedor/jugadores" : "/revendedor/jugadores";
   try {
@@ -877,10 +866,10 @@ async function cargarSorteos() {
   try {
     const sorteos = await api("/admin/sorteos", "GET");
     sorteos.forEach(s => { SORT_CACHE[s.id] = s; });
-    let html = "<table><tr><th>#</th><th>Img</th><th>Modalidad</th><th>Horario</th><th>Dia</th><th>Cierre</th><th>Estado</th><th>Pozo</th><th>Recaudado / costo</th><th>Acciones</th></tr>";
+    let html = "<table><tr><th>#</th><th>Img</th><th>Modalidad</th><th>Horario</th><th>Dia</th><th>Cierre</th><th>Estado</th><th>Pozo</th><th>Cubriendo / costo</th><th>Vendido</th><th>Acciones</th></tr>";
     let opcionesReprog = "";
     sorteos.forEach(s => {
-      html += "<tr><td>" + s.id + "</td><td>" + (s.imagen_url ? "<img src='" + s.imagen_url + "' style='width:44px;height:44px;object-fit:cover;border-radius:4px'>" : "-") + "</td><td>" + s.modalidad + (s.solo_participantes ? " VACANTE" : "") + "</td><td>" + s.horario + "</td><td>" + s.fecha.slice(0,10) + "</td><td>" + (s.hora_cierre || "sin limite") + "</td><td>" + s.estado + (s.busqueda_agotada ? " (manual)" : "") + "</td><td>$" + s.pozo + "</td><td>$" + (s.recaudado || 0) + " / $" + s.costo + (s.costo_cubierto ? " ✔" : " ✘") + "</td><td>";
+      html += "<tr><td>" + s.id + "</td><td>" + (s.imagen_url ? "<img src='" + s.imagen_url + "' style='width:44px;height:44px;object-fit:cover;border-radius:4px'>" : "-") + "</td><td>" + s.modalidad + (s.solo_participantes ? " VACANTE" : "") + "</td><td>" + s.horario + "</td><td>" + s.fecha.slice(0,10) + "</td><td>" + (s.hora_cierre || "sin limite") + "</td><td>" + s.estado + (s.busqueda_agotada ? " (manual)" : "") + "</td><td>$" + s.pozo + "</td><td>$" + s.pozo_cubierto + " / $" + s.costo + (s.costo_cubierto ? " ✔" : " ✘") + "</td><td>$" + (s.recaudado || 0) + "</td><td>";
       html += "<button class='secundario' onclick='seleccionarSorteo(" + s.id + ")'>Detalles</button>";
       if (s.estado === "preparacion") html += "<button onclick='activarSorteo(" + s.id + ")'>Activar</button>";
       if (s.estado === "programado") html += "<button class='secundario' onclick='cerrarSorteo(" + s.id + ")'>Cerrar</button><button class='secundario' onclick='desactivarSorteo(" + s.id + ")'>Desactivar</button><button class='peligro' onclick='cancelarHorario(" + s.id + ")'>Cancelar horario</button>";
@@ -1091,7 +1080,7 @@ async function verJugada(id) {
       "\nPrecio: $" + j.precio +
       "\nEstado: " + j.estado +
       "\nPremio: $" + (j.premio ?? 0) +
-      "\nReparto: casa $" + (j.monto_casa ?? 0) + " | vendedor $" + (j.monto_vendedor ?? 0) + " | revendedor $" + (j.monto_revendedor ?? 0) + " | pozo $" + (j.monto_pozo ?? 0) +
+      "\nReparto: casa $" + (j.monto_casa ?? 0) + " | vendedor $" + (j.monto_vendedor ?? 0) + " | revendedor $" + (j.monto_revendedor ?? 0) + " | pozo $" + (j.monto_pozo ?? 0) + " | cubrir $" + (j.monto_cubrir ?? 0) +
       "\nCargada: " + ((j.creada_en || "").slice(0,19).replace("T"," "));
   } catch (e) { aviso(e.message, true); }
 }
@@ -1102,9 +1091,9 @@ async function cargarResumen() {
     if (SORT_ACTUAL) {
       const r = await api("/admin/sorteos/" + SORT_ACTUAL + "/resumen", "GET");
       document.getElementById("caja-resumen").innerHTML =
-        "<table><tr><th>Sorteo</th><th>Estado</th><th>Jugadas</th><th>Vendido</th><th>Casa</th><th>Vendedores</th><th>Revend.</th><th>Pozo</th><th>Premios</th><th>Ganadoras</th></tr>" +
-        "<tr><td>#" + r.sorteo_id + " " + r.modalidad + " " + r.horario + "</td><td>" + r.estado + "</td><td>" + r.jugadas_vendidas + "</td><td>$" + r.vendido + "</td><td>$" + r.casa + "</td><td>$" + r.vendedores + "</td><td>$" + r.revendedores + "</td><td>$" + r.pozo + "</td><td>$" + r.premios_pagados + "</td><td>" + (r.ganadoras.join(", ") || "-") + "</td></tr></table>" +
-        "<p class='chico'>Recaudado $" + r.recaudado + " de $" + r.costo + " para cubrir el costo (" + (r.costo_cubierto ? "cubierto" : "sin cubrir") + "). Resultados: " + (r.resultados || "sin cargar") + "</p>";
+        "<table><tr><th>Sorteo</th><th>Estado</th><th>Jugadas</th><th>Vendido</th><th>Casa</th><th>Vendedores</th><th>Revend.</th><th>Pozo</th><th>Pozo cubierto</th><th>Premios</th><th>Ganadoras</th></tr>" +
+        "<tr><td>#" + r.sorteo_id + " " + r.modalidad + " " + r.horario + "</td><td>" + r.estado + "</td><td>" + r.jugadas_vendidas + "</td><td>$" + r.vendido + "</td><td>$" + r.casa + "</td><td>$" + r.vendedores + "</td><td>$" + r.revendedores + "</td><td>$" + r.pozo + "</td><td>$" + r.pozo_cubierto + " / $" + r.costo + (r.costo_cubierto ? " ✔" : " ✘") + "</td><td>$" + r.premios_pagados + "</td><td>" + (r.ganadoras.join(", ") || "-") + "</td></tr></table>" +
+        "<p class='chico'>Recaudado $" + r.recaudado + ". Pozo aportado (cobertura + extra): $" + r.pozo_aportado + ". Resultados: " + (r.resultados || "sin cargar") + "</p>";
       return;
     }
     const r = await api("/admin/resumen-general", "GET");
