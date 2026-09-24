@@ -34,6 +34,10 @@
   .aviso-box { background: #713f12; border: 1px solid #fbbf24; color: #fef3c7; border-radius: 6px; padding: 8px; margin: 6px 0; font-size: 13px; }
   .modo-box { background: #1e3a8a; border: 2px solid #60a5fa; color: #dbeafe; border-radius: 6px; padding: 10px; margin: 8px 0; font-size: 14px; }
   .cobro-box { background: #14532d; border: 1px solid #22c55e; color: #dcfce7; border-radius: 6px; padding: 10px; margin: 8px 0; font-size: 13px; }
+  .buscador-box { background: #0f172a; border: 1px solid #334155; border-radius: 6px; padding: 12px; margin: 8px 0; font-size: 13px; }
+  .buscador-box .nums { font-family: monospace; font-size: 15px; color: #fbbf24; margin: 6px 0; }
+  .buscador-box .ok { color: #22c55e; font-weight: bold; }
+  .buscador-box .warn { color: #f59e0b; font-weight: bold; }
   .wa-links { background: #0f172a; border: 1px solid #25D366; border-radius: 6px; padding: 10px; margin-top: 8px; }
   .wa-links a { color: #25D366; display: inline-block; margin: 4px 8px 4px 0; text-decoration: underline; }
   .grilla { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
@@ -134,6 +138,16 @@
         </div>
         <button onclick="guardarSistema()">Guardar sistema</button>
       </details>
+    </div>
+
+    <!-- ADMIN: BUSCADOR (estado en tiempo real) -->
+    <div id="seccion-buscador" class="tarjeta" style="display:none">
+      <h2>Estado del buscador de resultados</h2>
+      <p class="chico">Acá ves en tiempo real qué números está leyendo el sistema de la página oficial de la Caja. El buscador hace 3 lecturas; si las 3 coinciden, liquida solo.</p>
+      <button class="secundario" onclick="cargarEstadoBuscador()">Actualizar</button>
+      <div id="estado-buscador" style="margin-top:12px">
+        <p class="chico">Tocá "Actualizar" para ver el estado.</p>
+      </div>
     </div>
 
     <!-- ADMIN: VENDEDORES -->
@@ -366,8 +380,8 @@ let avisosTimer = null;
 let refrescoTimer = null;
 
 const TABS_POR_ROL = {
-  admin_principal: [["sorteos","Sorteos"],["vendedores","Vendedores"],["jugadas","Jugadas"],["resumen","Resumen"],["auditoria","Auditoria"]],
-  admin: [["sorteos","Sorteos"],["jugadas","Jugadas"],["resumen","Resumen"],["auditoria","Auditoria"]],
+  admin_principal: [["sorteos","Sorteos"],["buscador","Buscador"],["vendedores","Vendedores"],["jugadas","Jugadas"],["resumen","Resumen"],["auditoria","Auditoria"]],
+  admin: [["sorteos","Sorteos"],["buscador","Buscador"],["jugadas","Jugadas"],["resumen","Resumen"],["auditoria","Auditoria"]],
   vendedor: [["vresumen","Mi resumen"],["vcargar","Cargar jugada"],["vpendientes","Aprobar"],["vjugadas","Mis jugadas"],["vrevendedores","Mis revendedores"],["vjugadores","Mis jugadores"]],
   revendedor: [["rsorteos","Sorteos"],["rcargar","Cargar jugada"],["rjugadas","Mis jugadas"],["rresumen","Mi resumen"],["rjugadores","Mis jugadores"]],
   jugador: [["jsorteos","Sorteos"],["jcargar","Mi jugada"],["jjugadas","Mis jugadas"]],
@@ -409,7 +423,6 @@ function parseNumeros(texto) {
 }
 
 function waLink(telefono, mensaje) {
-  // Normaliza: quita espacios, guiones, +. Si no empieza con 54 se asume Argentina.
   let t = (telefono || "").replace(/[\s\-\(\)\+]/g, "");
   if (!t) return null;
   if (!t.startsWith("54")) t = "54" + t;
@@ -532,6 +545,7 @@ function mostrarPanel() {
       if (document.hidden) return;
       if (TAB_ACTUAL === "jsorteos") cargarJSorteos();
       else if (TAB_ACTUAL === "rsorteos") cargarRSorteos();
+      else if (TAB_ACTUAL === "buscador") cargarEstadoBuscador();
     }, 30000);
   }
   irTab(tabs[0][0]);
@@ -547,6 +561,7 @@ function irTab(nombre) {
   if (tab) tab.className = "activa";
   const acciones = {
     sorteos: iniciarSorteos,
+    buscador: cargarEstadoBuscador,
     vendedores: cargarVendedores,
     jugadas: iniciarJugadas,
     resumen: cargarResumen,
@@ -567,6 +582,53 @@ function irTab(nombre) {
     jjugadas: cargarJJugadas,
   };
   if (acciones[nombre]) acciones[nombre]();
+}
+
+// ---------- ESTADO DEL BUSCADOR ----------
+async function cargarEstadoBuscador() {
+  const cont = document.getElementById("estado-buscador");
+  try {
+    const d = await api("/admin/buscador/estado", "GET");
+    let html = "";
+
+    // Sorteos cerrados sin resultado
+    if (d.sorteos_cerrados_sin_resultado && d.sorteos_cerrados_sin_resultado.length > 0) {
+      html += "<h3 style='color:#93c5fd;margin-top:8px'>Sorteos cerrados esperando resultado</h3>";
+      d.sorteos_cerrados_sin_resultado.forEach(s => {
+        html += "<div class='buscador-box'>";
+        html += "<b>Sorteo #" + s.id + "</b> - " + s.modalidad + " " + s.horario + " (" + s.fecha.slice(0,10) + ")";
+        html += "</div>";
+      });
+    } else {
+      html += "<p class='chico'>No hay sorteos cerrados esperando resultado.</p>";
+    }
+
+    // Búsquedas en curso
+    if (d.busquedas_en_curso && Object.keys(d.busquedas_en_curso).length > 0) {
+      html += "<h3 style='color:#93c5fd;margin-top:16px'>Búsquedas en curso</h3>";
+      for (const [sorteoId, estado] of Object.entries(d.busquedas_en_curso)) {
+        html += "<div class='buscador-box'>";
+        html += "<b>Sorteo #" + sorteoId + "</b> - " + estado.cantidad_lecturas + " lecturas<br>";
+        if (estado.ultima_lectura && estado.ultima_lectura.length > 0) {
+          html += "<span class='nums'>Última lectura: " + estado.ultima_lectura.map(n => String(n).padStart(2,'0')).join(", ") + "</span><br>";
+        }
+        if (estado.coinciden_ultimas_tres) {
+          html += "<span class='ok'>✔ Las últimas 3 lecturas coinciden - confirmando resultado</span>";
+        } else if (estado.cantidad_lecturas >= 2) {
+          html += "<span class='warn'>⚠ Lecturas aún no coinciden (" + estado.cantidad_lecturas + "/3)</span>";
+        } else {
+          html += "<span class='chico'>Esperando más lecturas...</span>";
+        }
+        html += "</div>";
+      }
+    } else {
+      html += "<p class='chico' style='margin-top:12px'>No hay búsquedas en curso en este momento.</p>";
+    }
+
+    cont.innerHTML = html;
+  } catch (e) {
+    cont.innerHTML = "<p class='mensaje error'>Error al cargar el estado: " + e.message + "</p>";
+  }
 }
 
 // ---------- SELECTOR DE JUGADORES AL CARGAR JUGADA ----------
@@ -806,7 +868,7 @@ async function cargarSorteos() {
       html += "<tr><td>" + s.id + "</td><td>" + (s.imagen_url ? "<img src='" + s.imagen_url + "' style='width:44px;height:44px;object-fit:cover;border-radius:4px'>" : "-") + "</td><td>" + s.modalidad + (s.solo_participantes ? " VACANTE" : "") + "</td><td>" + s.horario + "</td><td>" + s.fecha.slice(0,10) + "</td><td>" + (s.hora_cierre || "sin limite") + "</td><td>" + s.estado + (s.busqueda_agotada ? " (manual)" : "") + "</td><td>$" + s.pozo + "</td><td>$" + (s.recaudado || 0) + " / $" + s.costo + (s.costo_cubierto ? " ✔" : " ✘") + "</td><td>";
       html += "<button class='secundario' onclick='seleccionarSorteo(" + s.id + ")'>Detalles</button>";
       if (s.estado === "preparacion") html += "<button onclick='activarSorteo(" + s.id + ")'>Activar</button>";
-      if (s.estado === "programado") html += "<button class='secundario' onclick='desactivarSorteo(" + s.id + ")'>Desactivar</button><button class='peligro' onclick='cancelarHorario(" + s.id + ")'>Cancelar horario</button>";
+      if (s.estado === "programado") html += "<button class='secundario' onclick='cerrarSorteo(" + s.id + ")'>Cerrar</button><button class='secundario' onclick='desactivarSorteo(" + s.id + ")'>Desactivar</button><button class='peligro' onclick='cancelarHorario(" + s.id + ")'>Cancelar horario</button>";
       if (s.estado === "cerrado") html += "<button onclick='cargarResultado(" + s.id + ")'>Cargar 20 nums</button><button class='peligro' onclick='cancelarHorario(" + s.id + ")'>Cancelar horario</button>";
       if (s.estado === "reprogramando") {
         html += "<button onclick='prepararReprog(" + s.id + ")'>Reprogramar</button>";
@@ -827,6 +889,11 @@ async function cargarSorteos() {
 function prepararReprog(id) {
   document.getElementById("reprog-sorteo").value = String(id);
   document.getElementById("bloque-reprog").scrollIntoView({ behavior: "smooth" });
+}
+
+async function cerrarSorteo(id) {
+  try { await api("/admin/sorteos/" + id + "/cerrar", "POST"); aviso("Sorteo cerrado: el buscador automatico ya puede trabajar"); cargarSorteos(); }
+  catch (e) { aviso(e.message, true); }
 }
 
 async function cancelarHorario(id) {
