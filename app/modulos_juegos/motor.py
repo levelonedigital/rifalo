@@ -29,7 +29,13 @@ def porcentajes_sorteo(sorteo: Sorteo, reglas: ReglasSistema):
 
 
 def aprobar_jugada(sesion: Session, jugada: Jugada, reglas: ReglasSistema) -> Jugada:
-    """Aprueba y reparte el precio: casa, linea de venta y pozo (congelado incluido)."""
+    """Aprueba y reparte el precio.
+
+    Regla del pozo: el sobrante (100 - casa - vendedores) de cada jugada va PRIMERO
+    cubriendo el pozo base (se acumula en pozo_cubierto). Recien cuando el acumulado
+    previo ya cubrio el base, el sobrante suma como pozo_extra. La casa cobra solo su
+    porcentaje en ambos tramos.
+    """
     sorteo = sesion.get(Sorteo, jugada.sorteo_id)
     modalidad = obtener(sorteo.modalidad)
     vendedor = sesion.get(Usuario, jugada.vendedor_id)
@@ -46,23 +52,37 @@ def aprobar_jugada(sesion: Session, jugada: Jugada, reglas: ReglasSistema) -> Ju
 
     precio = jugada.precio
     base = base_pozo(sorteo)
-    recaudado_previo = sorteo.recaudado or 0.0
-    sorteo.recaudado = recaudado_previo + precio
+    sorteo.recaudado = (sorteo.recaudado or 0.0) + precio
 
-    aporte_pozo = 0.0
-    if modalidad and modalidad.requiere_pozo and recaudado_previo >= base:
-        aporte_pozo = round(precio * pozo_pct / 100.0, 2)
-    sorteo.pozo_extra = (sorteo.pozo_extra or 0.0) + aporte_pozo
+    # Sobrante destinado al pozo (solo modalidades con pozo).
+    sobrante = round(precio * pozo_pct / 100.0, 2) if (modalidad and modalidad.requiere_pozo) else 0.0
+
+    aporte_cubrir = 0.0
+    aporte_extra = 0.0
+    if sobrante > 0:
+        cubierto_previo = sorteo.pozo_cubierto or 0.0
+        if cubierto_previo >= base:
+            # Tramo 2: el base ya esta cubierto, el sobrante suma como extra.
+            aporte_extra = sobrante
+        else:
+            # Tramo 1: el sobrante cubre el base; si sobra excedente, ese excedente ya es extra.
+            faltante = base - cubierto_previo
+            aporte_cubrir = round(min(sobrante, faltante), 2)
+            aporte_extra = round(sobrante - aporte_cubrir, 2)
+
+    sorteo.pozo_cubierto = round((sorteo.pozo_cubierto or 0.0) + aporte_cubrir, 2)
+    sorteo.pozo_extra = round((sorteo.pozo_extra or 0.0) + aporte_extra, 2)
 
     monto_rev = round(precio * rev_pct / 100.0, 2)
     monto_vend = round(precio * vend_efectivo / 100.0, 2) - monto_rev
-    monto_casa = round(precio - monto_rev - monto_vend - aporte_pozo, 2)
+    monto_casa = round(precio - monto_rev - monto_vend - aporte_extra - aporte_cubrir, 2)
 
     jugada.estado = EstadoJugada.APROBADA
     jugada.monto_casa = monto_casa
     jugada.monto_vendedor = monto_vend
     jugada.monto_revendedor = monto_rev
-    jugada.monto_pozo = aporte_pozo
+    jugada.monto_pozo = aporte_extra
+    jugada.monto_cubrir = aporte_cubrir
     return jugada
 
 
