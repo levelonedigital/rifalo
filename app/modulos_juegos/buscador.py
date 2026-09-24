@@ -25,8 +25,18 @@ def _zona():
 
 
 def _momento_horario(sorteo: Sorteo, hhmm: str) -> datetime:
-    """Datetime del sorteo en hora de Argentina a partir de un HH:MM."""
     hora, minuto = (int(x) for x in hhmm.split(":"))
+    f = sorteo.fecha
+    return datetime(f.year, f.month, f.day, hora, minuto, 0, tzinfo=_zona())
+
+
+def _momento_cierre(sorteo: Sorteo):
+    if not sorteo.hora_cierre or ":" not in sorteo.hora_cierre:
+        return None
+    try:
+        hora, minuto = (int(x) for x in sorteo.hora_cierre.split(":"))
+    except ValueError:
+        return None
     f = sorteo.fecha
     return datetime(f.year, f.month, f.day, hora, minuto, 0, tzinfo=_zona())
 
@@ -61,8 +71,24 @@ def obtener_resultado_oficial(nombre_horario: str):
         return None
 
 
+def estado_busquedas():
+    """Devuelve el estado actual de todas las búsquedas en curso (para el endpoint de debug)."""
+    resultado = {}
+    for sorteo_id, estado in _intentos.items():
+        lecturas = estado.get("lecturas", [])
+        resultado[str(sorteo_id)] = {
+            "primera_lectura": estado["primero"].isoformat() if estado.get("primero") else None,
+            "cantidad_lecturas": len(lecturas),
+            "ultima_lectura": lecturas[-1] if lecturas else None,
+            "ultimas_tres": lecturas[-3:] if len(lecturas) >= 3 else lecturas,
+            "coinciden_ultimas_tres": (
+                len(lecturas) >= 3 and lecturas[-1] == lecturas[-2] == lecturas[-3]
+            ),
+        }
+    return resultado
+
+
 def costo_a_cubrir(sorteo: Sorteo) -> float:
-    """Costo de referencia del sorteo: minimo explicito, premio fijo (rifa) o pozo inicial."""
     if sorteo.minimo_cubrir is not None:
         return sorteo.minimo_cubrir
     if sorteo.modalidad == "rifa":
@@ -71,7 +97,6 @@ def costo_a_cubrir(sorteo: Sorteo) -> float:
 
 
 def chequeo_costo(sesion, reglas, ahora: datetime):
-    """A 30 minutos del horario oficial, avisa al admin si el recaudado no cubre el costo."""
     pendientes = (
         sesion.query(Sorteo)
         .filter(
@@ -101,7 +126,6 @@ def chequeo_costo(sesion, reglas, ahora: datetime):
 
 
 def _actualizar_semanal(sesion, sorteo_dia: Sorteo, reglas):
-    """Acumula los numeros del dia al pozo semanal y lo liquida al cerrar la ventana."""
     if sorteo_dia.horario != reglas.semanal_horario:
         return
     dia = sorteo_dia.fecha.weekday()
@@ -134,7 +158,7 @@ def ciclo():
         ahora = datetime.now(_zona())
         chequeo_costo(sesion, reglas, ahora)
 
-        # 1) CIERRE AUTOMATICO: al llegar el horario oficial, el sorteo se cierra solo.
+        # 1) CIERRE AUTOMATICO en la hora_cierre (o horario oficial si no tiene cierre).
         programados = (
             sesion.query(Sorteo)
             .filter(Sorteo.estado == EstadoSorteo.PROGRAMADO, Sorteo.modalidad != "semanal")
@@ -144,10 +168,12 @@ def ciclo():
             hhmm = horarios.get(sorteo.horario)
             if not hhmm:
                 continue
-            momento = _momento_horario(sorteo, hhmm)
-            if ahora >= momento:
+            cierre = _momento_cierre(sorteo)
+            if cierre is None:
+                cierre = _momento_horario(sorteo, hhmm)
+            if ahora >= cierre:
                 sorteo.estado = EstadoSorteo.CERRADO
-                auditoria.registrar(sesion, "SORTEO_CERRADO_AUTO", detalle=f"sorteo={sorteo.id} horario={sorteo.horario}")
+                auditoria.registrar(sesion, "SORTEO_CERRADO_AUTO", detalle=f"sorteo={sorteo.id} cierre={sorteo.hora_cierre or sorteo.horario}")
                 sesion.commit()
 
         # 2) BUSQUEDA AUTOMATICA con TRIPLE CHECK en sorteos cerrados sin resultado.
@@ -172,7 +198,16 @@ def ciclo():
             estado = _intentos.setdefault(sorteo.id, {"primero": ahora, "lecturas": []})
 
             numeros = obtener_resultado_oficial(sorteo.horario)
+
+            # Log de cada intento de lectura (para debug visible).
             if numeros:
+                nums_str = ",".join(f"{n:02d}" for n in numeros)
+                auditoria.registrar(
+                    sesion,
+                    "BUSQUEDA_LECTURA",
+                    detalle=f"sorteo={sorteo.id} horario={sorteo.horario} lectura={len(estado['lecturas'])+1} nums={nums_str}",
+                )
+                sesion.commit()
                 estado["lecturas"].append(numeros)
 
                 # TRIPLE CHECK: solo liquidar si los ultimos 3 intentos dieron los mismos numeros.
@@ -189,22 +224,29 @@ def ciclo():
                         _intentos.pop(sorteo.id, None)
                     else:
                         estado["lecturas"] = [numeros]
-                        auditoria.registrar(sesion, "RESULTADO_INCONSISTENTE", detalle=f"sorteo={sorteo.id}: numeros varian entre lecturas, reintentando")
+                        auditoria.registrar(sesion, "RESULTADO_INCONSISTENTE", detalle=f"sorteo={sorteo.id}: numeros varian entre lecturas, reiniciando contador")
                         sesion.commit()
-
-            elif ahora - estado["primero"] > timedelta(minutes=reglas.busqueda_duracion_min or 30):
-                sorteo.busqueda_agotada = True
-                aviso = Aviso(
-                    texto=(
-                        f"ADMIN: sorteo #{sorteo.id} ({sorteo.modalidad} {sorteo.horario}): "
-                        f"no se encontro el resultado oficial automaticamente. Carga los 20 numeros manualmente."
-                    ),
-                    destino="admin",
+            else:
+                auditoria.registrar(
+                    sesion,
+                    "BUSQUEDA_SIN_RESULTADO",
+                    detalle=f"sorteo={sorteo.id} horario={sorteo.horario}: la pagina no devolvio numeros para este horario todavia",
                 )
-                sesion.add(aviso)
-                auditoria.registrar(sesion, "BUSQUEDA_AGOTADA", detalle=f"sorteo={sorteo.id}: requiere carga manual")
                 sesion.commit()
-                _intentos.pop(sorteo.id, None)
+
+                if ahora - estado["primero"] > timedelta(minutes=reglas.busqueda_duracion_min or 30):
+                    sorteo.busqueda_agotada = True
+                    aviso = Aviso(
+                        texto=(
+                            f"ADMIN: sorteo #{sorteo.id} ({sorteo.modalidad} {sorteo.horario}): "
+                            f"no se encontro el resultado oficial automaticamente. Carga los 20 numeros manualmente."
+                        ),
+                        destino="admin",
+                    )
+                    sesion.add(aviso)
+                    auditoria.registrar(sesion, "BUSQUEDA_AGOTADA", detalle=f"sorteo={sorteo.id}: requiere carga manual")
+                    sesion.commit()
+                    _intentos.pop(sorteo.id, None)
     finally:
         sesion.close()
 
