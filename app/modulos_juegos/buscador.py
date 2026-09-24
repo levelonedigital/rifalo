@@ -16,7 +16,6 @@ _intentos = {}
 
 
 def _zona():
-    """Zona horaria oficial del sistema (Argentina). Con respaldo a UTC-3 fijo."""
     try:
         from zoneinfo import ZoneInfo
         return ZoneInfo(Configuracion.ZONA_HORARIA)
@@ -48,7 +47,6 @@ def _normalizar(texto: str) -> str:
 
 
 def obtener_resultado_oficial(nombre_horario: str):
-    """Best-effort: lee los 20 numeros del horario en la web oficial."""
     try:
         respuesta = requests.get(
             Configuracion.URL_QUINIELA,
@@ -71,8 +69,21 @@ def obtener_resultado_oficial(nombre_horario: str):
         return None
 
 
+def costo_a_cubrir(sorteo: Sorteo) -> float:
+    """Costo de referencia: minimo explicito, premio fijo (rifa) o pozo base."""
+    if sorteo.minimo_cubrir is not None:
+        return sorteo.minimo_cubrir
+    if sorteo.modalidad == "rifa":
+        return sorteo.premio_fijo or 0.0
+    return sorteo.pozo_inicial or 0.0
+
+
+def pozo_cubierto_total(sorteo: Sorteo) -> float:
+    """Acumulado de sobrantes destinados al pozo (cubrir base + extra)."""
+    return (sorteo.pozo_cubierto or 0.0) + (sorteo.pozo_extra or 0.0)
+
+
 def estado_busquedas():
-    """Devuelve el estado actual de todas las búsquedas en curso (para el endpoint de debug)."""
     resultado = {}
     for sorteo_id, estado in _intentos.items():
         lecturas = estado.get("lecturas", [])
@@ -88,15 +99,8 @@ def estado_busquedas():
     return resultado
 
 
-def costo_a_cubrir(sorteo: Sorteo) -> float:
-    if sorteo.minimo_cubrir is not None:
-        return sorteo.minimo_cubrir
-    if sorteo.modalidad == "rifa":
-        return sorteo.premio_fijo or 0.0
-    return sorteo.pozo_inicial or 0.0
-
-
 def chequeo_costo(sesion, reglas, ahora: datetime):
+    """A 30 min del horario oficial, avisa al admin si el acumulado de sobrantes no cubre el costo."""
     pendientes = (
         sesion.query(Sorteo)
         .filter(
@@ -112,11 +116,11 @@ def chequeo_costo(sesion, reglas, ahora: datetime):
         momento = _momento_horario(sorteo, hhmm)
         if momento - timedelta(minutes=30) <= ahora < momento:
             costo = costo_a_cubrir(sorteo)
-            if (sorteo.recaudado or 0.0) < costo:
+            if pozo_cubierto_total(sorteo) < costo:
                 aviso = Aviso(
                     texto=(
                         f"ADMIN: sorteo #{sorteo.id} ({sorteo.modalidad} {sorteo.horario}) no cubre el costo: "
-                        f"recaudado ${(sorteo.recaudado or 0.0):.2f} de ${costo:.2f}. Decidi si reprogramas el horario."
+                        f"pozo cubierto ${pozo_cubierto_total(sorteo):.2f} de ${costo:.2f}. Decidi si reprogramas el horario."
                     ),
                     destino="admin",
                 )
@@ -150,7 +154,6 @@ def _actualizar_semanal(sesion, sorteo_dia: Sorteo, reglas):
 
 
 def ciclo():
-    """Una pasada: cierre automatico, alerta de costo y busqueda con triple check (hora de Argentina)."""
     sesion = SessionLocal()
     try:
         reglas = obtener_reglas(sesion)
@@ -199,7 +202,6 @@ def ciclo():
 
             numeros = obtener_resultado_oficial(sorteo.horario)
 
-            # Log de cada intento de lectura (para debug visible).
             if numeros:
                 nums_str = ",".join(f"{n:02d}" for n in numeros)
                 auditoria.registrar(
@@ -210,7 +212,6 @@ def ciclo():
                 sesion.commit()
                 estado["lecturas"].append(numeros)
 
-                # TRIPLE CHECK: solo liquidar si los ultimos 3 intentos dieron los mismos numeros.
                 if len(estado["lecturas"]) >= 3:
                     ultimas_tres = estado["lecturas"][-3:]
                     if ultimas_tres[0] == ultimas_tres[1] == ultimas_tres[2]:
@@ -252,7 +253,6 @@ def ciclo():
 
 
 def iniciar_buscador():
-    """Hilo de fondo que corre un ciclo cada 20 segundos."""
     def bucle():
         while True:
             try:
