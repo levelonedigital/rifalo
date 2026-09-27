@@ -14,6 +14,17 @@ from app.modelos.juegos import Aviso, EstadoSorteo, Sorteo
 
 _intentos = {}
 
+# Mapeo de horarios del sistema a los "tipo" de la API oficial de la Caja.
+TIPOS_QUINIELA = {
+    "matutina": 1,
+    "vespertina": 2,
+    "siesta": 3,
+    "tarde": 4,
+    "nocturna": 5,
+}
+
+_URL_API = Configuracion.URL_QUINIELA.rstrip("/") + "/api/"
+
 
 def _zona():
     try:
@@ -46,25 +57,40 @@ def _normalizar(texto: str) -> str:
     )
 
 
-def obtener_resultado_oficial(nombre_horario: str):
+def obtener_resultado_oficial(nombre_horario: str, fecha: datetime):
+    """Lee los 20 numeros del horario en la fecha dada desde la API oficial de la Caja.
+
+    Paso 1: /api/extracto/?fecha_sorteo=AAAA-MM-DD  -> lista los sorteos del dia.
+    Paso 2: /api/extracto-registro/?id=<id>          -> los 20 numeros de ese sorteo.
+    Devuelve la lista de 20 numeros (ultimos 2 digitos) ordenada por posicion, o None.
+    """
+    tipo = TIPOS_QUINIELA.get(nombre_horario)
+    if tipo is None:
+        return None
+    dia = fecha.strftime("%Y-%m-%d")
+    cabeceras = {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64)"}
     try:
-        respuesta = requests.get(
-            Configuracion.URL_QUINIELA,
-            timeout=10,
-            headers={"User-Agent": "Mozilla/5.0 (X11; Linux x86_64)"},
-        )
-        texto = respuesta.text
-        indice = _normalizar(texto).find(_normalizar(nombre_horario))
-        if indice < 0:
+        r1 = requests.get(_URL_API + "extracto/", params={"fecha_sorteo": dia}, timeout=10, headers=cabeceras)
+        r1.raise_for_status()
+        extractos = r1.json()
+        id_extracto = None
+        for ex in extractos:
+            if ex.get("tipo") == tipo and ex.get("fecha_sorteo") == dia:
+                id_extracto = ex.get("id")
+                break
+        if id_extracto is None:
             return None
-        chunk = texto[indice:indice + 6000]
-        nums = re.findall(r">\s*(\d{2})\s*<", chunk)
-        if len(nums) < 20:
-            nums = re.findall(r"\b(\d{2})\b", chunk)
-        nums = nums[:20]
+
+        r2 = requests.get(_URL_API + "extracto-registro/", params={"id": id_extracto}, timeout=10, headers=cabeceras)
+        r2.raise_for_status()
+        registros = r2.json()
+        if not registros or len(registros) < 20:
+            return None
+        registros = sorted(registros, key=lambda x: x.get("posicion", 0))
+        nums = [int(x.get("numero", 0)) % 100 for x in registros[:20]]
         if len(nums) < 20:
             return None
-        return [int(n) for n in nums]
+        return nums
     except Exception:
         return None
 
@@ -195,12 +221,13 @@ def ciclo():
             if not hhmm:
                 continue
             momento = _momento_horario(sorteo, hhmm)
-            if ahora < momento + timedelta(minutes=reglas.busqueda_inicio_min or 5):
+            # Empieza a buscar 35 min despues del horario oficial (la Caja publica ~27 min despues).
+            if ahora < momento + timedelta(minutes=reglas.busqueda_inicio_min or 35):
                 continue
 
             estado = _intentos.setdefault(sorteo.id, {"primero": ahora, "lecturas": []})
 
-            numeros = obtener_resultado_oficial(sorteo.horario)
+            numeros = obtener_resultado_oficial(sorteo.horario, sorteo.fecha)
 
             if numeros:
                 nums_str = ",".join(f"{n:02d}" for n in numeros)
@@ -231,7 +258,7 @@ def ciclo():
                 auditoria.registrar(
                     sesion,
                     "BUSQUEDA_SIN_RESULTADO",
-                    detalle=f"sorteo={sorteo.id} horario={sorteo.horario}: la pagina no devolvio numeros para este horario todavia",
+                    detalle=f"sorteo={sorteo.id} horario={sorteo.horario}: la API no devolvio numeros para este horario todavia",
                 )
                 sesion.commit()
 
