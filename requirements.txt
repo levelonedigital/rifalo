@@ -5,3 +5,4 @@ psycopg2-binary>=2.9
 pyjwt>=2.8
 pyotp>=2.9
 requests>=2.31
+psycopg[binary]
