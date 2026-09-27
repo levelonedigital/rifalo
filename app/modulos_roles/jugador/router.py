@@ -47,7 +47,6 @@ def _sorteo_out(s: Sorteo):
 
 
 def _puedo_jugar(s: Sorteo, jugador: Usuario, reglas) -> bool:
-    """True solo si el sorteo esta programado, el cierre no paso y (si es vacante) el jugador participa."""
     if s.estado != EstadoSorteo.PROGRAMADO:
         return False
     hhmm = s.hora_cierre or reglas.dict_horarios().get(s.horario)
@@ -69,7 +68,6 @@ def _puedo_jugar(s: Sorteo, jugador: Usuario, reglas) -> bool:
 
 
 def _coincidencias(sesion: Session, sorteo_id: int, numeros_clave: str) -> int:
-    """Cuantas jugadas activas del sorteo tienen exactamente esos numeros (incluida la propia)."""
     return (
         sesion.query(Jugada)
         .filter(
@@ -94,6 +92,13 @@ def sorteos_abiertos(sesion: Session = Depends(obtener_sesion), jugador: Usuario
     for s in sorteos:
         d = _sorteo_out(s)
         d["puedo_jugar"] = _puedo_jugar(s, jugador, reglas)
+        mis = (
+            sesion.query(Jugada)
+            .filter(Jugada.sorteo_id == s.id, Jugada.jugador_id == jugador.id, Jugada.estado.in_(ESTADOS_ACTIVAS))
+            .order_by(Jugada.creada_en)
+            .all()
+        )
+        d["mis_jugadas"] = [j.numeros for j in mis]
         salida.append(d)
     return salida
 
@@ -131,7 +136,6 @@ def cargar_jugada(datos: JugadaCrear, sesion: Session = Depends(obtener_sesion),
 
 @router.get("/jugadas")
 def mis_jugadas(sesion: Session = Depends(obtener_sesion), jugador: Usuario = jug_dep):
-    """El jugador ve SUS propios numeros y si alguien mas juega los mismos."""
     jugadas = (
         sesion.query(Jugada)
         .filter(Jugada.jugador_id == jugador.id)
