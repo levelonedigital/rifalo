@@ -1612,17 +1612,22 @@ async function eliminarRJugador(id) {
 async function cargarJSorteos() {
   try {
     const ss = await api("/jugador/sorteos", "GET");
-    // Cartel grande de pozo: usa el primer sorteo abierto (el mas proximo).
+    // Cartel grande de pozo: usa el primer sorteo JUGABLE (o el primero si no hay jugables).
+    const jugables = ss.filter(s => s.puedo_jugar);
+    const principal = jugables.length ? jugables[0] : (ss.length ? ss[0] : null);
     const cartel = document.getElementById("pozo-jugador");
-    if (ss.length) {
+    if (principal) {
       cartel.style.display = "block";
-      cartel.innerHTML = "POZO ACTUAL<br><span>$" + ss[0].pozo + "</span><br><small style='font-size:12px;font-weight:normal'>Sorteo #" + ss[0].id + " - " + ss[0].nombre_modalidad + " " + ss[0].horario + " - " + fmtFecha(ss[0].fecha) + "</small>";
+      cartel.innerHTML = "POZO ACTUAL<br><span>$" + principal.pozo + "</span><br><small style='font-size:12px;font-weight:normal'>Sorteo #" + principal.id + " - " + principal.nombre_modalidad + " " + principal.horario + " - " + fmtFecha(principal.fecha) + "</small>";
     } else {
       cartel.style.display = "none";
       cartel.innerHTML = "";
     }
     let html = "<table><tr><th>#</th><th>Img</th><th>Sorteo</th><th>Horario</th><th>Dia</th><th>Cierre</th><th>Estado</th><th>Precio</th><th>Pozo</th><th></th></tr>";
-    ss.forEach(s => { html += "<tr><td>" + s.id + "</td><td>" + (s.imagen_url ? "<img src='" + s.imagen_url + "' style='width:40px;height:40px;object-fit:cover;border-radius:4px'>" : "-") + "</td><td>" + s.nombre_modalidad + (s.reprogramando ? " (REPROGRAMANDO)" : "") + "<div class='chico'>" + (s.detalle || "") + "</div></td><td>" + s.horario + "</td><td>" + fmtFecha(s.fecha) + "</td><td>" + (s.hora_cierre || "sin limite") + "</td><td>" + s.estado + "</td><td>$" + s.precio_jugada + "</td><td><b style='color:#22c55e'>$" + s.pozo + "</b></td><td><button onclick='jugarSorteo(" + s.id + ")'>Jugar</button></td></tr>"; });
+    ss.forEach(s => {
+      const boton = s.puedo_jugar ? "<button onclick='jugarSorteo(" + s.id + ")'>Jugar</button>" : "<span class='chico'>no habilitado</span>";
+      html += "<tr><td>" + s.id + "</td><td>" + (s.imagen_url ? "<img src='" + s.imagen_url + "' style='width:40px;height:40px;object-fit:cover;border-radius:4px'>" : "-") + "</td><td>" + s.nombre_modalidad + (s.reprogramando ? " (REPROGRAMANDO)" : "") + "<div class='chico'>" + (s.detalle || "") + "</div></td><td>" + s.horario + "</td><td>" + fmtFecha(s.fecha) + "</td><td>" + (s.hora_cierre || "sin limite") + "</td><td>" + s.estado + "</td><td>$" + s.precio_jugada + "</td><td><b style='color:#22c55e'>$" + s.pozo + "</b></td><td>" + boton + "</td></tr>";
+    });
     document.getElementById("lista-jsorteos").innerHTML = html + "</table>";
   } catch (e) { aviso(e.message, true); }
 }
