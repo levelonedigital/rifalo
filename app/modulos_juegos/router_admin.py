@@ -1,5 +1,5 @@
 import re
-from datetime import datetime
+from datetime import date, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -10,7 +10,7 @@ from app.core.database import obtener_sesion
 from app.core.dependencias import requerir_permiso, requerir_rol
 from app.core.security import hash_password
 from app.modulos_juegos import buscador, motor
-from app.modulos_juegos.buscador import _actualizar_semanal, costo_a_cubrir, pozo_cubierto_total
+from app.modulos_juegos.buscador import _actualizar_semanal, _zona, costo_a_cubrir, pozo_cubierto_total
 from app.modulos_juegos.modalidades import listar, obtener
 from app.modelos.juegos import Aviso, EstadoJugada, EstadoSorteo, Jugada, Sorteo
 from app.modelos.usuario import RolUsuario, Usuario
@@ -35,6 +35,13 @@ def validar_hora_cierre(valor):
 def detalle_por_defecto(modalidad) -> str:
     base = modalidad.resumen_reglas if modalidad else ""
     return base + " Si no se cumplen las condiciones, el sorteo puede pasar a otro horario; se respetan las jugadas."
+
+
+def _montos_vendidas(sesion, sorteo_id):
+    jugadas = sesion.query(Jugada).filter(Jugada.sorteo_id == sorteo_id).all()
+    vendidas = [j for j in jugadas if j.estado in ESTADOS_VENDIDOS]
+    ganadoras = [j for j in jugadas if j.estado == EstadoJugada.GANADORA]
+    return jugadas, vendidas, ganadoras
 
 
 # ---------- ESTADO DEL BUSCADOR ----------
@@ -103,6 +110,10 @@ class ResultadoCargar(BaseModel):
 
 class Reprogramar(BaseModel):
     fecha: datetime
+
+
+class MarcarPago(BaseModel):
+    pagado: bool = True
 
 
 class VendedorCrear(BaseModel):
@@ -286,9 +297,7 @@ def resumen_sorteo(sorteo_id: int, sesion: Session = Depends(obtener_sesion), ad
     sorteo = sesion.get(Sorteo, sorteo_id)
     if sorteo is None:
         raise HTTPException(status_code=404, detail="Sorteo no encontrado")
-    jugadas = sesion.query(Jugada).filter(Jugada.sorteo_id == sorteo.id).all()
-    vendidas = [j for j in jugadas if j.estado in ESTADOS_VENDIDOS]
-    ganadoras = [j for j in jugadas if j.estado == EstadoJugada.GANADORA]
+    jugadas, vendidas, ganadoras = _montos_vendidas(sesion, sorteo_id)
     return {
         "sorteo_id": sorteo.id,
         "modalidad": sorteo.modalidad,
@@ -310,6 +319,49 @@ def resumen_sorteo(sorteo_id: int, sesion: Session = Depends(obtener_sesion), ad
         "pozo_aportado": round(sum((j.monto_pozo or 0) + (j.monto_cubrir or 0) for j in vendidas), 2),
         "premios_pagados": round(sum(j.premio or 0 for j in ganadoras), 2),
         "ganadoras": [j.id for j in ganadoras],
+    }
+
+
+@router.get("/sorteos/{sorteo_id}/liquidacion")
+def detalle_liquidacion(sorteo_id: int, sesion: Session = Depends(obtener_sesion), admin: Usuario = admin_dep):
+    """Detalle completo de la liquidacion: ganadores, numeros, reparto y estados de pago."""
+    sorteo = sesion.get(Sorteo, sorteo_id)
+    if sorteo is None:
+        raise HTTPException(status_code=404, detail="Sorteo no encontrado")
+    jugadas, vendidas, ganadoras = _montos_vendidas(sesion, sorteo_id)
+
+    detalle_ganadoras = []
+    for j in ganadoras:
+        vendedor = sesion.get(Usuario, j.vendedor_id) if j.vendedor_id else None
+        jugador = sesion.get(Usuario, j.jugador_id) if j.jugador_id else None
+        detalle_ganadoras.append(
+            {
+                "jugada_id": j.id,
+                "jugador": (jugador.nombre if jugador else None) or j.jugador_nombre or "-",
+                "numeros": j.numeros,
+                "premio": j.premio or 0.0,
+                "premio_pagado": bool(j.premio_pagado),
+                "vendedor": vendedor.usuario if vendedor else "-",
+                "comision_vendedor": j.monto_vendedor or 0.0,
+                "comision_pagada": bool(j.comision_pagada),
+            }
+        )
+
+    return {
+        "sorteo_id": sorteo.id,
+        "modalidad": sorteo.modalidad,
+        "horario": sorteo.horario,
+        "fecha": sorteo.fecha.isoformat(),
+        "estado": sorteo.estado.value,
+        "resultados": sorteo.resultados,
+        "vendido": round(sum(j.precio for j in vendidas), 2),
+        "casa": round(sum(j.monto_casa or 0 for j in vendidas), 2),
+        "vendedores": round(sum(j.monto_vendedor or 0 for j in vendidas), 2),
+        "revendedores": round(sum(j.monto_revendedor or 0 for j in vendidas), 2),
+        "pozo_formado": round(sum((j.monto_pozo or 0) + (j.monto_cubrir or 0) for j in vendidas), 2),
+        "pozo_pagado": round(sum(j.premio or 0 for j in ganadoras), 2),
+        "cantidad_ganadoras": len(ganadoras),
+        "ganadoras": detalle_ganadoras,
     }
 
 
@@ -486,8 +538,36 @@ def ver_jugada(jugada_id: int, sesion: Session = Depends(obtener_sesion), admin:
         "monto_revendedor": j.monto_revendedor,
         "monto_pozo": j.monto_pozo,
         "monto_cubrir": j.monto_cubrir,
+        "premio_pagado": bool(j.premio_pagado),
+        "comision_pagada": bool(j.comision_pagada),
         "creada_en": j.creada_en.isoformat() if j.creada_en else None,
     }
+
+
+@router.post("/jugadas/{jugada_id}/marcar-premio")
+def marcar_premio_pagado(jugada_id: int, datos: MarcarPago, sesion: Session = Depends(obtener_sesion), admin: Usuario = admin_dep):
+    j = sesion.get(Jugada, jugada_id)
+    if j is None:
+        raise HTTPException(status_code=404, detail="Jugada no encontrada")
+    if j.estado != EstadoJugada.GANADORA:
+        raise HTTPException(status_code=400, detail="Solo se puede marcar el premio de jugadas ganadoras")
+    j.premio_pagado = datos.pagado
+    sesion.commit()
+    auditoria.registrar(sesion, "PREMIO_MARCADO", detalle=f"jugada={j.id} pagado={datos.pagado}", usuario=admin)
+    sesion.commit()
+    return {"ok": True, "premio_pagado": bool(j.premio_pagado)}
+
+
+@router.post("/jugadas/{jugada_id}/marcar-comision")
+def marcar_comision_pagada(jugada_id: int, datos: MarcarPago, sesion: Session = Depends(obtener_sesion), admin: Usuario = admin_dep):
+    j = sesion.get(Jugada, jugada_id)
+    if j is None:
+        raise HTTPException(status_code=404, detail="Jugada no encontrada")
+    j.comision_pagada = datos.pagado
+    sesion.commit()
+    auditoria.registrar(sesion, "COMISION_MARCADA", detalle=f"jugada={j.id} pagada={datos.pagado}", usuario=admin)
+    sesion.commit()
+    return {"ok": True, "comision_pagada": bool(j.comision_pagada)}
 
 
 # ---------- VENDEDORES ----------
@@ -538,6 +618,87 @@ def editar_vendedor(vendedor_id: int, datos: VendedorEditar, sesion: Session = D
     auditoria.registrar(sesion, "VENDEDOR_EDITADO", detalle=vendedor.usuario, usuario=admin)
     sesion.commit()
     return {"id": vendedor.id, "usuario": vendedor.usuario, "comision_pct": vendedor.comision_pct, "activo": vendedor.activo}
+
+
+# ---------- JUGADORES TOTALES ----------
+
+@router.get("/jugadores-total")
+def jugadores_total(sesion: Session = Depends(obtener_sesion), admin: Usuario = admin_dep):
+    total = sesion.query(Usuario).filter(Usuario.rol == RolUsuario.JUGADOR).count()
+    activos = sesion.query(Usuario).filter(Usuario.rol == RolUsuario.JUGADOR, Usuario.activo.is_(True)).count()
+    return {"total": total, "activos": activos}
+
+
+# ---------- BALANCE ----------
+
+def _rango_periodo(periodo: str, ref: date):
+    if periodo == "semana":
+        inicio = ref - timedelta(days=ref.weekday())
+        fin = inicio + timedelta(days=7)
+    elif periodo == "mes":
+        inicio = ref.replace(day=1)
+        fin = (inicio.replace(day=28) + timedelta(days=4)).replace(day=1)
+    elif periodo == "anio":
+        inicio = ref.replace(month=1, day=1)
+        fin = inicio.replace(year=inicio.year + 1)
+    else:
+        inicio = ref
+        fin = ref + timedelta(days=1)
+    return inicio, fin
+
+
+@router.get("/balance")
+def balance(
+    periodo: str = "dia",
+    fecha: str | None = None,
+    sesion: Session = Depends(obtener_sesion),
+    admin: Usuario = admin_dep,
+):
+    """Balance de sorteos liquidados en un periodo (dia/semana/mes/anio)."""
+    try:
+        ref = date.fromisoformat(fecha) if fecha else datetime.now(_zona()).date()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Fecha invalida, usa AAAA-MM-DD")
+    inicio, fin = _rango_periodo(periodo, ref)
+    z = _zona()
+    dt_inicio = datetime.combine(inicio, datetime.min.time(), tzinfo=z)
+    dt_fin = datetime.combine(fin, datetime.min.time(), tzinfo=z)
+
+    sorteos = (
+        sesion.query(Sorteo)
+        .filter(Sorteo.estado == EstadoSorteo.LIQUIDADO, Sorteo.fecha >= dt_inicio, Sorteo.fecha < dt_fin)
+        .order_by(Sorteo.fecha)
+        .all()
+    )
+
+    por_sorteo = []
+    tot = {"vendido": 0.0, "casa": 0.0, "vendedores": 0.0, "revendedores": 0.0, "pozo_formado": 0.0, "premios": 0.0}
+    for s in sorteos:
+        _, vendidas, ganadoras = _montos_vendidas(sesion, s.id)
+        fila = {
+            "sorteo_id": s.id,
+            "modalidad": s.modalidad,
+            "horario": s.horario,
+            "fecha": s.fecha.isoformat(),
+            "vendido": round(sum(j.precio for j in vendidas), 2),
+            "casa": round(sum(j.monto_casa or 0 for j in vendidas), 2),
+            "vendedores": round(sum(j.monto_vendedor or 0 for j in vendidas), 2),
+            "revendedores": round(sum(j.monto_revendedor or 0 for j in vendidas), 2),
+            "pozo_formado": round(sum((j.monto_pozo or 0) + (j.monto_cubrir or 0) for j in vendidas), 2),
+            "premios": round(sum(j.premio or 0 for j in ganadoras), 2),
+        }
+        por_sorteo.append(fila)
+        for k in tot:
+            tot[k] += fila[k]
+
+    return {
+        "periodo": periodo,
+        "desde": inicio.isoformat(),
+        "hasta": (fin - timedelta(days=1)).isoformat(),
+        "sorteos_liquidados": len(sorteos),
+        "totales": {k: round(v, 2) for k, v in tot.items()},
+        "por_sorteo": por_sorteo,
+    }
 
 
 # ---------- RESUMEN GENERAL ----------
