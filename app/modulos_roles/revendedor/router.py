@@ -23,25 +23,32 @@ class JugadaCrear(BaseModel):
     sorteo_id: int
     numeros: list[int]
     jugador_nombre: str | None = None
-    jugador_id: int | None = None   # jugador registrado en tu linea (opcional)
+    jugador_id: int | None = None
 
 
 class JugadorCrear(BaseModel):
     usuario: str
     password: str
     nombre: str
+    telefono: str = Field(min_length=5)
     datos_cobro: str = Field(min_length=1)
     cobro_transferencia: bool = True
-    telefono: str | None = None
 
 
 class JugadorEditar(BaseModel):
     nombre: str | None = None
-    telefono: str | None = None
+    telefono: str | None = Field(default=None, min_length=5)
     datos_cobro: str | None = Field(default=None, min_length=1)
     cobro_transferencia: bool | None = None
     password: str | None = None
     activo: bool | None = None
+
+
+def _mio_jugador(sesion: Session, jugador_id: int, rev: Usuario) -> Usuario:
+    jugador = sesion.get(Usuario, jugador_id)
+    if jugador is None or jugador.revendedor_padre_id != rev.id or jugador.rol != RolUsuario.JUGADOR:
+        raise HTTPException(status_code=404, detail="Jugador no encontrado en tu linea")
+    return jugador
 
 
 def _sorteo_out(s: Sorteo):
@@ -57,18 +64,12 @@ def _sorteo_out(s: Sorteo):
         "fecha": s.fecha.isoformat(),
         "hora_cierre": s.hora_cierre,
         "pozo": s.pozo_actual,
+        "estado": s.estado.value,
         "precio_jugada": s.precio_jugada,
         "solo_participantes": s.solo_participantes,
         "reprogramando": s.estado == EstadoSorteo.REPROGRAMANDO,
         "imagen_url": s.imagen_url,
     }
-
-
-def _mio_jugador(sesion: Session, jugador_id: int, rev: Usuario) -> Usuario:
-    jugador = sesion.get(Usuario, jugador_id)
-    if jugador is None or jugador.revendedor_padre_id != rev.id or jugador.rol != RolUsuario.JUGADOR:
-        raise HTTPException(status_code=404, detail="Jugador no encontrado en tu linea")
-    return jugador
 
 
 # ---------- JUGADORES DEL REVENDEDOR (crear, editar, eliminar) ----------
