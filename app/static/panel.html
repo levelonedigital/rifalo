@@ -351,11 +351,11 @@
 
     <!-- JUGADOR -->
     <div id="seccion-jsorteos" class="tarjeta" style="display:none">
-      <div id="pozo-jsorteos" class="pozo-grande" style="font-size:16px"></div>
       <h2>Sorteos abiertos</h2>
       <button class="secundario" onclick="cargarJSorteos()">Actualizar</button>
       <p class="chico">Toca "Ver pozo" en un sorteo para ver su pozo actual. El boton "Jugar" aparece solo en los habilitados.</p>
       <div id="lista-jsorteos"></div>
+      <div id="pozo-jsorteos" class="pozo-grande" style="font-size:16px"></div>
     </div>
     <div id="seccion-jcargar" class="tarjeta" style="display:none">
       <div id="pozo-jugador" class="pozo-grande" style="font-size:16px"></div>
@@ -1639,9 +1639,10 @@ async function cargarJSorteos() {
     pintarPozo("pozo-jsorteos", elegido || null);
     let html = "<table><tr><th>#</th><th>Img</th><th>Sorteo</th><th>Horario</th><th>Dia</th><th>Cierre</th><th>Estado</th><th>Precio</th><th>Pozo</th><th></th></tr>";
     ss.forEach(s => {
+      const jugando = (s.mis_jugadas && s.mis_jugadas.length) ? "<div class='chico' style='color:#22c55e'>Jugando: " + s.mis_jugadas.map((n, i) => ((i + 1) + ": " + n)).join(" - ") + "</div>" : "";
       const botonPozo = "<button class='secundario' onclick='elegirSorteoJugador(" + s.id + ")'>Ver pozo</button>";
       const botonJugar = s.puedo_jugar ? "<button onclick='jugarSorteo(" + s.id + ")'>Jugar</button>" : "<span class='chico'>no habilitado</span>";
-      html += "<tr><td>" + s.id + "</td><td>" + (s.imagen_url ? "<img src='" + s.imagen_url + "' style='width:40px;height:40px;object-fit:cover;border-radius:4px'>" : "-") + "</td><td>" + s.nombre_modalidad + (s.reprogramando ? " (REPROGRAMANDO)" : "") + "<div class='chico'>" + (s.detalle || "") + "</div></td><td>" + s.horario + "</td><td>" + fmtFecha(s.fecha) + "</td><td>" + (s.hora_cierre || "sin limite") + "</td><td>" + s.estado + "</td><td>$" + s.precio_jugada + "</td><td><b style='color:#22c55e'>$" + s.pozo + "</b></td><td>" + botonPozo + botonJugar + "</td></tr>";
+      html += "<tr><td>" + s.id + "</td><td>" + (s.imagen_url ? "<img src='" + s.imagen_url + "' style='width:40px;height:40px;object-fit:cover;border-radius:4px'>" : "-") + "</td><td>" + s.nombre_modalidad + (s.reprogramando ? " (REPROGRAMANDO)" : "") + "<div class='chico'>" + (s.detalle || "") + "</div>" + jugando + "</td><td>" + s.horario + "</td><td>" + fmtFecha(s.fecha) + "</td><td>" + (s.hora_cierre || "sin limite") + "</td><td>" + s.estado + "</td><td>$" + s.precio_jugada + "</td><td><b style='color:#22c55e'>$" + s.pozo + "</b></td><td>" + botonPozo + botonJugar + "</td></tr>";
     });
     document.getElementById("lista-jsorteos").innerHTML = html + "</table>";
   } catch (e) { aviso(e.message, true); }
@@ -1651,6 +1652,8 @@ function elegirSorteoJugador(id) {
   JUGADOR_SORTEO_ELEGIDO = id;
   const s = SORTEOS_ABIERTOS_CACHE["j-sorteo"] && SORTEOS_ABIERTOS_CACHE["j-sorteo"][id];
   pintarPozo("pozo-jsorteos", s || null);
+  const cartel = document.getElementById("pozo-jsorteos");
+  if (cartel) cartel.scrollIntoView({ behavior: "smooth", block: "nearest" });
   const sel = document.getElementById("j-sorteo");
   if (sel && s) {
     sel.value = String(id);
