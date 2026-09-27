@@ -1643,6 +1643,7 @@ async function cargarJSorteos() {
       const botonPozo = "<button class='secundario' onclick='elegirSorteoJugador(" + s.id + ")'>Ver pozo</button>";
       const botonJugar = s.puedo_jugar ? "<button onclick='jugarSorteo(" + s.id + ")'>Jugar</button>" : "<span class='chico'>no habilitado</span>";
       html += "<tr><td>" + s.id + "</td><td>" + (s.imagen_url ? "<img src='" + s.imagen_url + "' style='width:40px;height:40px;object-fit:cover;border-radius:4px'>" : "-") + "</td><td>" + s.nombre_modalidad + (s.reprogramando ? " (REPROGRAMANDO)" : "") + "<div class='chico'>" + (s.detalle || "") + "</div>" + jugando + "</td><td>" + s.horario + "</td><td>" + fmtFecha(s.fecha) + "</td><td>" + (s.hora_cierre || "sin limite") + "</td><td>" + s.estado + "</td><td>$" + s.precio_jugada + "</td><td><b style='color:#22c55e'>$" + s.pozo + "</b></td><td>" + botonPozo + botonJugar + "</td></tr>";
+      html += "<tr id='pozo-fila-" + s.id + "' style='display:none'><td colspan='10'><div class='pozo-grande' style='font-size:16px'>POZO ACTUAL<br><span>$" + s.pozo + "</span><br><small style='font-size:12px;font-weight:normal'>Sorteo #" + s.id + " - " + s.nombre_modalidad + " " + s.horario + " - " + fmtFecha(s.fecha) + "</small></div></td></tr>";
     });
     document.getElementById("lista-jsorteos").innerHTML = html + "</table>";
   } catch (e) { aviso(e.message, true); }
@@ -1650,10 +1651,14 @@ async function cargarJSorteos() {
 
 function elegirSorteoJugador(id) {
   JUGADOR_SORTEO_ELEGIDO = id;
+  document.querySelectorAll("[id^='pozo-fila-']").forEach(f => { f.style.display = "none"; });
+  const fila = document.getElementById("pozo-fila-" + id);
+  if (fila) {
+    fila.style.display = "table-row";
+    fila.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }
   const s = SORTEOS_ABIERTOS_CACHE["j-sorteo"] && SORTEOS_ABIERTOS_CACHE["j-sorteo"][id];
   pintarPozo("pozo-jsorteos", s || null);
-  const cartel = document.getElementById("pozo-jsorteos");
-  if (cartel) cartel.scrollIntoView({ behavior: "smooth", block: "nearest" });
   const sel = document.getElementById("j-sorteo");
   if (sel && s) {
     sel.value = String(id);
