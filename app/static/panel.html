@@ -351,13 +351,14 @@
 
     <!-- JUGADOR -->
     <div id="seccion-jsorteos" class="tarjeta" style="display:none">
-      <div id="pozo-jugador" class="pozo-grande"></div>
+      <div id="pozo-jsorteos" class="pozo-grande" style="font-size:16px"></div>
       <h2>Sorteos abiertos</h2>
       <button class="secundario" onclick="cargarJSorteos()">Actualizar</button>
-      <p class="chico">El pozo se actualiza solo cada 30 segundos.</p>
+      <p class="chico">Toca "Ver pozo" en un sorteo para ver su pozo actual. El boton "Jugar" aparece solo en los habilitados.</p>
       <div id="lista-jsorteos"></div>
     </div>
     <div id="seccion-jcargar" class="tarjeta" style="display:none">
+      <div id="pozo-jugador" class="pozo-grande" style="font-size:16px"></div>
       <h2>Mi jugada</h2>
       <label>Sorteo</label><select id="j-sorteo" onchange="pintarReglasSelect('j-sorteo','j-reglas','j-imagen')"></select>
       <img id="j-imagen" style="display:none; max-width:220px; border-radius:6px; margin:6px 0">
@@ -380,6 +381,7 @@ let VJUG_CACHE = {};
 let RJUG_CACHE = {};
 let SORT_ACTUAL = null;
 let TAB_ACTUAL = null;
+let JUGADOR_SORTEO_ELEGIDO = null;
 let sorteo_edit_id = null;
 let vendedor_edit_id = null;
 let rev_edit_id = null;
@@ -425,7 +427,6 @@ function parseNumeros(texto) {
   return texto.split(/[,\s]+/).filter(x => x).map(x => parseInt(x, 10));
 }
 
-// Fechas en formato DD-MM-AAAA para mostrar.
 function fmtFecha(iso) {
   if (!iso) return "-";
   const p = String(iso).slice(0,10).split("-");
@@ -433,7 +434,6 @@ function fmtFecha(iso) {
   return p[2] + "-" + p[1] + "-" + p[0];
 }
 
-// Acepta DD-MM-AAAA o AAAA-MM-DD y devuelve AAAA-MM-DD (formato del servidor).
 function aIsoFecha(txt) {
   txt = (txt || "").trim();
   if (/^\d{4}-\d{2}-\d{2}$/.test(txt)) return txt;
@@ -448,6 +448,17 @@ function waLink(telefono, mensaje) {
   if (!t.startsWith("54")) t = "54" + t;
   const msg = encodeURIComponent(mensaje || "");
   return "https://wa.me/" + t + (msg ? "?text=" + msg : "");
+}
+
+function pintarPozo(divId, s) {
+  const c = document.getElementById(divId);
+  if (!c) return;
+  c.style.display = "block";
+  if (!s) {
+    c.innerHTML = "Seleccioná un sorteo para ver el pozo actual";
+    return;
+  }
+  c.innerHTML = "POZO ACTUAL<br><span>$" + s.pozo + "</span><br><small style='font-size:12px;font-weight:normal'>Sorteo #" + s.id + " - " + s.nombre_modalidad + " " + s.horario + " - " + fmtFecha(s.fecha) + "</small>";
 }
 
 // ---------- MODO SORTEO ----------
@@ -616,7 +627,13 @@ function irTab(nombre) {
     rresumen: cargarRResumen,
     rjugadores: cargarRJugadores,
     jsorteos: cargarJSorteos,
-    jcargar: () => llenarSelectSorteos("/jugador/sorteos", "j-sorteo"),
+    jcargar: async () => {
+      await llenarSelectSorteos("/jugador/sorteos", "j-sorteo");
+      if (JUGADOR_SORTEO_ELEGIDO && SORTEOS_ABIERTOS_CACHE["j-sorteo"] && SORTEOS_ABIERTOS_CACHE["j-sorteo"][JUGADOR_SORTEO_ELEGIDO]) {
+        document.getElementById("j-sorteo").value = String(JUGADOR_SORTEO_ELEGIDO);
+        pintarReglasSelect("j-sorteo", "j-reglas", "j-imagen");
+      }
+    },
   };
   if (acciones[nombre]) acciones[nombre]();
 }
@@ -713,8 +730,12 @@ function pintarReglasSelect(idSelect, idCaja, idImagen) {
     if (s && s.imagen_url) { img.src = s.imagen_url; img.style.display = "block"; }
     else { img.style.display = "none"; }
   }
+  if (idSelect === "j-sorteo") {
+    JUGADOR_SORTEO_ELEGIDO = id ? parseInt(id) : null;
+    pintarPozo("pozo-jugador", s || null);
+    pintarPozo("pozo-jsorteos", s || null);
+  }
 }
-
 // ---------- ADMIN: SORTEOS ----------
 async function iniciarSorteos() {
   await cargarModalidades();
@@ -1612,33 +1633,34 @@ async function eliminarRJugador(id) {
 async function cargarJSorteos() {
   try {
     const ss = await api("/jugador/sorteos", "GET");
-    // Cartel grande de pozo: usa el primer sorteo JUGABLE (o el primero si no hay jugables).
-    const jugables = ss.filter(s => s.puedo_jugar);
-    const principal = jugables.length ? jugables[0] : (ss.length ? ss[0] : null);
-    const cartel = document.getElementById("pozo-jugador");
-    if (principal) {
-      cartel.style.display = "block";
-      cartel.innerHTML = "POZO ACTUAL<br><span>$" + principal.pozo + "</span><br><small style='font-size:12px;font-weight:normal'>Sorteo #" + principal.id + " - " + principal.nombre_modalidad + " " + principal.horario + " - " + fmtFecha(principal.fecha) + "</small>";
-    } else {
-      cartel.style.display = "none";
-      cartel.innerHTML = "";
-    }
+    SORTEOS_ABIERTOS_CACHE["j-sorteo"] = {};
+    ss.forEach(s => { SORTEOS_ABIERTOS_CACHE["j-sorteo"][s.id] = s; });
+    const elegido = JUGADOR_SORTEO_ELEGIDO ? SORTEOS_ABIERTOS_CACHE["j-sorteo"][JUGADOR_SORTEO_ELEGIDO] : null;
+    pintarPozo("pozo-jsorteos", elegido || null);
     let html = "<table><tr><th>#</th><th>Img</th><th>Sorteo</th><th>Horario</th><th>Dia</th><th>Cierre</th><th>Estado</th><th>Precio</th><th>Pozo</th><th></th></tr>";
     ss.forEach(s => {
-      const boton = s.puedo_jugar ? "<button onclick='jugarSorteo(" + s.id + ")'>Jugar</button>" : "<span class='chico'>no habilitado</span>";
-      html += "<tr><td>" + s.id + "</td><td>" + (s.imagen_url ? "<img src='" + s.imagen_url + "' style='width:40px;height:40px;object-fit:cover;border-radius:4px'>" : "-") + "</td><td>" + s.nombre_modalidad + (s.reprogramando ? " (REPROGRAMANDO)" : "") + "<div class='chico'>" + (s.detalle || "") + "</div></td><td>" + s.horario + "</td><td>" + fmtFecha(s.fecha) + "</td><td>" + (s.hora_cierre || "sin limite") + "</td><td>" + s.estado + "</td><td>$" + s.precio_jugada + "</td><td><b style='color:#22c55e'>$" + s.pozo + "</b></td><td>" + boton + "</td></tr>";
+      const botonPozo = "<button class='secundario' onclick='elegirSorteoJugador(" + s.id + ")'>Ver pozo</button>";
+      const botonJugar = s.puedo_jugar ? "<button onclick='jugarSorteo(" + s.id + ")'>Jugar</button>" : "<span class='chico'>no habilitado</span>";
+      html += "<tr><td>" + s.id + "</td><td>" + (s.imagen_url ? "<img src='" + s.imagen_url + "' style='width:40px;height:40px;object-fit:cover;border-radius:4px'>" : "-") + "</td><td>" + s.nombre_modalidad + (s.reprogramando ? " (REPROGRAMANDO)" : "") + "<div class='chico'>" + (s.detalle || "") + "</div></td><td>" + s.horario + "</td><td>" + fmtFecha(s.fecha) + "</td><td>" + (s.hora_cierre || "sin limite") + "</td><td>" + s.estado + "</td><td>$" + s.precio_jugada + "</td><td><b style='color:#22c55e'>$" + s.pozo + "</b></td><td>" + botonPozo + botonJugar + "</td></tr>";
     });
     document.getElementById("lista-jsorteos").innerHTML = html + "</table>";
   } catch (e) { aviso(e.message, true); }
 }
 
-function jugarSorteo(id) {
-  irTab("jcargar");
-  setTimeout(() => {
-    const sel = document.getElementById("j-sorteo");
+function elegirSorteoJugador(id) {
+  JUGADOR_SORTEO_ELEGIDO = id;
+  const s = SORTEOS_ABIERTOS_CACHE["j-sorteo"] && SORTEOS_ABIERTOS_CACHE["j-sorteo"][id];
+  pintarPozo("pozo-jsorteos", s || null);
+  const sel = document.getElementById("j-sorteo");
+  if (sel && s) {
     sel.value = String(id);
     pintarReglasSelect("j-sorteo", "j-reglas", "j-imagen");
-  }, 400);
+  }
+}
+
+function jugarSorteo(id) {
+  JUGADOR_SORTEO_ELEGIDO = id;
+  irTab("jcargar");
 }
 
 async function jCargarJugada() {
