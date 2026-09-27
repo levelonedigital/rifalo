@@ -1,0 +1,23 @@
+<div class="marca-jugador">
+  <div class="marca-logo"><img src="/static/img/logo.png" alt="Rifalo - Sorteos Online"></div>
+
+  <!-- JUGADOR: SORTEOS -->
+  <div id="seccion-jsorteos" class="tarjeta" style="display:none">
+    <h2>Sorteos abiertos</h2>
+    <button class="secundario" onclick="cargarJSorteos()">Actualizar</button>
+    <p class="chico">Toca "Ver pozo" en un sorteo para ver su pozo actual. El boton "Jugar" aparece solo en los habilitados.</p>
+    <div id="lista-jsorteos"></div>
+    <div id="pozo-jsorteos" class="pozo-grande" style="font-size:16px"></div>
+  </div>
+
+  <!-- JUGADOR: MI JUGADA -->
+  <div id="seccion-jcargar" class="tarjeta" style="display:none">
+    <div id="pozo-jugador" class="pozo-grande" style="font-size:16px"></div>
+    <h2>Mi jugada</h2>
+    <label>Sorteo</label><select id="j-sorteo" onchange="pintarReglasSelect('j-sorteo','j-reglas','j-imagen')"></select>
+    <img id="j-imagen" style="display:none; max-width:220px; border-radius:6px; margin:6px 0">
+    <div id="j-reglas" class="reglas-box"></div>
+    <label>Numeros (separados por coma)</label><input id="j-numeros">
+    <button onclick="jCargarJugada()">Cargar (queda pendiente de aprobacion de tu vendedor)</button>
+  </div>
+</div>

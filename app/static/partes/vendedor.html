@@ -1,0 +1,82 @@
+    <!-- VENDEDOR: RESUMEN -->
+    <div id="seccion-vresumen" class="tarjeta" style="display:none">
+      <h2>Mi resumen</h2>
+      <button class="secundario" onclick="cargarVResumen()">Actualizar</button>
+      <div id="caja-vresumen"></div>
+    </div>
+
+    <!-- VENDEDOR: CARGAR JUGADA -->
+    <div id="seccion-vcargar" class="tarjeta" style="display:none">
+      <h2>Cargar jugada</h2>
+      <label>Sorteo</label><select id="v-sorteo" onchange="pintarReglasSelect('v-sorteo','v-reglas','v-imagen')"></select>
+      <img id="v-imagen" style="display:none; max-width:220px; border-radius:6px; margin:6px 0">
+      <div id="v-reglas" class="reglas-box"></div>
+      <label>Jugador registrado en tu linea</label>
+      <select id="v-jugador-select" onchange="toggleJugadorManual('v')">
+        <option value="">Jugador no registrado (escribir nombre abajo)</option>
+      </select>
+      <label>Nombre del jugador (solo si no esta registrado)</label>
+      <input id="v-jugador">
+      <label>Numeros (separados por coma)</label><input id="v-numeros">
+      <button onclick="vCargarJugada()">Cargar</button>
+    </div>
+
+    <!-- VENDEDOR: PENDIENTES -->
+    <div id="seccion-vpendientes" class="tarjeta" style="display:none">
+      <h2>Jugadas pendientes de mi aprobacion</h2>
+      <p class="chico">Los numeros quedan ocultos: aprobás la jugada por su numero de jugada y precio.</p>
+      <button class="secundario" onclick="cargarVPendientes()">Actualizar</button>
+      <div id="lista-vpendientes"></div>
+    </div>
+
+    <!-- VENDEDOR: MIS JUGADAS -->
+    <div id="seccion-vjugadas" class="tarjeta" style="display:none">
+      <h2>Mis jugadas</h2>
+      <button class="secundario" onclick="cargarVJugadas()">Actualizar</button>
+      <div id="lista-vjugadas"></div>
+    </div>
+
+    <!-- VENDEDOR: REVENDEDORES -->
+    <div id="seccion-vrevendedores" class="tarjeta" style="display:none">
+      <div id="vrev-edit-bar" class="modo-box" style="display:none"></div>
+      <h2>Crear revendedor (se paga de tu comision)</h2>
+      <div class="grilla">
+        <div><label>Usuario</label><input id="vrev-usuario"></div>
+        <div><label>Contrasenia</label><input id="vrev-password" type="password"></div>
+        <div><label>Nombre</label><input id="vrev-nombre"></div>
+        <div><label>Telefono</label><input id="vrev-telefono"></div>
+        <div><label>Codigo</label><input id="vrev-codigo"></div>
+        <div><label>Comision % (menor o igual a la tuya)</label><input id="vrev-comision" type="number"></div>
+      </div>
+      <button onclick="crearVRevendedor()">Crear revendedor</button>
+      <h2>Mis revendedores</h2>
+      <div id="lista-vrevendedores"></div>
+    </div>
+
+    <!-- VENDEDOR: JUGADORES -->
+    <div id="seccion-vjugadores" class="tarjeta" style="display:none">
+      <div id="vjug-edit-bar" class="modo-box" style="display:none"></div>
+      <h2>Tu link de registro para compartir</h2>
+      <div class="grilla">
+        <div><input id="v-link" readonly></div>
+        <div><button class="secundario" onclick="copiarLink('v-link')">Copiar link</button></div>
+      </div>
+      <p class="chico">Comparti este link: quien lo abra llega al registro de jugador con tu codigo ya cargado.</p>
+
+      <h2>Cargar jugador a mano</h2>
+      <div class="grilla">
+        <div><label>Usuario</label><input id="vj-usuario"></div>
+        <div><label>Contrasenia</label><input id="vj-password" type="password"></div>
+        <div><label>Nombre y apellido</label><input id="vj-nombre"></div>
+        <div><label>Telefono (con prefijo, ej: 5491123456789)</label><input id="vj-telefono"></div>
+        <div><label>Alias o CBU (para pagarle premios)</label><input id="vj-cobro"></div>
+      </div>
+      <div class="check-linea"><input type="checkbox" id="vj-transferencia" checked><span>Cobra sus premios por transferencia</span></div>
+      <button onclick="crearVJugador()">Cargar jugador a mano</button>
+
+      <h2>Jugadores registrados conmigo</h2>
+      <button class="secundario" onclick="cargarVJugadores()">Actualizar</button>
+      <button class="wa" onclick="mostrarTodosWhatsApp('v')">Enviar mensaje a todos</button>
+      <div id="vjugadores-wa-links"></div>
+      <div id="lista-vjugadores"></div>
+    </div>

@@ -1,0 +1,64 @@
+    <!-- REVENDEDOR: SORTEOS -->
+    <div id="seccion-rsorteos" class="tarjeta" style="display:none">
+      <h2>Sorteos abiertos</h2>
+      <button class="secundario" onclick="cargarRSorteos()">Actualizar</button>
+      <div id="lista-rsorteos"></div>
+    </div>
+
+    <!-- REVENDEDOR: CARGAR JUGADA -->
+    <div id="seccion-rcargar" class="tarjeta" style="display:none">
+      <h2>Cargar jugada</h2>
+      <label>Sorteo</label><select id="r-sorteo" onchange="pintarReglasSelect('r-sorteo','r-reglas','r-imagen')"></select>
+      <img id="r-imagen" style="display:none; max-width:220px; border-radius:6px; margin:6px 0">
+      <div id="r-reglas" class="reglas-box"></div>
+      <label>Jugador registrado en tu linea</label>
+      <select id="r-jugador-select" onchange="toggleJugadorManual('r')">
+        <option value="">Jugador no registrado (escribir nombre abajo)</option>
+      </select>
+      <label>Nombre del jugador (solo si no esta registrado)</label>
+      <input id="r-jugador">
+      <label>Numeros (separados por coma)</label><input id="r-numeros">
+      <button onclick="rCargarJugada()">Cargar</button>
+    </div>
+
+    <!-- REVENDEDOR: MIS JUGADAS -->
+    <div id="seccion-rjugadas" class="tarjeta" style="display:none">
+      <h2>Mis jugadas</h2>
+      <button class="secundario" onclick="cargarRJugadas()">Actualizar</button>
+      <div id="lista-rjugadas"></div>
+    </div>
+
+    <!-- REVENDEDOR: RESUMEN -->
+    <div id="seccion-rresumen" class="tarjeta" style="display:none">
+      <h2>Mi resumen</h2>
+      <button class="secundario" onclick="cargarRResumen()">Actualizar</button>
+      <div id="caja-rresumen"></div>
+    </div>
+
+    <!-- REVENDEDOR: JUGADORES -->
+    <div id="seccion-rjugadores" class="tarjeta" style="display:none">
+      <div id="rjug-edit-bar" class="modo-box" style="display:none"></div>
+      <h2>Tu link de registro para compartir</h2>
+      <div class="grilla">
+        <div><input id="r-link" readonly></div>
+        <div><button class="secundario" onclick="copiarLink('r-link')">Copiar link</button></div>
+      </div>
+      <p class="chico">Comparti este link: quien lo abra queda como jugador tuyo y de tu vendedor.</p>
+
+      <h2>Cargar jugador a mano</h2>
+      <div class="grilla">
+        <div><label>Usuario</label><input id="rj-usuario"></div>
+        <div><label>Contrasenia</label><input id="rj-password" type="password"></div>
+        <div><label>Nombre y apellido</label><input id="rj-nombre"></div>
+        <div><label>Telefono (con prefijo, ej: 5491123456789)</label><input id="rj-telefono"></div>
+        <div><label>Alias o CBU (para pagarle premios)</label><input id="rj-cobro"></div>
+      </div>
+      <div class="check-linea"><input type="checkbox" id="rj-transferencia" checked><span>Cobra sus premios por transferencia</span></div>
+      <button onclick="crearRJugador()">Cargar jugador a mano</button>
+
+      <h2>Jugadores mios</h2>
+      <button class="secundario" onclick="cargarRJugadores()">Actualizar</button>
+      <button class="wa" onclick="mostrarTodosWhatsApp('r')">Enviar mensaje a todos</button>
+      <div id="rjugadores-wa-links"></div>
+      <div id="lista-rjugadores"></div>
+    </div>

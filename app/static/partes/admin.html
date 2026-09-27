@@ -1,0 +1,134 @@
+    <!-- ADMIN: SORTEOS -->
+    <div id="seccion-sorteos" class="tarjeta" style="display:none">
+      <div id="editar-bar" class="modo-box" style="display:none"></div>
+      <h2>Crear sorteo (nace en preparacion, inactivo)</h2>
+      <div class="grilla">
+        <div><label>Modalidad</label><select id="sorteo-modalidad" onchange="pintarReglasModalidad()"></select></div>
+        <div><label>Horario oficial del resultado</label><select id="sorteo-horario"></select></div>
+        <div><label>Dia del sorteo</label><input id="sorteo-fecha" type="date" min="2026-01-01" max="2035-12-31"></div>
+        <div><label>Horario de cierre para anotarse (HH:MM)</label><input id="sorteo-cierre" type="time"></div>
+        <div><label>Precio de la jugada</label><input id="sorteo-precio" type="number"></div>
+        <div><label>Pozo base (congelado hasta recaudarlo)</label><input id="sorteo-pozobase" type="number"></div>
+        <div><label>% administrador (casa)</label><input id="sorteo-casa" type="number"></div>
+        <div><label>% vendedores (linea de venta)</label><input id="sorteo-vend" type="number"></div>
+        <div id="caja-premio-fijo" style="display:none"><label>Premio fijo (rifa)</label><input id="sorteo-premio" type="number"></div>
+        <div id="caja-minimo" style="display:none"><label>Minimo a cubrir (rifa, vacio = premio fijo)</label><input id="sorteo-minimo" type="number"></div>
+        <div><label>Imagen de presentacion (URL, opcional)</label><input id="sorteo-imagen" placeholder="https://... foto del premio o cartel del pozo"></div>
+      </div>
+      <label>Detalle visible para los jugadores (reglas y condiciones de este sorteo)</label>
+      <textarea id="sorteo-detalle"></textarea>
+      <div id="reglas-modalidad" class="reglas-box"></div>
+      <button id="btn-crear" onclick="crearSorteo()">Crear sorteo</button>
+      <button class="secundario" onclick="guardarPlantilla()">Guardar esta config como guia</button>
+      <label>Nombre de la guia</label><input id="plantilla-nombre" placeholder="Ej: Nocturna clasica 200">
+
+      <h2>Cargar una guia guardada</h2>
+      <div class="grilla">
+        <div><select id="plantillas-select"></select></div>
+        <div><button class="secundario" onclick="cargarPlantillaSel()">Cargar guia al formulario</button><button class="peligro" onclick="borrarPlantillaSel()">Borrar guia</button></div>
+      </div>
+
+      <h2>Sorteos</h2>
+      <div id="lista-sorteos"></div>
+
+      <details style="margin-top:16px">
+        <summary style="cursor:pointer; color:#93c5fd">Horarios oficiales y busqueda automatica (solo admin principal)</summary>
+        <div class="grilla">
+          <div><label>Horarios (JSON)</label><input id="sis-horarios"></div>
+          <div><label>Horario del semanal</label><input id="sis-semhor"></div>
+          <div><label>Semanal dia inicio (0=lunes)</label><input id="sis-semini" type="number"></div>
+          <div><label>Semanal dia fin (4=viernes)</label><input id="sis-semfin" type="number"></div>
+          <div><label>Busqueda: empezar a los (min)</label><input id="sis-busini" type="number"></div>
+          <div><label>Busqueda: reintento cada (min)</label><input id="sis-busint" type="number"></div>
+          <div><label>Busqueda: rendirse a los (min)</label><input id="sis-busdur" type="number"></div>
+          <div><label>% vendedores por defecto</label><input id="sis-vendpct" type="number"></div>
+        </div>
+        <button onclick="guardarSistema()">Guardar sistema</button>
+      </details>
+    </div>
+
+    <!-- ADMIN: BUSCADOR -->
+    <div id="seccion-buscador" class="tarjeta" style="display:none">
+      <h2>Estado del buscador de resultados</h2>
+      <p class="chico">Acá ves en tiempo real qué números está leyendo el sistema de la página oficial de la Caja. El buscador hace 3 lecturas; si las 3 coinciden, liquida solo.</p>
+      <button class="secundario" onclick="cargarEstadoBuscador()">Actualizar</button>
+      <div id="estado-buscador" style="margin-top:12px">
+        <p class="chico">Tocá "Actualizar" para ver el estado.</p>
+      </div>
+    </div>
+
+    <!-- ADMIN: VENDEDORES -->
+    <div id="seccion-vendedores" class="tarjeta" style="display:none">
+      <div id="vended-edit-bar" class="modo-box" style="display:none"></div>
+      <div id="caja-jugadores-total" class="pozo-grande" style="font-size:16px"></div>
+      <h2>Crear vendedor</h2>
+      <div class="grilla">
+        <div><label>Usuario</label><input id="vend-usuario"></div>
+        <div><label>Contrasenia</label><input id="vend-password" type="password"></div>
+        <div><label>Nombre</label><input id="vend-nombre"></div>
+        <div><label>Telefono</label><input id="vend-telefono"></div>
+        <div><label>Codigo (ej: V1)</label><input id="vend-codigo"></div>
+        <div><label>Comision %</label><input id="vend-comision" type="number" value="20"></div>
+      </div>
+      <label>Datos de transferencia</label><input id="vend-transferencia">
+      <button onclick="crearVendedor()">Crear vendedor</button>
+      <h2>Vendedores</h2>
+      <div id="lista-vendedores"></div>
+    </div>
+
+    <!-- ADMIN: JUGADAS -->
+    <div id="seccion-jugadas" class="tarjeta" style="display:none">
+      <h2>Jugadas</h2>
+      <p class="chico">Por privacidad, los numeros de las jugadas estan ocultos para todos menos para el jugador duenio.</p>
+      <div id="jugadas-selector" class="grilla">
+        <div><label>Sorteo</label><select id="jugadas-sorteo" onchange="cargarJugadasAdmin()"></select></div>
+        <div><label>Filtrar por estado</label>
+          <select id="jugadas-filtro" onchange="cargarJugadasAdmin()">
+            <option value="">Todas</option><option value="pendiente">Pendientes</option><option value="aprobada">Aprobadas</option><option value="ganadora">Ganadoras</option><option value="perdedora">Perdedoras</option><option value="rechazada">Rechazadas</option>
+          </select>
+        </div>
+      </div>
+      <div id="jugadas-estado-filtro" style="display:none">
+        <label>Filtrar por estado</label>
+        <select id="jugadas-filtro-modo" onchange="cargarJugadasAdmin()">
+          <option value="">Todas</option><option value="pendiente">Pendientes</option><option value="aprobada">Aprobadas</option><option value="ganadora">Ganadoras</option><option value="perdedora">Perdedoras</option><option value="rechazada">Rechazadas</option>
+        </select>
+      </div>
+      <div id="lista-jugadas-admin"></div>
+      <h2>Ficha de la jugada seleccionada</h2>
+      <div id="jugada-detalle" class="reglas-box">Toca "Ver" en una jugada de la tabla para ver solo esa jugada con todo su detalle.</div>
+    </div>
+
+    <!-- ADMIN: RESUMEN -->
+    <div id="seccion-resumen" class="tarjeta" style="display:none">
+      <h2>Resumen</h2>
+      <button class="secundario" onclick="cargarResumen()">Actualizar</button>
+      <div id="caja-resumen"></div>
+      <div id="caja-liquidacion"></div>
+    </div>
+
+    <!-- ADMIN: BALANCE -->
+    <div id="seccion-balance" class="tarjeta" style="display:none">
+      <h2>Balance</h2>
+      <p class="chico">Ganancias de sorteos liquidados por periodo.</p>
+      <div class="grilla">
+        <div><label>Periodo</label>
+          <select id="bal-periodo">
+            <option value="dia">Diario</option>
+            <option value="semana">Semanal</option>
+            <option value="mes">Mensual</option>
+            <option value="anio">Anual</option>
+          </select>
+        </div>
+        <div><label>Fecha de referencia (vacio = hoy)</label><input id="bal-fecha" type="date"></div>
+      </div>
+      <button onclick="cargarBalance()">Calcular balance</button>
+      <div id="caja-balance" style="margin-top:12px"></div>
+    </div>
+
+    <!-- ADMIN: AUDITORIA -->
+    <div id="seccion-auditoria" class="tarjeta" style="display:none">
+      <h2>Auditoria</h2>
+      <button class="secundario" onclick="cargarAuditoria()">Actualizar</button>
+      <div id="lista-auditoria"></div>
+    </div>
