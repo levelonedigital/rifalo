@@ -386,8 +386,9 @@ def cargar_resultado(sorteo_id: int, datos: ResultadoCargar, sesion: Session = D
         raise HTTPException(status_code=400, detail="Primero cerrá el sorteo")
     if sorteo.modalidad == "semanal":
         raise HTTPException(status_code=400, detail="El semanal se liquida solo con los sorteos diarios")
-    if len(datos.numeros) != 20 or len(set(datos.numeros)) != 20 or any(n < 0 or n > 99 for n in datos.numeros):
-        raise HTTPException(status_code=400, detail="Deben ser 20 numeros distintos entre 0 y 99")
+    # Se permiten numeros repetidos: en la quiniela real los 20 premios pueden coincidir.
+    if len(datos.numeros) != 20 or any(n < 0 or n > 99 for n in datos.numeros):
+        raise HTTPException(status_code=400, detail="Deben ser 20 numeros entre 0 y 99 (se permiten repetidos)")
     sorteo.resultados = ",".join(f"{n:02d}" for n in datos.numeros)
     sorteo.busqueda_agotada = False
     reglas = motor.obtener_reglas(sesion)
