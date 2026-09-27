@@ -1,11 +1,15 @@
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.core.database import obtener_sesion
 from app.core.dependencias import requerir_rol
+from app.modulos_juegos.buscador import _zona
 from app.modulos_juegos.jugadas_core import crear_jugada
 from app.modulos_juegos.modalidades import obtener
+from app.modulos_juegos.motor import obtener_reglas
 from app.modelos.juegos import EstadoJugada, EstadoSorteo, Jugada, Sorteo
 from app.modelos.usuario import RolUsuario, Usuario
 
@@ -42,6 +46,28 @@ def _sorteo_out(s: Sorteo):
     }
 
 
+def _puedo_jugar(s: Sorteo, jugador: Usuario, reglas) -> bool:
+    """True solo si el sorteo esta programado, el cierre no paso y (si es vacante) el jugador participa."""
+    if s.estado != EstadoSorteo.PROGRAMADO:
+        return False
+    hhmm = s.hora_cierre or reglas.dict_horarios().get(s.horario)
+    if not hhmm or ":" not in hhmm:
+        return False
+    try:
+        hora, minuto = (int(x) for x in hhmm.split(":"))
+    except ValueError:
+        return False
+    f = s.fecha
+    cierre = datetime(f.year, f.month, f.day, hora, minuto, 0, tzinfo=_zona())
+    if datetime.now(_zona()) >= cierre:
+        return False
+    if s.solo_participantes:
+        nombres = [n.strip() for n in (s.participantes or "").split("|") if n.strip()]
+        if jugador.nombre not in nombres:
+            return False
+    return True
+
+
 def _coincidencias(sesion: Session, sorteo_id: int, numeros_clave: str) -> int:
     """Cuantas jugadas activas del sorteo tienen exactamente esos numeros (incluida la propia)."""
     return (
@@ -57,13 +83,19 @@ def _coincidencias(sesion: Session, sorteo_id: int, numeros_clave: str) -> int:
 
 @router.get("/sorteos")
 def sorteos_abiertos(sesion: Session = Depends(obtener_sesion), jugador: Usuario = jug_dep):
+    reglas = obtener_reglas(sesion)
     sorteos = (
         sesion.query(Sorteo)
         .filter(Sorteo.estado.in_([EstadoSorteo.PROGRAMADO, EstadoSorteo.REPROGRAMANDO]))
         .order_by(Sorteo.fecha)
         .all()
     )
-    return [_sorteo_out(s) for s in sorteos]
+    salida = []
+    for s in sorteos:
+        d = _sorteo_out(s)
+        d["puedo_jugar"] = _puedo_jugar(s, jugador, reglas)
+        salida.append(d)
+    return salida
 
 
 @router.post("/jugadas")
@@ -74,6 +106,9 @@ def cargar_jugada(datos: JugadaCrear, sesion: Session = Depends(obtener_sesion),
     sorteo = sesion.get(Sorteo, datos.sorteo_id)
     if sorteo is None:
         raise HTTPException(status_code=404, detail="Sorteo no encontrado")
+    reglas = obtener_reglas(sesion)
+    if not _puedo_jugar(sorteo, jugador, reglas):
+        raise HTTPException(status_code=400, detail="Este sorteo no esta habilitado para jugar ahora")
     try:
         jugada = crear_jugada(
             sesion,
