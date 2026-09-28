@@ -44,7 +44,9 @@
   .pozo-grande span { color: #22c55e; font-size: 28px; }
   .grilla { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
   @media (max-width: 700px) { .grilla { grid-template-columns: 1fr; } }
-    @media (max-width: 760px) {
+
+  /* ---------- RESPONSIVE (telefono) ---------- */
+  @media (max-width: 760px) {
     .contenedor { padding: 8px; }
     h1 { font-size: 20px; }
     h2 { font-size: 17px; }
@@ -59,22 +61,73 @@
     input, select, textarea { font-size: 14px; }
     .reglas-box, .buscador-box { font-size: 12px; }
   }
-  /* ---------- MARCA RIFALO (solo pantalla del jugador) ---------- */
-  .marca-jugador { background: linear-gradient(160deg, #14143c 0%, #1e1e5a 45%, #2b2b6e 100%); border-radius: 14px; padding: 12px; }
-  .marca-logo { text-align: center; margin: 4px 0 10px; }
-  .marca-logo img { width: min(320px, 85%); height: auto; }
-  .marca-jugador .tarjeta { background: rgba(15, 15, 45, 0.55); border: 1px solid rgba(255,255,255,0.14); box-shadow: 0 4px 18px rgba(0,0,0,0.35); }
-  .marca-jugador h2 { color: #ffffff; }
-  .marca-jugador .chico { color: #c7c9e8; }
-  .marca-jugador label { color: #c7c9e8; }
-  .marca-jugador input, .marca-jugador select, .marca-jugador textarea { background: rgba(10,10,35,0.7); border-color: rgba(255,255,255,0.2); color: #fff; }
-  .marca-jugador button { background: #FFC107; color: #1a1a4e; }
-  .marca-jugador button.secundario { background: rgba(255,255,255,0.16); color: #fff; }
+
+  /* ---------- MARCA RIFALO (solo jugador) - estilo casino ---------- */
+  .marca-jugador {
+    background:
+      radial-gradient(circle at 15% 20%, rgba(217,70,239,0.35), transparent 40%),
+      radial-gradient(circle at 85% 15%, rgba(59,130,246,0.35), transparent 40%),
+      radial-gradient(circle at 50% 90%, rgba(34,197,94,0.25), transparent 45%),
+      linear-gradient(160deg, #1a0b2e 0%, #2d1b4e 40%, #14143c 100%);
+    border-radius: 16px;
+    padding: 12px;
+    border: 1px solid rgba(255,255,255,0.12);
+    box-shadow: 0 0 40px rgba(168,85,247,0.25) inset;
+  }
+  .marca-logo { text-align: center; margin: 4px 0 12px; }
+  .marca-logo img { width: min(340px, 88%); height: auto; filter: drop-shadow(0 4px 18px rgba(255,193,7,0.45)); }
+  .marca-jugador .tarjeta {
+    background: rgba(12, 8, 32, 0.65);
+    border: 1px solid rgba(255,193,7,0.35);
+    border-radius: 14px;
+    box-shadow: 0 6px 24px rgba(0,0,0,0.45), 0 0 18px rgba(168,85,247,0.15);
+    backdrop-filter: blur(4px);
+  }
+  .marca-jugador h2 {
+    color: #FFC107;
+    text-shadow: 0 0 12px rgba(255,193,7,0.5);
+    letter-spacing: 0.5px;
+  }
+  .marca-jugador .chico { color: #d8c9f5; }
+  .marca-jugador label { color: #d8c9f5; }
+  .marca-jugador input, .marca-jugador select, .marca-jugador textarea {
+    background: rgba(8,5,24,0.8);
+    border: 1px solid rgba(255,193,7,0.3);
+    color: #fff;
+    border-radius: 8px;
+  }
+  .marca-jugador button {
+    background: linear-gradient(180deg, #ffd54f, #FFC107);
+    color: #1a0b2e;
+    box-shadow: 0 3px 10px rgba(255,193,7,0.4);
+    border-radius: 8px;
+  }
+  .marca-jugador button.secundario { background: rgba(255,255,255,0.14); color: #fff; box-shadow: none; }
   .marca-jugador button.peligro { background: #ef4444; color: #fff; }
   .marca-jugador table th { color: #FFC107; }
-  .marca-jugador .reglas-box { background: rgba(10,10,35,0.6); border-color: rgba(255,193,7,0.4); color: #ffd76a; }
-  .marca-jugador .pozo-grande { background: rgba(255,193,7,0.12); border: 2px solid #FFC107; color: #ffffff; }
-  .marca-jugador .pozo-grande span { color: #FFC107; }
+  .marca-jugador table td { color: #f0e9ff; }
+  .marca-jugador .reglas-box {
+    background: rgba(8,5,24,0.7);
+    border: 1px solid rgba(255,193,7,0.4);
+    color: #ffd76a;
+    border-radius: 8px;
+  }
+  .marca-jugador .pozo-grande {
+    background: linear-gradient(160deg, #064e3b, #065f46 50%, #047857);
+    border: 2px solid #22c55e;
+    color: #ffffff;
+    border-radius: 14px;
+    box-shadow: 0 0 22px rgba(34,197,94,0.55), 0 6px 18px rgba(0,0,0,0.4);
+    animation: pulsoPozo 2.2s ease-in-out infinite;
+  }
+  .marca-jugador .pozo-grande span {
+    color: #a7f3d0;
+    text-shadow: 0 0 14px rgba(74,222,128,0.8);
+  }
+  @keyframes pulsoPozo {
+    0%,100% { box-shadow: 0 0 14px rgba(34,197,94,0.4), 0 6px 18px rgba(0,0,0,0.4); }
+    50% { box-shadow: 0 0 30px rgba(34,197,94,0.75), 0 6px 18px rgba(0,0,0,0.4); }
+  }
 </style>
 </head>
 <body>
