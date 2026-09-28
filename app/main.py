@@ -2,6 +2,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI
 from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -69,6 +70,10 @@ app = FastAPI(
     version=Configuracion.VERSION,
     lifespan=lifespan,
 )
+
+# Montaje de archivos estaticos: sirve toda la carpeta app/static/ bajo /static/
+app.mount("/static", StaticFiles(directory="app/static"), name="static")
+
 app.include_router(router_auth)
 app.include_router(router_admin)
 app.include_router(router_juegos)
