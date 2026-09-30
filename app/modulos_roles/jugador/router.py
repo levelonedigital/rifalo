@@ -41,6 +41,8 @@ def _sorteo_out(s: Sorteo):
         "estado": s.estado.value,
         "precio_jugada": s.precio_jugada,
         "solo_participantes": s.solo_participantes,
+        "participantes": [n.strip() for n in (s.participantes or "").split("|") if n.strip()] if s.solo_participantes else None,
+        "titulo": s.titulo,
         "reprogramando": s.estado == EstadoSorteo.REPROGRAMANDO,
         "imagen_url": s.imagen_url,
     }
