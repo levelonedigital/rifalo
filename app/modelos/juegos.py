@@ -80,6 +80,8 @@ class Sorteo(Base):
     creado_en = Column(DateTime(timezone=True), server_default=func.now())
     imagen_url = Column(String(500), nullable=True)
     detalle = Column(String(1000), nullable=True)
+    # Titulo visible opcional; si esta vacio se usa el nombre automatico de la modalidad.
+    titulo = Column(String(120), nullable=True)
 
     precio_jugada = Column(Float, nullable=True)
     pozo_base = Column(Float, nullable=True)
