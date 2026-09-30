@@ -20,10 +20,6 @@ function pintarReglasModalidad() {
   }
 }
 
-function nombreSorteoAdmin(s) {
-  return (s.titulo || s.modalidad || "");
-}
-
 // ---------- ADMIN: SORTEOS ----------
 async function iniciarSorteos() {
   await cargarModalidades();
@@ -204,10 +200,11 @@ async function cargarSorteos() {
   try {
     const sorteos = await api("/admin/sorteos", "GET");
     sorteos.forEach(s => { SORT_CACHE[s.id] = s; });
-    let html = "<table><tr><th>#</th><th>Img</th><th>Sorteo</th><th>Horario</th><th>Dia</th><th>Cierre</th><th>Estado</th><th>Pozo</th><th>Cubriendo / costo</th><th>Vendido</th><th>Acciones</th></tr>";
+    let html = "<table><tr><th>#</th><th>Img</th><th>Sorteo</th><th>Horario</th><th>Dia</th><th>Cierre</th><th>Estado</th><th>Pozo</th><th>Cubriendo / costo</th><th>Vendido</th><th>Ganadores</th><th>Acciones</th></tr>";
     sorteos.forEach(s => {
       const celdaNombre = "<td><b>" + (s.titulo || s.modalidad) + "</b>" + (s.titulo ? "<div class='chico'>" + s.modalidad + "</div>" : "") + (s.solo_participantes ? " <span class='chico'>VACANTE</span>" : "") + "</td>";
-      html += "<tr><td>" + s.id + "</td><td>" + (s.imagen_url ? "<img src='" + s.imagen_url + "' style='width:44px;height:44px;object-fit:cover;border-radius:4px'>" : "-") + "</td>" + celdaNombre + "<td>" + s.horario + "</td><td>" + fmtFecha(s.fecha) + "</td><td>" + (s.hora_cierre || "sin limite") + "</td><td>" + s.estado + (s.busqueda_agotada ? " (manual)" : "") + "</td><td>$" + s.pozo + "</td><td>$" + s.pozo_cubierto + " / $" + s.costo + (s.costo_cubierto ? " ✔" : " ✘") + "</td><td>$" + (s.recaudado || 0) + "</td><td>";
+      const celdaGanadores = "<td>" + ((s.ganadores && s.ganadores.length) ? s.ganadores.join(", ") : "-") + "</td>";
+      html += "<tr><td>" + s.id + "</td><td>" + (s.imagen_url ? "<img src='" + s.imagen_url + "' style='width:44px;height:44px;object-fit:cover;border-radius:4px'>" : "-") + "</td>" + celdaNombre + "<td>" + s.horario + "</td><td>" + fmtFecha(s.fecha) + "</td><td>" + (s.hora_cierre || "sin limite") + "</td><td>" + s.estado + (s.busqueda_agotada ? " (manual)" : "") + "</td><td>$" + s.pozo + "</td><td>$" + s.pozo_cubierto + " / $" + s.costo + (s.costo_cubierto ? " ✔" : " ✘") + "</td><td>$" + (s.recaudado || 0) + "</td>" + celdaGanadores + "<td>";
       html += "<button class='secundario' onclick='seleccionarSorteo(" + s.id + ")'>Detalles</button>";
       if (s.estado === "preparacion") html += "<button onclick='activarSorteo(" + s.id + ")'>Activar</button>";
       if (s.estado === "programado") html += "<button class='secundario' onclick='cerrarSorteo(" + s.id + ")'>Cerrar</button><button class='secundario' onclick='desactivarSorteo(" + s.id + ")'>Desactivar</button><button class='peligro' onclick='cancelarHorario(" + s.id + ")'>Cancelar horario</button>";
@@ -456,6 +453,7 @@ async function verJugada(id) {
       "\nPrecio: $" + j.precio +
       "\nEstado: " + j.estado +
       "\nPremio: $" + (j.premio ?? 0) + (j.estado === "ganadora" ? (j.premio_pagado ? " (PAGADO)" : " (PENDIENTE DE PAGO)") : "") +
+      (j.estado === "ganadora" ? (j.premio_cobrado ? " - el jugador CONFIRMO QUE COBRO" : " - el jugador aun no confirmo el cobro") : "") +
       "\nReparto: casa $" + (j.monto_casa ?? 0) + " | vendedor $" + (j.monto_vendedor ?? 0) + (j.comision_pagada ? " (comision PAGADA)" : " (comision PENDIENTE)") + " | revendedor $" + (j.monto_revendedor ?? 0) + " | pozo $" + (j.monto_pozo ?? 0) + " | cubrir $" + (j.monto_cubrir ?? 0) +
       "\nCargada: " + ((j.creada_en || "").slice(0,19).replace("T"," "));
   } catch (e) { aviso(e.message, true); }
@@ -488,10 +486,11 @@ async function cargarLiquidacion(sorteoId) {
     html += "<p><b>Pozo formado:</b> $" + d.pozo_formado + " | <b>Pozo pagado en premios:</b> $" + d.pozo_pagado + " | <b>Ganadores:</b> " + d.cantidad_ganadoras + "</p>";
     html += "<p><b>Ganancia casa (admin):</b> $" + d.casa + " | <b>Vendedores:</b> $" + d.vendedores + " | <b>Revendedores:</b> $" + d.revendedores + "</p>";
     if (d.ganadoras.length) {
-      html += "<table><tr><th>Jugada</th><th>Ganador</th><th>Numeros ganadores</th><th>Premio</th><th>Premio pagado</th><th>Vendedor</th><th>Comision pagada</th></tr>";
+      html += "<table><tr><th>Jugada</th><th>Ganador</th><th>Numeros ganadores</th><th>Premio</th><th>Premio pagado</th><th>Jugador cobro</th><th>Vendedor</th><th>Comision pagada</th></tr>";
       d.ganadoras.forEach(g => {
         html += "<tr><td>#" + g.jugada_id + "</td><td>" + g.jugador + "</td><td>" + g.numeros + "</td><td>$" + g.premio + "</td>" +
           "<td>" + (g.premio_pagado ? "✔ PAGADO" : "✘ PENDIENTE") + " <button class='secundario' onclick='marcarPremio(" + g.jugada_id + "," + (!g.premio_pagado) + ")'>" + (g.premio_pagado ? "Desmarcar" : "Marcar pagado") + "</button></td>" +
+          "<td>" + (g.premio_cobrado ? "✔ CONFIRMO COBRO" : "✘ no confirmo") + "</td>" +
           "<td>" + g.vendedor + "</td>" +
           "<td>" + (g.comision_pagada ? "✔ PAGADA" : "✘ PENDIENTE") + " <button class='secundario' onclick='marcarComision(" + g.jugada_id + "," + (!g.comision_pagada) + ")'>" + (g.comision_pagada ? "Desmarcar" : "Marcar pagada") + "</button></td></tr>";
       });
