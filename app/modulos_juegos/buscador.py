@@ -96,11 +96,17 @@ def obtener_resultado_oficial(nombre_horario: str, fecha: datetime):
 
 
 def costo_a_cubrir(sorteo: Sorteo) -> float:
-    """Costo de referencia: minimo explicito, premio fijo (rifa) o pozo base."""
+    """Costo de referencia: minimo explicito, premio fijo (rifa) o pozo base.
+
+    En vacantes (solo_participantes sin pozo base) no hay costo que cubrir:
+    el pozo ya arranca con el monto retenido del sorteo anterior.
+    """
     if sorteo.minimo_cubrir is not None:
         return sorteo.minimo_cubrir
     if sorteo.modalidad == "rifa":
         return sorteo.premio_fijo or 0.0
+    if sorteo.solo_participantes and (sorteo.pozo_base or 0.0) == 0.0:
+        return 0.0
     return sorteo.pozo_inicial or 0.0
 
 
