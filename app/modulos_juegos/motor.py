@@ -34,7 +34,8 @@ def aprobar_jugada(sesion: Session, jugada: Jugada, reglas: ReglasSistema) -> Ju
     Regla del pozo: el sobrante (100 - casa - vendedores) de cada jugada va PRIMERO
     cubriendo el pozo base (se acumula en pozo_cubierto). Recien cuando el acumulado
     previo ya cubrio el base, el sobrante suma como pozo_extra. La casa cobra solo su
-    porcentaje en ambos tramos.
+    porcentaje en ambos tramos. En sorteos vacantes el base es 0, asi que todo el
+    sobrante suma directo como extra.
     """
     sorteo = sesion.get(Sorteo, jugada.sorteo_id)
     modalidad = obtener(sorteo.modalidad)
@@ -62,7 +63,7 @@ def aprobar_jugada(sesion: Session, jugada: Jugada, reglas: ReglasSistema) -> Ju
     if sobrante > 0:
         cubierto_previo = sorteo.pozo_cubierto or 0.0
         if cubierto_previo >= base:
-            # Tramo 2: el base ya esta cubierto, el sobrante suma como extra.
+            # Tramo 2: el base ya esta cubierto (o es 0 en vacantes), el sobrante suma como extra.
             aporte_extra = sobrante
         else:
             # Tramo 1: el sobrante cubre el base; si sobra excedente, ese excedente ya es extra.
@@ -130,10 +131,18 @@ def liquidar_sorteo(sorteo: Sorteo, sesion: Session, reglas: ReglasSistema) -> d
     }
 
 
+ESTADOS_VENDIDAS = [EstadoJugada.APROBADA, EstadoJugada.GANADORA, EstadoJugada.PERDEDORA]
+
+
 def nombres_participantes(sorteo_id: int, sesion: Session) -> str:
+    """Nombres de quienes jugaron el sorteo (jugadas vendidas), para el pozo vacante.
+
+    Se incluyen APROBADA, GANADORA y PERDEDORA porque el vacante se crea despues
+    de liquidar, cuando las jugadas ya no estan en estado APROBADA.
+    """
     jugadas = (
         sesion.query(Jugada)
-        .filter(Jugada.sorteo_id == sorteo_id, Jugada.estado == EstadoJugada.APROBADA)
+        .filter(Jugada.sorteo_id == sorteo_id, Jugada.estado.in_(ESTADOS_VENDIDAS))
         .all()
     )
     nombres = set()
@@ -143,17 +152,23 @@ def nombres_participantes(sorteo_id: int, sesion: Session) -> str:
 
 
 def crear_pozo_vacante(sesion: Session, origen: Sorteo, fecha, reglas: ReglasSistema) -> Sorteo:
+    """Crea el sorteo vacante: arranca con el pozo retenido del origen, SIN pozo base
+    (nada que recuperar): todo sobrante de las jugadas nuevas suma directo al pozo.
+    Los participantes deben volver a comprar jugadas."""
+    hora = reglas.dict_horarios().get(origen.horario, "")
+    titulo = f"Pozo vacante sorteo del {fecha.strftime('%d/%m/%Y')} a {hora}"
     nuevo = Sorteo(
         modalidad=origen.modalidad,
         horario=origen.horario,
         fecha=fecha,
         pozo_inicial=origen.pozo_actual,
+        pozo_base=0.0,
         solo_participantes=True,
         participantes=nombres_participantes(origen.id, sesion),
         precio_jugada=origen.precio_jugada,
-        pozo_base=origen.pozo_base,
         casa_pct=origen.casa_pct,
         vendedor_pct=origen.vendedor_pct,
+        titulo=titulo,
     )
     sesion.add(nuevo)
     return nuevo
