@@ -88,7 +88,7 @@ class SorteoCrear(BaseModel):
     minimo_cubrir: float | None = Field(default=None, ge=0)
     imagen_url: str | None = None
     detalle: str | None = None
-
+    titulo: str | None = None
 
 class SorteoEditar(BaseModel):
     horario: str | None = None
@@ -102,7 +102,7 @@ class SorteoEditar(BaseModel):
     minimo_cubrir: float | None = Field(default=None, ge=0)
     imagen_url: str | None = None
     detalle: str | None = None
-
+    titulo: str | None = None
 
 class ResultadoCargar(BaseModel):
     numeros: list[int]
@@ -180,6 +180,7 @@ def crear_sorteo(datos: SorteoCrear, sesion: Session = Depends(obtener_sesion), 
         minimo_cubrir=datos.minimo_cubrir,
         imagen_url=datos.imagen_url,
         detalle=datos.detalle or detalle_por_defecto(modalidad),
+        titulo=datos.titulo,
     )
     sesion.add(sorteo)
     sesion.commit()
@@ -285,6 +286,7 @@ def listar_sorteos(sesion: Session = Depends(obtener_sesion), admin: Usuario = D
                 "minimo_cubrir": s.minimo_cubrir,
                 "imagen_url": s.imagen_url,
                 "detalle": s.detalle,
+                "titulo": s.titulo,
                 "costo": costo,
                 "costo_cubierto": cubierto >= costo,
             }
