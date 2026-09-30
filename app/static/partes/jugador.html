@@ -20,4 +20,12 @@
     <label>Numeros (separados por coma)</label><input id="j-numeros">
     <button onclick="jCargarJugada()">Cargar (queda pendiente de aprobacion de tu vendedor)</button>
   </div>
+
+  <!-- JUGADOR: RESULTADOS -->
+  <div id="seccion-resultados" class="tarjeta" style="display:none">
+    <h2>Resultados y mis premios</h2>
+    <button class="secundario" onclick="cargarResultados()">Actualizar</button>
+    <p class="chico">Ultimos 5 sorteos liquidados. Si ganaste, acá ves tu premio y podes confirmar cuando lo cobres.</p>
+    <div id="lista-resultados-jugador"></div>
+  </div>
 </div>
