@@ -265,6 +265,11 @@ def listar_sorteos(sesion: Session = Depends(obtener_sesion), admin: Usuario = D
     for s in sorteos:
         costo = costo_a_cubrir(s)
         cubierto = pozo_cubierto_total(s)
+        gan = (
+            sesion.query(Jugada)
+            .filter(Jugada.sorteo_id == s.id, Jugada.estado == EstadoJugada.GANADORA)
+            .all()
+        )
         salida.append(
             {
                 "id": s.id,
@@ -289,6 +294,7 @@ def listar_sorteos(sesion: Session = Depends(obtener_sesion), admin: Usuario = D
                 "titulo": s.titulo,
                 "costo": costo,
                 "costo_cubierto": cubierto >= costo,
+                "ganadores": [g.jugador_nombre for g in gan],
             }
         )
     return salida
@@ -343,6 +349,7 @@ def detalle_liquidacion(sorteo_id: int, sesion: Session = Depends(obtener_sesion
                 "numeros": j.numeros,
                 "premio": j.premio or 0.0,
                 "premio_pagado": bool(j.premio_pagado),
+                "premio_cobrado": bool(j.premio_cobrado),
                 "vendedor": vendedor.usuario if vendedor else "-",
                 "comision_vendedor": j.monto_vendedor or 0.0,
                 "comision_pagada": bool(j.comision_pagada),
