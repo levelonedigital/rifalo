@@ -69,6 +69,52 @@ async function jCargarJugada() {
   catch (e) { aviso(e.message, true); }
 }
 
+// ---------- JUGADOR: RESULTADOS Y COBRO ----------
+async function cargarResultadosJugador() {
+  const caja = document.getElementById("lista-resultados-jugador");
+  if (!caja) return;
+  try {
+    const rs = await api("/jugador/resultados", "GET");
+    if (!rs.length) { caja.innerHTML = "<p class='chico'>Todavia no hay sorteos liquidados.</p>"; return; }
+    let html = "";
+    rs.forEach(r => {
+      html += "<div class='buscador-box'>";
+      html += "<b>Sorteo #" + r.sorteo_id + "</b> - " + (r.titulo || r.modalidad) + " " + r.horario + " - " + fmtFecha(r.fecha) + "<br>";
+      html += "<span class='nums'>Numeros: " + r.resultados.map(n => String(n).padStart(2, "0")).join(", ") + "</span><br>";
+      html += "<span class='chico'>Cantidad de ganadores: " + r.cantidad_ganadores + "</span><br>";
+      if (r.mis_jugadas && r.mis_jugadas.length) {
+        r.mis_jugadas.forEach(j => {
+          if (j.estado === "ganadora") {
+            html += "<div class='cobro-box'><b>GANASTE $" + j.premio + "</b> con la jugada #" + j.id + " (" + j.numeros + ").<br>";
+            html += (j.premio_pagado ? "Tu vendedor marco el premio como entregado. " : "Premio pendiente de entrega. ");
+            if (j.premio_cobrado) {
+              html += "<b>Cobrado ✔</b>";
+            } else {
+              html += "<button onclick='confirmarCobroJugador(" + j.id + ")'>Confirmar que cobre</button>";
+            }
+            html += "<br><span class='chico'>Comunicate con tu vendedor asi te entrega el premio.</span></div>";
+          } else {
+            html += "<div class='chico'>Tu jugada #" + j.id + " (" + j.numeros + "): " + j.estado + ".</div>";
+          }
+        });
+      } else {
+        html += "<span class='chico'>No participaste de este sorteo.</span>";
+      }
+      html += "</div>";
+    });
+    caja.innerHTML = html;
+  } catch (e) { aviso(e.message, true); }
+}
+
+async function confirmarCobroJugador(jugadaId) {
+  if (!confirm("Confirma que ya cobraste este premio?")) return;
+  try {
+    await api("/jugador/jugadas/" + jugadaId + "/confirmar-cobro", "POST");
+    aviso("Gracias, confirmaste el cobro de tu premio.");
+    cargarResultadosJugador();
+  } catch (e) { aviso(e.message, true); }
+}
+
 // ---------- REGISTRO DE PESTANAS DEL JUGADOR ----------
 window.ACCIONES = window.ACCIONES || {};
 ACCIONES.jsorteos = cargarJSorteos;
