@@ -87,6 +87,7 @@ def _sorteo_out(s: Sorteo):
         "fecha": s.fecha.isoformat(),
         "hora_cierre": s.hora_cierre,
         "pozo": s.pozo_actual,
+        "pozo_inicial": s.pozo_inicial,
         "estado": s.estado.value,
         "precio_jugada": s.precio_jugada,
         "solo_participantes": s.solo_participantes,
