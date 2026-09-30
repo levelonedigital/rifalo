@@ -20,6 +20,10 @@ function pintarReglasModalidad() {
   }
 }
 
+function nombreSorteoAdmin(s) {
+  return (s.titulo || s.modalidad || "");
+}
+
 // ---------- ADMIN: SORTEOS ----------
 async function iniciarSorteos() {
   await cargarModalidades();
@@ -66,6 +70,7 @@ function leerFormSorteo() {
     precio_jugada: parseFloat(document.getElementById("sorteo-precio").value),
     pozo_base: parseFloat(document.getElementById("sorteo-pozobase").value || 0),
     casa_pct: parseFloat(document.getElementById("sorteo-casa").value),
+    titulo: document.getElementById("sorteo-titulo").value || null,
   };
   const cierre = document.getElementById("sorteo-cierre").value;
   if (cierre) cuerpo.hora_cierre = cierre;
@@ -115,6 +120,7 @@ function empezarEdicion(id) {
   document.getElementById("sorteo-vend").value = s.vendedor_pct ?? "";
   document.getElementById("sorteo-premio").value = s.premio_fijo ?? "";
   document.getElementById("sorteo-minimo").value = s.minimo_cubrir ?? "";
+  document.getElementById("sorteo-titulo").value = s.titulo || "";
   document.getElementById("sorteo-imagen").value = s.imagen_url || "";
   document.getElementById("sorteo-detalle").value = s.detalle || "";
   document.getElementById("btn-crear").style.display = "none";
@@ -157,6 +163,7 @@ async function guardarPlantilla() {
   delete cuerpo.hora_cierre;
   delete cuerpo.imagen_url;
   delete cuerpo.detalle;
+  delete cuerpo.titulo;
   try { await api("/admin/plantillas", "POST", cuerpo); aviso("Guia guardada: " + nombre); cargarPlantillas(); }
   catch (e) { aviso(e.message, true); }
 }
@@ -183,7 +190,7 @@ async function cargarPlantillaSel() {
   document.getElementById("sorteo-casa").value = p.casa_pct;
   document.getElementById("sorteo-vend").value = p.vendedor_pct ?? "";
   document.getElementById("sorteo-premio").value = p.premio_fijo ?? "";
-  aviso("Guia cargada, pone el dia y el cierre y crea el sorteo");
+  aviso("Guia cargada, pone el dia, el cierre y el titulo y crea el sorteo");
 }
 
 async function borrarPlantillaSel() {
@@ -197,9 +204,10 @@ async function cargarSorteos() {
   try {
     const sorteos = await api("/admin/sorteos", "GET");
     sorteos.forEach(s => { SORT_CACHE[s.id] = s; });
-    let html = "<table><tr><th>#</th><th>Img</th><th>Modalidad</th><th>Horario</th><th>Dia</th><th>Cierre</th><th>Estado</th><th>Pozo</th><th>Cubriendo / costo</th><th>Vendido</th><th>Acciones</th></tr>";
+    let html = "<table><tr><th>#</th><th>Img</th><th>Sorteo</th><th>Horario</th><th>Dia</th><th>Cierre</th><th>Estado</th><th>Pozo</th><th>Cubriendo / costo</th><th>Vendido</th><th>Acciones</th></tr>";
     sorteos.forEach(s => {
-      html += "<tr><td>" + s.id + "</td><td>" + (s.imagen_url ? "<img src='" + s.imagen_url + "' style='width:44px;height:44px;object-fit:cover;border-radius:4px'>" : "-") + "</td><td>" + s.modalidad + (s.solo_participantes ? " VACANTE" : "") + "</td><td>" + s.horario + "</td><td>" + fmtFecha(s.fecha) + "</td><td>" + (s.hora_cierre || "sin limite") + "</td><td>" + s.estado + (s.busqueda_agotada ? " (manual)" : "") + "</td><td>$" + s.pozo + "</td><td>$" + s.pozo_cubierto + " / $" + s.costo + (s.costo_cubierto ? " ✔" : " ✘") + "</td><td>$" + (s.recaudado || 0) + "</td><td>";
+      const celdaNombre = "<td><b>" + (s.titulo || s.modalidad) + "</b>" + (s.titulo ? "<div class='chico'>" + s.modalidad + "</div>" : "") + (s.solo_participantes ? " <span class='chico'>VACANTE</span>" : "") + "</td>";
+      html += "<tr><td>" + s.id + "</td><td>" + (s.imagen_url ? "<img src='" + s.imagen_url + "' style='width:44px;height:44px;object-fit:cover;border-radius:4px'>" : "-") + "</td>" + celdaNombre + "<td>" + s.horario + "</td><td>" + fmtFecha(s.fecha) + "</td><td>" + (s.hora_cierre || "sin limite") + "</td><td>" + s.estado + (s.busqueda_agotada ? " (manual)" : "") + "</td><td>$" + s.pozo + "</td><td>$" + s.pozo_cubierto + " / $" + s.costo + (s.costo_cubierto ? " ✔" : " ✘") + "</td><td>$" + (s.recaudado || 0) + "</td><td>";
       html += "<button class='secundario' onclick='seleccionarSorteo(" + s.id + ")'>Detalles</button>";
       if (s.estado === "preparacion") html += "<button onclick='activarSorteo(" + s.id + ")'>Activar</button>";
       if (s.estado === "programado") html += "<button class='secundario' onclick='cerrarSorteo(" + s.id + ")'>Cerrar</button><button class='secundario' onclick='desactivarSorteo(" + s.id + ")'>Desactivar</button><button class='peligro' onclick='cancelarHorario(" + s.id + ")'>Cancelar horario</button>";
@@ -408,7 +416,7 @@ async function llenarSelectJugadasSorteos() {
     const sorteos = await api("/admin/sorteos", "GET");
     sorteos.forEach(s => { SORT_CACHE[s.id] = s; });
     document.getElementById("jugadas-sorteo").innerHTML = "<option value=''>Elegi un sorteo para ver sus jugadas...</option>" +
-      sorteos.map(s => "<option value='" + s.id + "'>#" + s.id + " " + s.modalidad + " " + s.horario + " " + fmtFecha(s.fecha) + " (" + s.estado + ")</option>").join("");
+      sorteos.map(s => "<option value='" + s.id + "'>#" + s.id + " " + (s.titulo || s.modalidad) + " " + s.horario + " " + fmtFecha(s.fecha) + " (" + s.estado + ")</option>").join("");
   } catch (e) { aviso(e.message, true); }
 }
 
