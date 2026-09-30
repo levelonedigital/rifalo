@@ -106,6 +106,55 @@ def sorteos_abiertos(sesion: Session = Depends(obtener_sesion), jugador: Usuario
     return salida
 
 
+@router.get("/resultados")
+def resultados(sesion: Session = Depends(obtener_sesion), jugador: Usuario = jug_dep):
+    """Ultimos 5 sorteos liquidados con sus resultados y las jugadas del jugador."""
+    sorteos = (
+        sesion.query(Sorteo)
+        .filter(Sorteo.estado == EstadoSorteo.LIQUIDADO)
+        .order_by(Sorteo.id.desc())
+        .limit(5)
+        .all()
+    )
+    salida = []
+    for s in sorteos:
+        ganadoras = sesion.query(Jugada).filter(Jugada.sorteo_id == s.id, Jugada.estado == EstadoJugada.GANADORA).all()
+        mis = sesion.query(Jugada).filter(Jugada.sorteo_id == s.id, Jugada.jugador_id == jugador.id).all()
+        salida.append({
+            "sorteo_id": s.id,
+            "titulo": s.titulo,
+            "modalidad": s.modalidad,
+            "horario": s.horario,
+            "fecha": s.fecha.isoformat(),
+            "resultados": s.lista_resultados,
+            "cantidad_ganadores": len(ganadoras),
+            "mis_jugadas": [
+                {
+                    "id": j.id,
+                    "numeros": j.numeros,
+                    "estado": j.estado.value,
+                    "premio": j.premio,
+                    "premio_pagado": j.premio_pagado,
+                    "premio_cobrado": j.premio_cobrado,
+                }
+                for j in mis
+            ],
+        })
+    return salida
+
+
+@router.post("/jugadas/{jugada_id}/confirmar-cobro")
+def confirmar_cobro(jugada_id: int, sesion: Session = Depends(obtener_sesion), jugador: Usuario = jug_dep):
+    j = sesion.get(Jugada, jugada_id)
+    if j is None or j.jugador_id != jugador.id:
+        raise HTTPException(status_code=404, detail="Jugada no encontrada")
+    if j.estado != EstadoJugada.GANADORA:
+        raise HTTPException(status_code=400, detail="Solo podes confirmar el cobro de una jugada ganadora")
+    j.premio_cobrado = True
+    sesion.commit()
+    return {"ok": True, "jugada_id": j.id}
+
+
 @router.post("/jugadas")
 def cargar_jugada(datos: JugadaCrear, sesion: Session = Depends(obtener_sesion), jugador: Usuario = jug_dep):
     vendedor = sesion.get(Usuario, jugador.padre_id) if jugador.padre_id else None
