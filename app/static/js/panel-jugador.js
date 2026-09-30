@@ -1,3 +1,11 @@
+// ---------- JUGADOR: CARTEL DE POZO (con vacante) ----------
+function htmlPozo(s) {
+  const esVacante = Boolean(s.solo_participantes);
+  const rotulo = esVacante ? "POZO VACANTE" : "POZO ACTUAL";
+  const arranque = esVacante ? "<br><small style='font-size:12px;font-weight:normal'>Arranca en $" + (s.pozo_inicial ?? s.pozo) + "</small>" : "";
+  return rotulo + "<br><span>$" + s.pozo + "</span>" + arranque + "<br><small style='font-size:12px;font-weight:normal'>Sorteo #" + s.id + " - " + nombreSorteo(s) + " " + s.horario + " - " + fmtFecha(s.fecha) + "</small>";
+}
+
 // ---------- JUGADOR: SORTEOS ----------
 async function cargarJSorteos() {
   try {
@@ -5,14 +13,18 @@ async function cargarJSorteos() {
     SORTEOS_ABIERTOS_CACHE["j-sorteo"] = {};
     ss.forEach(s => { SORTEOS_ABIERTOS_CACHE["j-sorteo"][s.id] = s; });
     const elegido = JUGADOR_SORTEO_ELEGIDO ? SORTEOS_ABIERTOS_CACHE["j-sorteo"][JUGADOR_SORTEO_ELEGIDO] : null;
-    pintarPozo("pozo-jsorteos", elegido || null);
+    const cartel = document.getElementById("pozo-jsorteos");
+    if (cartel) {
+      cartel.style.display = "block";
+      cartel.innerHTML = elegido ? htmlPozo(elegido) : "Seleccioná un sorteo para ver el pozo actual";
+    }
     let html = "<table><tr><th>#</th><th>Img</th><th>Sorteo</th><th>Horario</th><th>Dia</th><th>Cierre</th><th>Estado</th><th>Precio</th><th>Pozo</th><th></th></tr>";
     ss.forEach(s => {
       const jugando = (s.mis_jugadas && s.mis_jugadas.length) ? "<div class='chico' style='color:#FFC107'>Jugando: " + s.mis_jugadas.map((n, i) => ((i + 1) + ": " + n)).join(" - ") + "</div>" : "";
       const botonPozo = "<button class='secundario' onclick='elegirSorteoJugador(" + s.id + ")'>Ver pozo</button>";
       const botonJugar = s.puedo_jugar ? "<button onclick='jugarSorteo(" + s.id + ")'>Jugar</button>" : "<span class='chico'>no habilitado</span>";
-      html += "<tr><td>" + s.id + "</td><td>" + (s.imagen_url ? "<img src='" + s.imagen_url + "' style='width:40px;height:40px;object-fit:cover;border-radius:4px'>" : "-") + "</td><td>" + s.nombre_modalidad + (s.reprogramando ? " (REPROGRAMANDO)" : "") + "<div class='chico'>" + (s.detalle || "") + "</div>" + jugando + "</td><td>" + s.horario + "</td><td>" + fmtFecha(s.fecha) + "</td><td>" + (s.hora_cierre || "sin limite") + "</td><td>" + s.estado + "</td><td>$" + s.precio_jugada + "</td><td><b style='color:#FFC107'>$" + s.pozo + "</b></td><td>" + botonPozo + botonJugar + "</td></tr>";
-      html += "<tr id='pozo-fila-" + s.id + "' style='display:none'><td colspan='10'><div class='pozo-grande' style='font-size:16px'>POZO ACTUAL<br><span>$" + s.pozo + "</span><br><small style='font-size:12px;font-weight:normal'>Sorteo #" + s.id + " - " + s.nombre_modalidad + " " + s.horario + " - " + fmtFecha(s.fecha) + "</small></div></td></tr>";
+      html += "<tr><td>" + s.id + "</td><td>" + (s.imagen_url ? "<img src='" + s.imagen_url + "' style='width:40px;height:40px;object-fit:cover;border-radius:4px'>" : "-") + "</td><td><b>" + nombreSorteo(s) + "</b>" + (s.titulo ? "<div class='chico'>" + s.modalidad + "</div>" : "") + (s.reprogramando ? " (REPROGRAMANDO)" : "") + "<div class='chico'>" + (s.detalle || "") + "</div>" + jugando + "</td><td>" + s.horario + "</td><td>" + fmtFecha(s.fecha) + "</td><td>" + (s.hora_cierre || "sin limite") + "</td><td>" + s.estado + "</td><td>$" + s.precio_jugada + "</td><td><b style='color:#FFC107'>$" + s.pozo + "</b></td><td>" + botonPozo + botonJugar + "</td></tr>";
+      html += "<tr id='pozo-fila-" + s.id + "' style='display:none'><td colspan='10'><div class='pozo-grande' style='font-size:16px'>" + htmlPozo(s) + "</div></td></tr>";
     });
     document.getElementById("lista-jsorteos").innerHTML = html + "</table>";
   } catch (e) { aviso(e.message, true); }
@@ -27,7 +39,11 @@ function elegirSorteoJugador(id) {
     fila.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }
   const s = SORTEOS_ABIERTOS_CACHE["j-sorteo"] && SORTEOS_ABIERTOS_CACHE["j-sorteo"][id];
-  pintarPozo("pozo-jsorteos", s || null);
+  const cartel = document.getElementById("pozo-jsorteos");
+  if (cartel) {
+    cartel.style.display = "block";
+    cartel.innerHTML = s ? htmlPozo(s) : "Seleccioná un sorteo para ver el pozo actual";
+  }
   const sel = document.getElementById("j-sorteo");
   if (sel && s) {
     sel.value = String(id);
