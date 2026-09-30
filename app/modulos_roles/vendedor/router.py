@@ -375,3 +375,47 @@ def resumen(sesion: Session = Depends(obtener_sesion), vendedor: Usuario = vende
         "mi_comision": round(sum(j.monto_vendedor or 0 for j in jugadas), 2),
         "comision_revendedores": round(sum(j.monto_revendedor or 0 for j in jugadas), 2),
     }
+
+
+# ---------- RESULTADOS (ultimos 5 liquidados) ----------
+
+@router.get("/resultados")
+def resultados(sesion: Session = Depends(obtener_sesion), vendedor: Usuario = vendedor_dep):
+    """Ultimos 5 sorteos liquidados con sus resultados y los jugadores ganadores de tu linea."""
+    sorteos = (
+        sesion.query(Sorteo)
+        .filter(Sorteo.estado == EstadoSorteo.LIQUIDADO)
+        .order_by(Sorteo.id.desc())
+        .limit(5)
+        .all()
+    )
+    salida = []
+    for s in sorteos:
+        ganadoras = sesion.query(Jugada).filter(Jugada.sorteo_id == s.id, Jugada.estado == EstadoJugada.GANADORA).all()
+        mis_ganadoras = [g for g in ganadoras if g.vendedor_id == vendedor.id]
+        tuve = (
+            sesion.query(Jugada)
+            .filter(Jugada.sorteo_id == s.id, Jugada.vendedor_id == vendedor.id)
+            .count()
+        ) > 0
+        salida.append({
+            "sorteo_id": s.id,
+            "titulo": s.titulo,
+            "modalidad": s.modalidad,
+            "horario": s.horario,
+            "fecha": s.fecha.isoformat(),
+            "resultados": s.lista_resultados,
+            "cantidad_ganadores": len(ganadoras),
+            "tuve_jugadores": tuve,
+            "mis_ganadores": [
+                {
+                    "jugada_id": g.id,
+                    "jugador_nombre": g.jugador_nombre,
+                    "premio": g.premio,
+                    "premio_pagado": g.premio_pagado,
+                    "premio_cobrado": g.premio_cobrado,
+                }
+                for g in mis_ganadoras
+            ],
+        })
+    return salida
