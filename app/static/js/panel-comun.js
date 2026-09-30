@@ -24,9 +24,9 @@ window.ACCIONES = window.ACCIONES || {};
 const TABS_POR_ROL = {
   admin_principal: [["sorteos","Sorteos"],["buscador","Buscador"],["vendedores","Vendedores"],["jugadas","Jugadas"],["resumen","Resumen"],["balance","Balance"],["auditoria","Auditoria"]],
   admin: [["sorteos","Sorteos"],["buscador","Buscador"],["jugadas","Jugadas"],["resumen","Resumen"],["balance","Balance"],["auditoria","Auditoria"]],
-  vendedor: [["vresumen","Mi resumen"],["vcargar","Cargar jugada"],["vpendientes","Aprobar"],["vjugadas","Mis jugadas"],["vrevendedores","Mis revendedores"],["vjugadores","Mis jugadores"]],
-  revendedor: [["rsorteos","Sorteos"],["rcargar","Cargar jugada"],["rjugadas","Mis jugadas"],["rresumen","Mi resumen"],["rjugadores","Mis jugadores"]],
-  jugador: [["jsorteos","Sorteos"],["jcargar","Mi jugada"]],
+  vendedor: [["vresumen","Mi resumen"],["vcargar","Cargar jugada"],["vpendientes","Aprobar"],["vjugadas","Mis jugadas"],["vrevendedores","Mis revendedores"],["vjugadores","Mis jugadores"],["resultados","Resultados"]],
+  revendedor: [["rsorteos","Sorteos"],["rcargar","Cargar jugada"],["rjugadas","Mis jugadas"],["rresumen","Mi resumen"],["rjugadores","Mis jugadores"],["resultados","Resultados"]],
+  jugador: [["jsorteos","Sorteos"],["jcargar","Mi jugada"],["resultados","Resultados"]],
 };
 
 function cabeceras() { return { "Content-Type": "application/json", "Authorization": "Bearer " + token }; }
@@ -392,3 +392,12 @@ if (_cod) {
 }
 
 if (token) { mostrarPanel(); }
+
+// ---------- DISPATCH DE RESULTADOS POR ROL ----------
+function cargarResultados() {
+  if (rol === "jugador") return cargarResultadosJugador();
+  if (rol === "vendedor") return cargarResultadosVendedor();
+  if (rol === "revendedor") return cargarResultadosRevendedor();
+}
+window.ACCIONES = window.ACCIONES || {};
+ACCIONES.resultados = cargarResultados;
