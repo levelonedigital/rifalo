@@ -126,6 +126,7 @@ class Jugada(Base):
     monto_cubrir = Column(Float, nullable=True)    # sobrante que cubre el pozo base (tramo 1)
     premio_pagado = Column(Boolean, default=False)     # el premio de esta jugada ya se pago al jugador
     comision_pagada = Column(Boolean, default=False)   # la comision del vendedor de esta jugada ya se pago
+    premio_cobrado = Column(Boolean, default=False)    # el jugador confirmo que ya cobro su premio
     creada_en = Column(DateTime(timezone=True), server_default=func.now())
 
     @property
