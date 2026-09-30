@@ -8,6 +8,7 @@ let VEND_CACHE = {};
 let REV_CACHE = {};
 let VJUG_CACHE = {};
 let RJUG_CACHE = {};
+let JUGADORES_CACHE = {};
 let SORT_ACTUAL = null;
 let TAB_ACTUAL = null;
 let JUGADOR_SORTEO_ELEGIDO = null;
@@ -80,6 +81,10 @@ function waLink(telefono, mensaje) {
   return "https://wa.me/" + t + (msg ? "?text=" + msg : "");
 }
 
+function nombreSorteo(s) {
+  return (s.titulo || s.nombre_modalidad || s.modalidad || "");
+}
+
 function pintarPozo(divId, s) {
   const c = document.getElementById(divId);
   if (!c) return;
@@ -88,7 +93,10 @@ function pintarPozo(divId, s) {
     c.innerHTML = "Seleccioná un sorteo para ver el pozo actual";
     return;
   }
-  c.innerHTML = "POZO ACTUAL<br><span>$" + s.pozo + "</span><br><small style='font-size:12px;font-weight:normal'>Sorteo #" + s.id + " - " + s.nombre_modalidad + " " + s.horario + " - " + fmtFecha(s.fecha) + "</small>";
+  const esVacante = Boolean(s.solo_participantes);
+  const rotulo = esVacante ? "POZO VACANTE" : "POZO ACTUAL";
+  const lineaArranque = esVacante ? "<br><small style='font-size:12px;font-weight:normal'>Arranca en $" + (s.pozo_inicial ?? s.pozo) + "</small>" : "";
+  c.innerHTML = rotulo + "<br><span>$" + s.pozo + "</span>" + lineaArranque + "<br><small style='font-size:12px;font-weight:normal'>Sorteo #" + s.id + " - " + nombreSorteo(s) + " " + s.horario + " - " + fmtFecha(s.fecha) + "</small>";
 }
 
 // ---------- MODO SORTEO (ficha admin) ----------
@@ -102,7 +110,7 @@ function pintarModo() {
     return;
   }
   caja.innerHTML =
-    "<b>FICHA DEL SORTEO #" + s.id + "</b><br>" +
+    "<b>FICHA DEL SORTEO #" + s.id + (s.titulo ? " - " + s.titulo : "") + "</b><br>" +
     "Modalidad: " + s.modalidad + " | Horario oficial: " + s.horario + " | Dia: " + fmtFecha(s.fecha) + " | Cierre para anotarse: " + (s.hora_cierre || "sin limite") + "<br>" +
     "Estado: " + s.estado + (s.busqueda_agotada ? " (busqueda agotada, carga manual)" : "") + " | Precio jugada: $" + s.precio_jugada + " | Casa: " + s.casa_pct + "% | Vendedores: " + s.vendedor_pct + "%<br>" +
     "Pozo mostrado: $" + s.pozo + " | <b>Pozo cubierto (sobrantes): $" + s.pozo_cubierto + " de $" + s.costo + "</b> " + (s.costo_cubierto ? "✔ CUBIERTO" : "✘ SIN CUBRIR") + "<br>" +
@@ -264,7 +272,7 @@ async function llenarSelectSorteos(ruta, idSelect) {
     SORTEOS_ABIERTOS_CACHE[idSelect] = {};
     sorteos.forEach(s => { SORTEOS_ABIERTOS_CACHE[idSelect][s.id] = s; });
     document.getElementById(idSelect).innerHTML = sorteos.map(s =>
-      "<option value='" + s.id + "'>#" + s.id + " " + s.nombre_modalidad + " " + s.horario + " " + fmtFecha(s.fecha) + " - $" + s.precio_jugada + " - pozo $" + s.pozo + " - " + s.estado + " - cierre " + (s.hora_cierre || "sin limite") + (s.solo_participantes ? " (VACANTE)" : "") + (s.reprogramando ? " (REPROGRAMANDO)" : "") + "</option>"
+      "<option value='" + s.id + "'>#" + s.id + " " + nombreSorteo(s) + " " + s.horario + " " + fmtFecha(s.fecha) + " - $" + s.precio_jugada + " - pozo $" + s.pozo + " - " + s.estado + " - cierre " + (s.hora_cierre || "sin limite") + (s.solo_participantes ? " (VACANTE)" : "") + (s.reprogramando ? " (REPROGRAMANDO)" : "") + "</option>"
     ).join("") || "<option value=''>No hay sorteos abiertos</option>";
     if (previo) document.getElementById(idSelect).value = previo;
     const idImg = idSelect.replace("-sorteo", "-imagen");
@@ -276,7 +284,7 @@ function pintarReglasSelect(idSelect, idCaja, idImagen) {
   const id = document.getElementById(idSelect).value;
   const s = SORTEOS_ABIERTOS_CACHE[idSelect] && SORTEOS_ABIERTOS_CACHE[idSelect][id];
   const caja = document.getElementById(idCaja);
-  if (caja) caja.textContent = s ? (s.nombre_modalidad + ": " + (s.detalle || s.reglas) + " | Precio jugada: $" + s.precio_jugada + " | Pozo: $" + s.pozo + " | Estado: " + s.estado + " | Cierre para anotarse: " + (s.hora_cierre || "sin limite") + (s.reprogramando ? " | REPROGRAMANDO: aguarda nuevo horario" : "")) : "";
+  if (caja) caja.textContent = s ? (nombreSorteo(s) + ": " + (s.detalle || s.reglas) + " | Precio jugada: $" + s.precio_jugada + " | Pozo: $" + s.pozo + " | Estado: " + s.estado + " | Cierre para anotarse: " + (s.hora_cierre || "sin limite") + (s.reprogramando ? " | REPROGRAMANDO: aguarda nuevo horario" : "")) : "";
   const img = document.getElementById(idImagen);
   if (img) {
     if (s && s.imagen_url) { img.src = s.imagen_url; img.style.display = "block"; }
@@ -286,17 +294,35 @@ function pintarReglasSelect(idSelect, idCaja, idImagen) {
     JUGADOR_SORTEO_ELEGIDO = id ? parseInt(id) : null;
     pintarPozo("pozo-jugador", s || null);
   }
+  if (idSelect === "v-sorteo") filtrarJugadoresSorteo("v", s);
+  if (idSelect === "r-sorteo") filtrarJugadoresSorteo("r", s);
 }
 
 async function cargarSelectJugadores(pref) {
   const ruta = pref === "v" ? "/vendedor/jugadores" : "/revendedor/jugadores";
   try {
     const js = await api(ruta, "GET");
+    JUGADORES_CACHE[pref] = js;
     const sel = document.getElementById(pref + "-jugador-select");
     sel.innerHTML = "<option value=''>Jugador no registrado (escribir nombre abajo)</option>" +
       js.filter(j => j.activo).map(j => "<option value='" + j.id + "'>" + j.nombre + " (" + j.usuario + ")</option>").join("");
     document.getElementById(pref + "-jugador").disabled = false;
+    const idSel = pref + "-sorteo";
+    const sSel = SORTEOS_ABIERTOS_CACHE[idSel] && SORTEOS_ABIERTOS_CACHE[idSel][document.getElementById(idSel).value];
+    filtrarJugadoresSorteo(pref, sSel || null);
   } catch (e) { /* ignora */ }
+}
+
+function filtrarJugadoresSorteo(pref, s) {
+  const todos = JUGADORES_CACHE[pref] || [];
+  const sel = document.getElementById(pref + "-jugador-select");
+  if (!sel) return;
+  let lista = todos;
+  if (s && s.solo_participantes && s.participantes && s.participantes.length) {
+    lista = todos.filter(j => s.participantes.includes(j.nombre));
+  }
+  sel.innerHTML = "<option value=''>Jugador no registrado (escribir nombre abajo)</option>" +
+    lista.filter(j => j.activo).map(j => "<option value='" + j.id + "'>" + j.nombre + " (" + j.usuario + ")</option>").join("");
 }
 
 function toggleJugadorManual(pref) {
@@ -310,20 +336,7 @@ function toggleJugadorManual(pref) {
   }
 }
 
-// ---------- ARRANQUE ----------
-const _params = new URLSearchParams(window.location.search);
-const _cod = _params.get("codigo");
-if (_cod) {
-  document.getElementById("bloque-login").style.display = "none";
-  document.getElementById("login-msg").style.display = "none";
-  document.getElementById("form-registro").style.display = "block";
-  const inputCod = document.getElementById("reg-codigo");
-  inputCod.value = _cod;
-  inputCod.readOnly = true;
-}
-
-if (token) { mostrarPanel(); }
-// ---------- LINKS DE REGISTRO Y WHATSAPP (compartido vendedor/revendedor) ----------
+// ---------- LINKS DE REGISTRO Y WHATSAPP ----------
 async function cargarLinkVendedor() {
   try {
     const me = await api("/auth/me", "GET");
@@ -365,3 +378,17 @@ function mostrarTodosWhatsApp(pref) {
   html += "</div>";
   cont.innerHTML = html;
 }
+
+// ---------- ARRANQUE ----------
+const _params = new URLSearchParams(window.location.search);
+const _cod = _params.get("codigo");
+if (_cod) {
+  document.getElementById("bloque-login").style.display = "none";
+  document.getElementById("login-msg").style.display = "none";
+  document.getElementById("form-registro").style.display = "block";
+  const inputCod = document.getElementById("reg-codigo");
+  inputCod.value = _cod;
+  inputCod.readOnly = true;
+}
+
+if (token) { mostrarPanel(); }
