@@ -1,5 +1,5 @@
 import enum
-from sqlalchemy import Column, Integer, String, Boolean, Float, DateTime, Enum, ForeignKey
+from sqlalchemy import Column, Integer, String, Boolean, Float, DateTime, Date, Enum, ForeignKey
 from sqlalchemy.sql import func
 
 from app.core.database import Base
@@ -72,7 +72,6 @@ class Sorteo(Base):
     pozo_inicial = Column(Float, default=0.0)
     recaudado = Column(Float, default=0.0)
     pozo_extra = Column(Float, default=0.0)
-    # Acumulado de sobrantes que van cubriendo el pozo base (tramo 1).
     pozo_cubierto = Column(Float, default=0.0)
     solo_participantes = Column(Boolean, default=False)
     participantes = Column(String(2000), nullable=True)
@@ -80,7 +79,6 @@ class Sorteo(Base):
     creado_en = Column(DateTime(timezone=True), server_default=func.now())
     imagen_url = Column(String(500), nullable=True)
     detalle = Column(String(1000), nullable=True)
-    # Titulo visible opcional; si esta vacio se usa el nombre automatico de la modalidad.
     titulo = Column(String(120), nullable=True)
 
     precio_jugada = Column(Float, nullable=True)
@@ -90,11 +88,11 @@ class Sorteo(Base):
     minimo_cubrir = Column(Float, nullable=True)
     aviso_costo_enviado = Column(Boolean, default=False)
 
-    # Configuracion POR SORTEO de la busqueda automatica (si es None usa el default del sistema).
+    # Configuracion POR SORTEO de la busqueda automatica (None = usa el default del sistema).
     busqueda_inicio_min = Column(Integer, nullable=True)
     busqueda_intervalo_min = Column(Integer, nullable=True)
     busqueda_duracion_min = Column(Integer, nullable=True)
-    # Configuracion POR SORTEO del semanal (si es None usa el default del sistema).
+    # Configuracion POR SORTEO del semanal (None = usa el default del sistema).
     semanal_dia_inicio = Column(Integer, nullable=True)
     semanal_dia_fin = Column(Integer, nullable=True)
 
@@ -104,7 +102,6 @@ class Sorteo(Base):
 
     @property
     def pozo_cubierto_total(self):
-        """Acumulado de sobrantes destinados al pozo (cubrir base + extra)."""
         return (self.pozo_cubierto or 0.0) + (self.pozo_extra or 0.0)
 
     @property
@@ -130,16 +127,40 @@ class Jugada(Base):
     monto_casa = Column(Float, nullable=True)
     monto_vendedor = Column(Float, nullable=True)
     monto_revendedor = Column(Float, nullable=True)
-    monto_pozo = Column(Float, nullable=True)      # sobrante que suma como extra (tramo 2)
-    monto_cubrir = Column(Float, nullable=True)    # sobrante que cubre el pozo base (tramo 1)
-    premio_pagado = Column(Boolean, default=False)     # el premio de esta jugada ya se pago al jugador
-    comision_pagada = Column(Boolean, default=False)   # la comision del vendedor de esta jugada ya se pago
-    premio_cobrado = Column(Boolean, default=False)    # el jugador confirmo que ya cobro su premio
+    monto_pozo = Column(Float, nullable=True)
+    monto_cubrir = Column(Float, nullable=True)
+    premio_pagado = Column(Boolean, default=False)
+    comision_pagada = Column(Boolean, default=False)
+    premio_cobrado = Column(Boolean, default=False)
     creada_en = Column(DateTime(timezone=True), server_default=func.now())
 
     @property
     def lista_numeros(self):
         return [int(x) for x in self.numeros.split(",") if x.strip() != ""]
+
+
+class LiquidacionVendedor(Base):
+    """Liquidacion de comisiones de un vendedor en un rango de fechas (gestion del admin).
+
+    El admin genera la liquidacion (suma la comision de las jugadas vendidas del vendedor
+    cuyos sorteos caen en el rango). No se permiten rangos solapados para el mismo vendedor
+    (asi no se paga dos veces la misma semana). Doble confirmacion: el admin marca pagado y
+    el vendedor confirma que cobro.
+    """
+    __tablename__ = "liquidaciones_vendedor"
+
+    id = Column(Integer, primary_key=True, index=True)
+    vendedor_id = Column(Integer, ForeignKey("usuarios.id"), nullable=False)
+    desde = Column(Date, nullable=False)
+    hasta = Column(Date, nullable=False)
+    monto = Column(Float, nullable=False, default=0.0)
+    # Detalle congelado por sorteo (JSON: [{sorteo_id, modalidad, horario, fecha, jugadas, vendido, comision}]).
+    detalle = Column(String(4000), nullable=True)
+    pagado_admin = Column(Boolean, default=False)
+    cobrado_vendedor = Column(Boolean, default=False)
+    pagado_en = Column(DateTime(timezone=True), nullable=True)
+    cobrado_en = Column(DateTime(timezone=True), nullable=True)
+    creada_en = Column(DateTime(timezone=True), server_default=func.now())
 
 
 class Aviso(Base):
