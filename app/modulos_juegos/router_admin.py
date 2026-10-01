@@ -1,3 +1,4 @@
+import json
 import re
 from datetime import date, datetime, timedelta
 
@@ -12,7 +13,7 @@ from app.core.security import hash_password
 from app.modulos_juegos import buscador, motor
 from app.modulos_juegos.buscador import _actualizar_semanal, _zona, costo_a_cubrir, pozo_cubierto_total
 from app.modulos_juegos.modalidades import listar, obtener
-from app.modelos.juegos import Aviso, EstadoJugada, EstadoSorteo, Jugada, Sorteo
+from app.modelos.juegos import Aviso, EstadoJugada, EstadoSorteo, Jugada, LiquidacionVendedor, Sorteo
 from app.modelos.usuario import RolUsuario, Usuario
 
 router = APIRouter(prefix="/admin", tags=["juegos"])
@@ -42,6 +43,29 @@ def _montos_vendidas(sesion, sorteo_id):
     vendidas = [j for j in jugadas if j.estado in ESTADOS_VENDIDOS]
     ganadoras = [j for j in jugadas if j.estado == EstadoJugada.GANADORA]
     return jugadas, vendidas, ganadoras
+
+
+def _liq_out(liq: LiquidacionVendedor, sesion: Session):
+    vendedor = sesion.get(Usuario, liq.vendedor_id)
+    try:
+        detalle = json.loads(liq.detalle) if liq.detalle else []
+    except Exception:
+        detalle = []
+    return {
+        "id": liq.id,
+        "vendedor_id": liq.vendedor_id,
+        "vendedor": (vendedor.nombre if vendedor else "-"),
+        "vendedor_usuario": (vendedor.usuario if vendedor else "-"),
+        "desde": liq.desde.isoformat(),
+        "hasta": liq.hasta.isoformat(),
+        "monto": liq.monto,
+        "detalle": detalle,
+        "pagado_admin": bool(liq.pagado_admin),
+        "cobrado_vendedor": bool(liq.cobrado_vendedor),
+        "pagado_en": liq.pagado_en.isoformat() if liq.pagado_en else None,
+        "cobrado_en": liq.cobrado_en.isoformat() if liq.cobrado_en else None,
+        "creada_en": liq.creada_en.isoformat() if liq.creada_en else None,
+    }
 
 
 # ---------- ESTADO DEL BUSCADOR ----------
@@ -126,6 +150,11 @@ class MarcarPago(BaseModel):
     pagado: bool = True
 
 
+class LiquidacionCrear(BaseModel):
+    desde: date
+    hasta: date
+
+
 class VendedorCrear(BaseModel):
     usuario: str
     password: str
@@ -180,6 +209,10 @@ def crear_sorteo(datos: SorteoCrear, sesion: Session = Depends(obtener_sesion), 
     busq_duracion = datos.busqueda_duracion_min if datos.busqueda_duracion_min is not None else reglas.busqueda_duracion_min
     sem_ini = datos.semanal_dia_inicio if datos.semanal_dia_inicio is not None else reglas.semanal_dia_inicio
     sem_fin = datos.semanal_dia_fin if datos.semanal_dia_fin is not None else reglas.semanal_dia_fin
+    # Titulo automatico atractivo si el admin no puso uno (editable despues).
+    titulo = datos.titulo
+    if not titulo:
+        titulo = f"{modalidad.nombre} {datos.horario.capitalize()}"
     sorteo = Sorteo(
         modalidad=datos.modalidad,
         horario=datos.horario,
@@ -195,7 +228,7 @@ def crear_sorteo(datos: SorteoCrear, sesion: Session = Depends(obtener_sesion), 
         minimo_cubrir=datos.minimo_cubrir,
         imagen_url=datos.imagen_url,
         detalle=datos.detalle or detalle_por_defecto(modalidad),
-        titulo=datos.titulo,
+        titulo=titulo,
         busqueda_inicio_min=busq_inicio,
         busqueda_intervalo_min=busq_intervalo,
         busqueda_duracion_min=busq_duracion,
@@ -207,7 +240,7 @@ def crear_sorteo(datos: SorteoCrear, sesion: Session = Depends(obtener_sesion), 
     sesion.refresh(sorteo)
     auditoria.registrar(sesion, "SORTEO_CREADO", detalle=f"{sorteo.modalidad} {sorteo.horario} id={sorteo.id} pozo={pozo} (en preparacion)", usuario=admin)
     sesion.commit()
-    return {"id": sorteo.id, "modalidad": sorteo.modalidad, "horario": sorteo.horario, "pozo_inicial": pozo}
+    return {"id": sorteo.id, "modalidad": sorteo.modalidad, "horario": sorteo.horario, "pozo_inicial": pozo, "titulo": sorteo.titulo}
 
 
 @router.post("/sorteos/{sorteo_id}/activar")
@@ -652,6 +685,107 @@ def editar_vendedor(vendedor_id: int, datos: VendedorEditar, sesion: Session = D
     auditoria.registrar(sesion, "VENDEDOR_EDITADO", detalle=vendedor.usuario, usuario=admin)
     sesion.commit()
     return {"id": vendedor.id, "usuario": vendedor.usuario, "comision_pct": vendedor.comision_pct, "activo": vendedor.activo}
+
+
+# ---------- LIQUIDACIONES DE VENDEDORES (gestion del admin) ----------
+
+@router.post("/vendedores/{vendedor_id}/liquidaciones")
+def generar_liquidacion(vendedor_id: int, datos: LiquidacionCrear, sesion: Session = Depends(obtener_sesion), admin: Usuario = admin_dep):
+    """Genera la liquidacion de comisiones de un vendedor en un rango de fechas.
+    Rechaza rangos solapados con liquidaciones ya existentes del mismo vendedor."""
+    vendedor = sesion.get(Usuario, vendedor_id)
+    if vendedor is None or vendedor.rol != RolUsuario.VENDEDOR:
+        raise HTTPException(status_code=404, detail="Vendedor no encontrado")
+    if datos.desde > datos.hasta:
+        raise HTTPException(status_code=400, detail="La fecha 'desde' no puede ser posterior a 'hasta'")
+    solapa = (
+        sesion.query(LiquidacionVendedor)
+        .filter(
+            LiquidacionVendedor.vendedor_id == vendedor_id,
+            LiquidacionVendedor.desde <= datos.hasta,
+            LiquidacionVendedor.hasta >= datos.desde,
+        )
+        .first()
+    )
+    if solapa is not None:
+        raise HTTPException(
+            status_code=400,
+            detail=f"El rango se solapa con la liquidacion #{solapa.id} ({solapa.desde} a {solapa.hasta}). No se puede pagar dos veces el mismo periodo.",
+        )
+    z = _zona()
+    dt_desde = datetime.combine(datos.desde, datetime.min.time(), tzinfo=z)
+    dt_hasta = datetime.combine(datos.hasta + timedelta(days=1), datetime.min.time(), tzinfo=z)
+    jugadas = (
+        sesion.query(Jugada)
+        .join(Sorteo, Jugada.sorteo_id == Sorteo.id)
+        .filter(
+            Jugada.vendedor_id == vendedor_id,
+            Jugada.estado.in_(ESTADOS_VENDIDOS),
+            Sorteo.fecha >= dt_desde,
+            Sorteo.fecha < dt_hasta,
+        )
+        .all()
+    )
+    agrupado = {}
+    for j in jugadas:
+        d = agrupado.setdefault(j.sorteo_id, {"jugadas": 0, "vendido": 0.0, "comision": 0.0})
+        d["jugadas"] += 1
+        d["vendido"] = round(d["vendido"] + (j.precio or 0.0), 2)
+        d["comision"] = round(d["comision"] + (j.monto_vendedor or 0.0), 2)
+    sorteos_map = {}
+    if agrupado:
+        sorteos_map = {s.id: s for s in sesion.query(Sorteo).filter(Sorteo.id.in_(list(agrupado.keys()))).all()}
+    detalle = []
+    total = 0.0
+    for sid, d in agrupado.items():
+        s = sorteos_map.get(sid)
+        total = round(total + d["comision"], 2)
+        detalle.append({
+            "sorteo_id": sid,
+            "modalidad": (s.modalidad if s else "-"),
+            "horario": (s.horario if s else "-"),
+            "fecha": (s.fecha.date().isoformat() if s else "-"),
+            "jugadas": d["jugadas"],
+            "vendido": d["vendido"],
+            "comision": d["comision"],
+        })
+    detalle.sort(key=lambda x: (x["fecha"], x["sorteo_id"]))
+    liq = LiquidacionVendedor(
+        vendedor_id=vendedor_id,
+        desde=datos.desde,
+        hasta=datos.hasta,
+        monto=total,
+        detalle=json.dumps(detalle),
+    )
+    sesion.add(liq)
+    sesion.commit()
+    sesion.refresh(liq)
+    auditoria.registrar(sesion, "LIQUIDACION_VENDEDOR_GENERADA", detalle=f"vendedor={vendedor_id} {datos.desde}..{datos.hasta} monto={total}", usuario=admin)
+    sesion.commit()
+    return _liq_out(liq, sesion)
+
+
+@router.get("/liquidaciones")
+def listar_liquidaciones(vendedor_id: int | None = None, sesion: Session = Depends(obtener_sesion), admin: Usuario = admin_dep):
+    """Lista liquidaciones de vendedores (todas o de uno), incluidas las ya pagadas."""
+    consulta = sesion.query(LiquidacionVendedor)
+    if vendedor_id is not None:
+        consulta = consulta.filter(LiquidacionVendedor.vendedor_id == vendedor_id)
+    liqs = consulta.order_by(LiquidacionVendedor.id.desc()).all()
+    return [_liq_out(l, sesion) for l in liqs]
+
+
+@router.post("/liquidaciones/{liq_id}/marcar-pagado")
+def marcar_liquidacion_pagada(liq_id: int, sesion: Session = Depends(obtener_sesion), admin: Usuario = admin_dep):
+    liq = sesion.get(LiquidacionVendedor, liq_id)
+    if liq is None:
+        raise HTTPException(status_code=404, detail="Liquidacion no encontrada")
+    liq.pagado_admin = True
+    liq.pagado_en = datetime.now(_zona())
+    sesion.commit()
+    auditoria.registrar(sesion, "LIQUIDACION_VENDEDOR_PAGADA", detalle=f"liq={liq_id}", usuario=admin)
+    sesion.commit()
+    return _liq_out(liq, sesion)
 
 
 # ---------- JUGADORES TOTALES ----------
