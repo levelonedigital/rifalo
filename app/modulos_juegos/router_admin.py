@@ -53,6 +53,22 @@ def _montos_vendidas(sesion, sorteo_id):
     return jugadas, vendidas, ganadoras
 
 
+def _ganancia_admin(sorteo, sesion, vendidas, ganadoras):
+    """Ganancia neta del admin.
+
+    En rifa (premio fijo) no hay pozo progresivo: el 60% que 'iria al pozo' se lo queda
+    la casa por jugada, y el premio se paga de esa caja. Entonces la ganancia real del
+    admin es casa bruta MENOS los premios pagados. En clasico/semanal el premio ya sale
+    del pozo (no de la casa), asi que la casa bruta es la ganancia neta.
+    """
+    modalidad = obtener(sorteo.modalidad)
+    es_pf = bool(modalidad and modalidad.usa_premio_fijo)
+    casa_bruta = round(sum(j.monto_casa or 0 for j in vendidas), 2)
+    premios = round(sum(j.premio or 0 for j in ganadoras), 2)
+    casa = round(casa_bruta - premios, 2) if es_pf else casa_bruta
+    return casa, casa_bruta, premios, es_pf
+
+
 def _liq_out(liq: LiquidacionVendedor, sesion: Session):
     vendedor = sesion.get(Usuario, liq.vendedor_id)
     try:
@@ -381,6 +397,7 @@ def resumen_sorteo(sorteo_id: int, sesion: Session = Depends(obtener_sesion), ad
     if sorteo is None:
         raise HTTPException(status_code=404, detail="Sorteo no encontrado")
     jugadas, vendidas, ganadoras = _montos_vendidas(sesion, sorteo_id)
+    casa, casa_bruta, premios, es_pf = _ganancia_admin(sorteo, sesion, vendidas, ganadoras)
     return {
         "sorteo_id": sorteo.id,
         "modalidad": sorteo.modalidad,
@@ -396,11 +413,13 @@ def resumen_sorteo(sorteo_id: int, sesion: Session = Depends(obtener_sesion), ad
         "jugadas_cargadas": len(jugadas),
         "jugadas_vendidas": len(vendidas),
         "vendido": round(sum(j.precio for j in vendidas), 2),
-        "casa": round(sum(j.monto_casa or 0 for j in vendidas), 2),
+        "casa": casa,
+        "casa_bruta": casa_bruta,
+        "es_premio_fijo": es_pf,
         "vendedores": round(sum(j.monto_vendedor or 0 for j in vendidas), 2),
         "revendedores": round(sum(j.monto_revendedor or 0 for j in vendidas), 2),
         "pozo_aportado": round(sum((j.monto_pozo or 0) + (j.monto_cubrir or 0) for j in vendidas), 2),
-        "premios_pagados": round(sum(j.premio or 0 for j in ganadoras), 2),
+        "premios_pagados": premios,
         "ganadoras": [j.id for j in ganadoras],
     }
 
@@ -412,6 +431,7 @@ def detalle_liquidacion(sorteo_id: int, sesion: Session = Depends(obtener_sesion
     if sorteo is None:
         raise HTTPException(status_code=404, detail="Sorteo no encontrado")
     jugadas, vendidas, ganadoras = _montos_vendidas(sesion, sorteo_id)
+    casa, casa_bruta, pozo_pagado, es_pf = _ganancia_admin(sorteo, sesion, vendidas, ganadoras)
 
     detalle_ganadoras = []
     for j in ganadoras:
@@ -439,12 +459,14 @@ def detalle_liquidacion(sorteo_id: int, sesion: Session = Depends(obtener_sesion
         "estado": sorteo.estado.value,
         "resultados": sorteo.resultados,
         "premio_nombre": sorteo.premio_nombre,
+        "es_premio_fijo": es_pf,
         "vendido": round(sum(j.precio for j in vendidas), 2),
-        "casa": round(sum(j.monto_casa or 0 for j in vendidas), 2),
+        "casa": casa,
+        "casa_bruta": casa_bruta,
         "vendedores": round(sum(j.monto_vendedor or 0 for j in vendidas), 2),
         "revendedores": round(sum(j.monto_revendedor or 0 for j in vendidas), 2),
         "pozo_formado": round(sum((j.monto_pozo or 0) + (j.monto_cubrir or 0) for j in vendidas), 2),
-        "pozo_pagado": round(sum(j.premio or 0 for j in ganadoras), 2),
+        "pozo_pagado": pozo_pagado,
         "cantidad_ganadoras": len(ganadoras),
         "ganadoras": detalle_ganadoras,
     }
@@ -856,13 +878,14 @@ def balance(
     tot = {"vendido": 0.0, "casa": 0.0, "vendedores": 0.0, "revendedores": 0.0, "pozo_formado": 0.0, "premios": 0.0}
     for s in sorteos:
         _, vendidas, ganadoras = _montos_vendidas(sesion, s.id)
+        casa, _cb, _pr, _pf = _ganancia_admin(s, sesion, vendidas, ganadoras)
         fila = {
             "sorteo_id": s.id,
             "modalidad": s.modalidad,
             "horario": s.horario,
             "fecha": s.fecha.isoformat(),
             "vendido": round(sum(j.precio for j in vendidas), 2),
-            "casa": round(sum(j.monto_casa or 0 for j in vendidas), 2),
+            "casa": casa,
             "vendedores": round(sum(j.monto_vendedor or 0 for j in vendidas), 2),
             "revendedores": round(sum(j.monto_revendedor or 0 for j in vendidas), 2),
             "pozo_formado": round(sum((j.monto_pozo or 0) + (j.monto_cubrir or 0) for j in vendidas), 2),
@@ -887,11 +910,25 @@ def balance(
 @router.get("/resumen-general")
 def resumen_general(sesion: Session = Depends(obtener_sesion), admin: Usuario = admin_dep):
     jugadas = sesion.query(Jugada).filter(Jugada.estado.in_(ESTADOS_VENDIDOS)).all()
+    casa_total = 0.0
+    premios_total = 0.0
+    for j in jugadas:
+        s = sesion.get(Sorteo, j.sorteo_id)
+        modalidad = obtener(s.modalidad) if s else None
+        if modalidad and modalidad.usa_premio_fijo:
+            # En rifa el premio se descuenta de la casa (no hay pozo progresivo).
+            casa_total += (j.monto_casa or 0.0)
+            if j.estado == EstadoJugada.GANADORA:
+                premios_total += (j.premio or 0.0)
+        else:
+            casa_total += (j.monto_casa or 0.0)
+            if j.estado == EstadoJugada.GANADORA:
+                premios_total += (j.premio or 0.0)
     return {
         "jugadas_aprobadas": len(jugadas),
         "vendido": round(sum(j.precio for j in jugadas), 2),
-        "casa": round(sum(j.monto_casa or 0 for j in jugadas), 2),
+        "casa": round(casa_total - premios_total, 2),
         "vendedores": round(sum(j.monto_vendedor or 0 for j in jugadas), 2),
         "revendedores": round(sum(j.monto_revendedor or 0 for j in jugadas), 2),
-        "premios_pagados": round(sum(j.premio or 0 for j in jugadas if j.estado == EstadoJugada.GANADORA), 2),
+        "premios_pagados": round(premios_total, 2),
     }
