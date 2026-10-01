@@ -99,6 +99,59 @@ function pintarPozo(divId, s) {
   c.innerHTML = rotulo + "<br><span>$" + s.pozo + "</span>" + lineaArranque + "<br><small style='font-size:12px;font-weight:normal'>Sorteo #" + s.id + " - " + nombreSorteo(s) + " " + s.horario + " - " + fmtFecha(s.fecha) + "</small>";
 }
 
+// ---------- GRILLA DE RIFA (numeros 00-99, libres/ocupados) ----------
+function rutaOcupados() {
+  if (rol === "jugador") return "/jugador/sorteos/";
+  if (rol === "vendedor") return "/vendedor/sorteos/";
+  if (rol === "revendedor") return "/revendedor/sorteos/";
+  return null;
+}
+
+function asegurarDivGrilla(pref) {
+  const input = document.getElementById(pref + "-numeros");
+  if (!input) return null;
+  let div = document.getElementById(pref + "-grilla");
+  if (!div) {
+    div = document.createElement("div");
+    div.id = pref + "-grilla";
+    div.style.cssText = "display:none;margin:8px 0;";
+    input.parentNode.insertBefore(div, input.nextSibling);
+  }
+  return div;
+}
+
+async function refrescarGrillaRifa(idSelect, s) {
+  const pref = idSelect.replace("-sorteo", "");
+  const div = asegurarDivGrilla(pref);
+  if (!div) return;
+  const esRifaUnico = s && s.modalidad === "rifa" && s.cantidad_numeros === 1;
+  if (!esRifaUnico) { div.style.display = "none"; div.innerHTML = ""; return; }
+  const base = rutaOcupados();
+  if (!base) { div.style.display = "none"; return; }
+  try {
+    const d = await api(base + s.id + "/ocupados", "GET");
+    const ocupados = new Set(d.ocupados || []);
+    let html = "<div class='chico' style='margin-bottom:4px'>Elegí tu número tocando un casillero verde. Los rojos ya están jugados (no se repiten).</div>";
+    html += "<div style='display:grid;grid-template-columns:repeat(10,1fr);gap:3px;'>";
+    for (let n = 0; n < 100; n++) {
+      const lab = String(n).padStart(2, "0");
+      if (ocupados.has(n)) {
+        html += "<div style='background:#7f1d1d;color:#fca5a5;text-align:center;padding:6px 0;border-radius:4px;font-size:12px;cursor:not-allowed'>" + lab + "</div>";
+      } else {
+        html += "<div onclick=\"tocarNumeroRifa('" + pref + "'," + n + ")\" style='background:#14532d;color:#bbf7d0;text-align:center;padding:6px 0;border-radius:4px;font-size:12px;cursor:pointer'>" + lab + "</div>";
+      }
+    }
+    html += "</div>";
+    div.innerHTML = html;
+    div.style.display = "block";
+  } catch (e) { div.style.display = "none"; }
+}
+
+function tocarNumeroRifa(pref, n) {
+  const input = document.getElementById(pref + "-numeros");
+  if (input) input.value = String(n).padStart(2, "0");
+}
+
 // ---------- MODO SORTEO (ficha admin) ----------
 function pintarModo() {
   const caja = document.getElementById("zona-modo");
@@ -296,6 +349,7 @@ function pintarReglasSelect(idSelect, idCaja, idImagen) {
   }
   if (idSelect === "v-sorteo") filtrarJugadoresSorteo("v", s);
   if (idSelect === "r-sorteo") filtrarJugadoresSorteo("r", s);
+  refrescarGrillaRifa(idSelect, s);
 }
 
 async function cargarSelectJugadores(pref) {
@@ -379,6 +433,15 @@ function mostrarTodosWhatsApp(pref) {
   cont.innerHTML = html;
 }
 
+// ---------- DISPATCH DE RESULTADOS POR ROL ----------
+function cargarResultados() {
+  if (rol === "jugador") return cargarResultadosJugador();
+  if (rol === "vendedor") return cargarResultadosVendedor();
+  if (rol === "revendedor") return cargarResultadosRevendedor();
+}
+window.ACCIONES = window.ACCIONES || {};
+ACCIONES.resultados = cargarResultados;
+
 // ---------- ARRANQUE ----------
 const _params = new URLSearchParams(window.location.search);
 const _cod = _params.get("codigo");
@@ -392,12 +455,3 @@ if (_cod) {
 }
 
 if (token) { mostrarPanel(); }
-
-// ---------- DISPATCH DE RESULTADOS POR ROL ----------
-function cargarResultados() {
-  if (rol === "jugador") return cargarResultadosJugador();
-  if (rol === "vendedor") return cargarResultadosVendedor();
-  if (rol === "revendedor") return cargarResultadosRevendedor();
-}
-window.ACCIONES = window.ACCIONES || {};
-ACCIONES.resultados = cargarResultados;
