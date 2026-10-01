@@ -1,4 +1,5 @@
 let LIQ_CACHE = {};
+let imagen_data_pending = null; // null = no cambiar; dataUri = subir; "" = quitar
 
 // ---------- MODALIDADES Y REGLAS (admin) ----------
 async function cargarModalidades() {
@@ -29,11 +30,51 @@ function pintarReglasModalidad() {
   }
 }
 
+// ---------- IMAGEN DE PRESENTACION (subir / quitar / preview) ----------
+function mostrarPreviewImagen(src) {
+  const box = document.getElementById("sorteo-imagen-preview-box");
+  const img = document.getElementById("sorteo-imagen-preview");
+  if (!box || !img) return;
+  if (src) { img.src = src; box.style.display = "block"; }
+  else { img.removeAttribute("src"); box.style.display = "none"; }
+}
+
+async function subirImagenSorteo() {
+  const input = document.getElementById("sorteo-imagen-file");
+  const file = input && input.files && input.files[0];
+  if (!file) return;
+  try {
+    const dataUri = await comprimirImagen(file, 900, 0.82);
+    if (!dataUri) return;
+    if (dataUri.length > 600000) { aviso("La imagen quedo muy pesada inclusive comprimida. Probá con una foto mas chica.", true); return; }
+    imagen_data_pending = dataUri;
+    mostrarPreviewImagen(dataUri);
+    aviso("Imagen lista. Se guarda al crear/editar el sorteo.");
+  } catch (e) { aviso(e.message, true); }
+}
+
+function quitarImagenSorteo() {
+  imagen_data_pending = "";
+  const input = document.getElementById("sorteo-imagen-file");
+  if (input) input.value = "";
+  const url = document.getElementById("sorteo-imagen");
+  if (url) url.value = "";
+  mostrarPreviewImagen(null);
+}
+
+function resetImagenForm() {
+  imagen_data_pending = null;
+  const input = document.getElementById("sorteo-imagen-file");
+  if (input) input.value = "";
+  mostrarPreviewImagen(null);
+}
+
 // ---------- ADMIN: SORTEOS ----------
 async function iniciarSorteos() {
   await cargarModalidades();
   await cargarSistema();
   await cargarPlantillas();
+  resetImagenForm();
   cargarSorteos();
 }
 
@@ -76,6 +117,7 @@ function leerFormSorteo() {
     pozo_base: parseFloat(document.getElementById("sorteo-pozobase").value || 0),
     casa_pct: parseFloat(document.getElementById("sorteo-casa").value),
     titulo: document.getElementById("sorteo-titulo").value || null,
+    premio_nombre: document.getElementById("sorteo-premio-nombre").value || null,
     busqueda_inicio_min: intOrNull("sorteo-busini"),
     busqueda_intervalo_min: intOrNull("sorteo-busint"),
     busqueda_duracion_min: intOrNull("sorteo-busdur"),
@@ -90,10 +132,15 @@ function leerFormSorteo() {
   if (premio) cuerpo.premio_fijo = parseFloat(premio);
   const minimo = document.getElementById("sorteo-minimo").value;
   if (minimo) cuerpo.minimo_cubrir = parseFloat(minimo);
-  const img = document.getElementById("sorteo-imagen").value;
-  if (img) cuerpo.imagen_url = img;
+  const url = document.getElementById("sorteo-imagen").value;
+  if (url) cuerpo.imagen_url = url;
   const detalle = document.getElementById("sorteo-detalle").value;
   if (detalle) cuerpo.detalle = detalle;
+  // Imagen subida o quitada (tiene prioridad sobre la URL).
+  if (imagen_data_pending !== null) {
+    cuerpo.imagen_data = imagen_data_pending;
+    if (imagen_data_pending === "") cuerpo.imagen_url = ""; // quitar tambien limpia la URL
+  }
   return cuerpo;
 }
 
@@ -102,6 +149,8 @@ async function crearSorteo() {
   try {
     const d = await api("/admin/sorteos", "POST", cuerpo);
     aviso("Sorteo #" + d.id + " creado EN PREPARACION (inactivo) con titulo \"" + (d.titulo || "") + "\". Revisalo, editalo si hace falta y recien ahi activalo.");
+    resetImagenForm();
+    const pn = document.getElementById("sorteo-premio-nombre"); if (pn) pn.value = "";
     cargarSorteos();
   }
   catch (e) { aviso(e.message, true); }
@@ -131,13 +180,24 @@ function empezarEdicion(id) {
   document.getElementById("sorteo-premio").value = s.premio_fijo ?? "";
   document.getElementById("sorteo-minimo").value = s.minimo_cubrir ?? "";
   document.getElementById("sorteo-titulo").value = s.titulo || "";
-  document.getElementById("sorteo-imagen").value = s.imagen_url || "";
+  document.getElementById("sorteo-premio-nombre").value = s.premio_nombre || "";
   document.getElementById("sorteo-detalle").value = s.detalle || "";
   document.getElementById("sorteo-busini").value = s.busqueda_inicio_min ?? "";
   document.getElementById("sorteo-busint").value = s.busqueda_intervalo_min ?? "";
   document.getElementById("sorteo-busdur").value = s.busqueda_duracion_min ?? "";
   document.getElementById("sorteo-semi").value = s.semanal_dia_inicio ?? "";
   document.getElementById("sorteo-semf").value = s.semanal_dia_fin ?? "";
+  // Imagen: si es URL externa la dejo editable; si es subida (data:) solo preview.
+  imagen_data_pending = null;
+  const urlInput = document.getElementById("sorteo-imagen");
+  const actual = s.imagen_url || "";
+  if (actual.indexOf("data:") === 0) {
+    if (urlInput) urlInput.value = "";
+    mostrarPreviewImagen(actual);
+  } else {
+    if (urlInput) urlInput.value = actual;
+    mostrarPreviewImagen(actual || null);
+  }
   document.getElementById("btn-crear").style.display = "none";
   const bar = document.getElementById("editar-bar");
   bar.style.display = "block";
@@ -149,6 +209,9 @@ function cancelarEdicion() {
   sorteo_edit_id = null;
   document.getElementById("editar-bar").style.display = "none";
   document.getElementById("btn-crear").style.display = "";
+  resetImagenForm();
+  const pn = document.getElementById("sorteo-premio-nombre"); if (pn) pn.value = "";
+  const ui = document.getElementById("sorteo-imagen"); if (ui) ui.value = "";
   pintarReglasModalidad();
 }
 
@@ -177,8 +240,10 @@ async function guardarPlantilla() {
   delete cuerpo.fecha;
   delete cuerpo.hora_cierre;
   delete cuerpo.imagen_url;
+  delete cuerpo.imagen_data;
   delete cuerpo.detalle;
   delete cuerpo.titulo;
+  delete cuerpo.premio_nombre;
   delete cuerpo.busqueda_inicio_min;
   delete cuerpo.busqueda_intervalo_min;
   delete cuerpo.busqueda_duracion_min;
@@ -210,7 +275,7 @@ async function cargarPlantillaSel() {
   document.getElementById("sorteo-casa").value = p.casa_pct;
   document.getElementById("sorteo-vend").value = p.vendedor_pct ?? "";
   document.getElementById("sorteo-premio").value = p.premio_fijo ?? "";
-  aviso("Guia cargada, pone el dia, el cierre, el titulo y la config de busqueda/semanal y crea el sorteo");
+  aviso("Guia cargada, pone el dia, el cierre, el titulo, el nombre del premio, la imagen y la config de busqueda/semanal y crea el sorteo");
 }
 
 async function borrarPlantillaSel() {
@@ -226,7 +291,8 @@ async function cargarSorteos() {
     sorteos.forEach(s => { SORT_CACHE[s.id] = s; });
     let html = "<table><tr><th>#</th><th>Img</th><th>Sorteo</th><th>Horario</th><th>Dia</th><th>Cierre</th><th>Estado</th><th>Pozo</th><th>Cubriendo / costo</th><th>Vendido</th><th>Ganadores</th><th>Acciones</th></tr>";
     sorteos.forEach(s => {
-      const celdaNombre = "<td><b>" + (s.titulo || s.modalidad) + "</b>" + (s.titulo ? "<div class='chico'>" + s.modalidad + "</div>" : "") + (s.solo_participantes ? " <span class='chico'>VACANTE</span>" : "") + "</td>";
+      const premioLinea = s.premio_nombre ? "<div class='chico' style='color:#22c55e'>PREMIO: " + s.premio_nombre + "</div>" : "";
+      const celdaNombre = "<td><b>" + (s.titulo || s.modalidad) + "</b>" + (s.titulo ? "<div class='chico'>" + s.modalidad + "</div>" : "") + premioLinea + (s.solo_participantes ? " <span class='chico'>VACANTE</span>" : "") + "</td>";
       const celdaGanadores = "<td>" + ((s.ganadores && s.ganadores.length) ? s.ganadores.join(", ") : "-") + "</td>";
       html += "<tr><td>" + s.id + "</td><td>" + (s.imagen_url ? "<img src='" + s.imagen_url + "' style='width:44px;height:44px;object-fit:cover;border-radius:4px'>" : "-") + "</td>" + celdaNombre + "<td>" + s.horario + "</td><td>" + fmtFecha(s.fecha) + "</td><td>" + (s.hora_cierre || "sin limite") + "</td><td>" + s.estado + (s.busqueda_agotada ? " (manual)" : "") + "</td><td>$" + s.pozo + "</td><td>$" + s.pozo_cubierto + " / $" + s.costo + (s.costo_cubierto ? " ✔" : " ✘") + "</td><td>$" + (s.recaudado || 0) + "</td>" + celdaGanadores + "<td>";
       html += "<button class='secundario' onclick='seleccionarSorteo(" + s.id + ")'>Detalles</button>";
@@ -276,7 +342,7 @@ async function cargarResultado(id) {
     let detalle;
     if (d.ganadoras && d.ganadoras.length) {
       const porJugada = Math.round((d.pozo_pagado / d.ganadoras.length) * 100) / 100;
-      detalle = "Liquidado.\nGanadoras: jugadas " + d.ganadoras.join(", ") + ".\nPozo pagado: $" + d.pozo_pagado + " ($" + porJugada + " por jugada ganadora).";
+      detalle = "Liquidado.\nGanadoras: jugadas " + d.ganadoras.join(", ") + ".\nPozo pagado: $" + d.pozo_pagado + " ($" + porJugada + " por jugada ganadora)." + (d.premio_nombre ? ("\nPremio: " + d.premio_nombre) : "");
     } else {
       detalle = "Liquidado sin ganadoras.\nPozo retenido: $" + d.pozo_sin_ganador + ".";
     }
@@ -578,6 +644,7 @@ async function cargarLiquidacion(sorteoId) {
     const d = await api("/admin/sorteos/" + sorteoId + "/liquidacion", "GET");
     let html = "<h2>Detalle de liquidacion</h2>";
     html += "<p><b>Resultados oficiales:</b> " + (d.resultados || "-") + "</p>";
+    if (d.premio_nombre) html += "<p><b>Premio:</b> " + d.premio_nombre + "</p>";
     html += "<p><b>Pozo formado:</b> $" + d.pozo_formado + " | <b>Pozo pagado en premios:</b> $" + d.pozo_pagado + " | <b>Ganadores:</b> " + d.cantidad_ganadoras + "</p>";
     html += "<p><b>Ganancia casa (admin):</b> $" + d.casa + " | <b>Vendedores:</b> $" + d.vendedores + " | <b>Revendedores:</b> $" + d.revendedores + "</p>";
     if (d.ganadoras.length) {
