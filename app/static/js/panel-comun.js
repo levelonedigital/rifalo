@@ -22,9 +22,9 @@ let refrescoTimer = null;
 window.ACCIONES = window.ACCIONES || {};
 
 const TABS_POR_ROL = {
-  admin_principal: [["sorteos","Sorteos"],["buscador","Buscador"],["vendedores","Vendedores"],["jugadas","Jugadas"],["resumen","Resumen"],["balance","Balance"],["auditoria","Auditoria"]],
-  admin: [["sorteos","Sorteos"],["buscador","Buscador"],["jugadas","Jugadas"],["resumen","Resumen"],["balance","Balance"],["auditoria","Auditoria"]],
-  vendedor: [["vresumen","Mi resumen"],["vcargar","Cargar jugada"],["vpendientes","Aprobar"],["vjugadas","Mis jugadas"],["vrevendedores","Mis revendedores"],["vjugadores","Mis jugadores"],["resultados","Resultados"]],
+  admin_principal: [["sorteos","Sorteos"],["buscador","Buscador"],["vendedores","Vendedores"],["pagos","Pagos a vendedores"],["jugadas","Jugadas"],["resumen","Resumen"],["balance","Balance"],["auditoria","Auditoria"]],
+  admin: [["sorteos","Sorteos"],["buscador","Buscador"],["pagos","Pagos a vendedores"],["jugadas","Jugadas"],["resumen","Resumen"],["balance","Balance"],["auditoria","Auditoria"]],
+  vendedor: [["vresumen","Mi resumen"],["vcargar","Cargar jugada"],["vpendientes","Aprobar"],["vjugadas","Mis jugadas"],["vrevendedores","Mis revendedores"],["vjugadores","Mis jugadores"],["resultados","Resultados"],["cobros","Mis cobros"]],
   revendedor: [["rsorteos","Sorteos"],["rcargar","Cargar jugada"],["rjugadas","Mis jugadas"],["rresumen","Mi resumen"],["rjugadores","Mis jugadores"],["resultados","Resultados"]],
   jugador: [["jsorteos","Sorteos"],["jcargar","Mi jugada"],["resultados","Resultados"]],
 };
@@ -85,18 +85,27 @@ function nombreSorteo(s) {
   return (s.titulo || s.nombre_modalidad || s.modalidad || "");
 }
 
+// ---------- CARTEL LLAMATIVO (titulo grande + pozo destacado) ----------
+function cartelSorteoHtml(s) {
+  if (!s) return "Seleccioná un sorteo para ver el pozo actual";
+  const esVacante = Boolean(s.solo_participantes);
+  const titulo = nombreSorteo(s) || (s.modalidad || "");
+  const rotulo = esVacante ? "POZO VACANTE" : "POZO";
+  const colorPozo = esVacante ? "#22c55e" : "#FFC107";
+  const arranque = esVacante ? "<div style='font-size:13px;color:#86efac;margin-top:2px'>Arranca en $" + (s.pozo_inicial ?? s.pozo) + "</div>" : "";
+  return (
+    "<div style='font-size:22px;font-weight:bold;color:#fbbf24;line-height:1.1'>" + titulo + "</div>" +
+    "<div style='font-size:30px;font-weight:bold;color:" + colorPozo + ";margin:4px 0'>$" + s.pozo + "</div>" +
+    "<div style='font-size:12px;color:#cbd5e1'>" + rotulo + " · Sorteo #" + s.id + " · " + s.horario + " · " + fmtFecha(s.fecha) + "</div>" +
+    arranque
+  );
+}
+
 function pintarPozo(divId, s) {
   const c = document.getElementById(divId);
   if (!c) return;
   c.style.display = "block";
-  if (!s) {
-    c.innerHTML = "Seleccioná un sorteo para ver el pozo actual";
-    return;
-  }
-  const esVacante = Boolean(s.solo_participantes);
-  const rotulo = esVacante ? "POZO VACANTE" : "POZO ACTUAL";
-  const lineaArranque = esVacante ? "<br><small style='font-size:12px;font-weight:normal'>Arranca en $" + (s.pozo_inicial ?? s.pozo) + "</small>" : "";
-  c.innerHTML = rotulo + "<br><span>$" + s.pozo + "</span>" + lineaArranque + "<br><small style='font-size:12px;font-weight:normal'>Sorteo #" + s.id + " - " + nombreSorteo(s) + " " + s.horario + " - " + fmtFecha(s.fecha) + "</small>";
+  c.innerHTML = cartelSorteoHtml(s);
 }
 
 // ---------- GRILLA DE RIFA (numeros 00-99, libres/ocupados) ----------
@@ -168,7 +177,7 @@ function pintarModo() {
     "Estado: " + s.estado + (s.busqueda_agotada ? " (busqueda agotada, carga manual)" : "") + " | Precio jugada: $" + s.precio_jugada + " | Casa: " + s.casa_pct + "% | Vendedores: " + s.vendedor_pct + "%<br>" +
     "Pozo mostrado: $" + s.pozo + " | <b>Pozo cubierto (sobrantes): $" + s.pozo_cubierto + " de $" + s.costo + "</b> " + (s.costo_cubierto ? "✔ CUBIERTO" : "✘ SIN CUBRIR") + "<br>" +
     "Vendido total: $" + s.recaudado + " | Resultados: " + (s.resultados || "sin cargar") + "<br>" +
-    "<span class='chico'>Las pestanas Jugadas, Resumen, Balance y Auditoria muestran solo este sorteo.</span> " +
+    "<span class='chico'>Las pestanas Jugadas, Resumen, Balance, Pagos y Auditoria muestran solo este sorteo.</span> " +
     "<button class='secundario' onclick='refrescarModo()'>Actualizar ficha</button> <button class='peligro' onclick='salirSorteo()'>Salir del sorteo</button>";
 }
 
@@ -186,7 +195,7 @@ async function seleccionarSorteo(id) {
     try { const ss = await api("/admin/sorteos", "GET"); ss.forEach(s => { SORT_CACHE[s.id] = s; }); } catch (e) { /* ignora */ }
   }
   pintarModo();
-  aviso("Modo sorteo activado: las pestanas Jugadas, Resumen, Balance y Auditoria muestran solo el sorteo #" + id);
+  aviso("Modo sorteo activado: las pestanas Jugadas, Resumen, Balance, Pagos y Auditoria muestran solo el sorteo #" + id);
   if (TAB_ACTUAL) irTab(TAB_ACTUAL);
 }
 
@@ -433,14 +442,18 @@ function mostrarTodosWhatsApp(pref) {
   cont.innerHTML = html;
 }
 
-// ---------- DISPATCH DE RESULTADOS POR ROL ----------
+// ---------- DISPATCH DE RESULTADOS Y COBROS POR ROL ----------
 function cargarResultados() {
   if (rol === "jugador") return cargarResultadosJugador();
   if (rol === "vendedor") return cargarResultadosVendedor();
   if (rol === "revendedor") return cargarResultadosRevendedor();
 }
+function cargarCobros() {
+  if (rol === "vendedor") return cargarCobrosVendedor();
+}
 window.ACCIONES = window.ACCIONES || {};
 ACCIONES.resultados = cargarResultados;
+ACCIONES.cobros = cargarCobros;
 
 // ---------- ARRANQUE ----------
 const _params = new URLSearchParams(window.location.search);
