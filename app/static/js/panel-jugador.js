@@ -10,12 +10,13 @@ async function cargarJSorteos() {
       cartel.style.display = "block";
       cartel.innerHTML = cartelSorteoHtml(elegido);
     }
-    let html = "<table><tr><th>#</th><th>Img</th><th>Sorteo</th><th>Horario</th><th>Dia</th><th>Cierre</th><th>Estado</th><th>Precio</th><th>Pozo</th><th></th></tr>";
+    let html = "<table><tr><th>#</th><th>Img</th><th>Sorteo</th><th>Horario</th><th>Dia</th><th>Cierre</th><th>Estado</th><th>Precio</th><th>Pozo / Premio</th><th></th></tr>";
     ss.forEach(s => {
       const jugando = (s.mis_jugadas && s.mis_jugadas.length) ? "<div class='chico' style='color:#FFC107'>Jugando: " + s.mis_jugadas.map((n, i) => ((i + 1) + ": " + n)).join(" - ") + "</div>" : "";
       const botonPozo = "<button class='secundario' onclick='elegirSorteoJugador(" + s.id + ")'>Ver pozo</button>";
       const botonJugar = s.puedo_jugar ? "<button onclick='jugarSorteo(" + s.id + ")'>Jugar</button>" : "<span class='chico'>no habilitado</span>";
-      html += "<tr><td>" + s.id + "</td><td>" + (s.imagen_url ? "<img src='" + s.imagen_url + "' style='width:40px;height:40px;object-fit:cover;border-radius:4px'>" : "-") + "</td><td><b>" + nombreSorteo(s) + "</b>" + (s.titulo ? "<div class='chico'>" + s.modalidad + "</div>" : "") + (s.reprogramando ? " (REPROGRAMANDO)" : "") + "<div class='chico'>" + (s.detalle || "") + "</div>" + jugando + "</td><td>" + s.horario + "</td><td>" + fmtFecha(s.fecha) + "</td><td>" + (s.hora_cierre || "sin limite") + "</td><td>" + s.estado + "</td><td>$" + s.precio_jugada + "</td><td><b style='color:#FFC107'>$" + s.pozo + "</b></td><td>" + botonPozo + botonJugar + "</td></tr>";
+      const celdaPozo = tienePremioNombre(s) ? "<b style='color:#22c55e'>" + s.premio_nombre + "</b>" : "<b style='color:#FFC107'>$" + s.pozo + "</b>";
+      html += "<tr><td>" + s.id + "</td><td>" + (s.imagen_url ? "<img src='" + s.imagen_url + "' style='width:40px;height:40px;object-fit:cover;border-radius:4px'>" : "-") + "</td><td><b>" + nombreSorteo(s) + "</b>" + (s.titulo ? "<div class='chico'>" + s.modalidad + "</div>" : "") + (s.reprogramando ? " (REPROGRAMANDO)" : "") + "<div class='chico'>" + (s.detalle || "") + "</div>" + jugando + "</td><td>" + s.horario + "</td><td>" + fmtFecha(s.fecha) + "</td><td>" + (s.hora_cierre || "sin limite") + "</td><td>" + s.estado + "</td><td>$" + s.precio_jugada + "</td><td>" + celdaPozo + "</td><td>" + botonPozo + botonJugar + "</td></tr>";
       html += "<tr id='pozo-fila-" + s.id + "' style='display:none'><td colspan='10'><div class='pozo-grande' style='font-size:16px'>" + cartelSorteoHtml(s) + "</div></td></tr>";
     });
     document.getElementById("lista-jsorteos").innerHTML = html + "</table>";
@@ -77,7 +78,8 @@ async function cargarResultadosJugador() {
       if (r.mis_jugadas && r.mis_jugadas.length) {
         r.mis_jugadas.forEach(j => {
           if (j.estado === "ganadora") {
-            html += "<div class='cobro-box'><b>GANASTE $" + j.premio + "</b> con la jugada #" + j.id + " (" + j.numeros + ").<br>";
+            const premioTxt = r.premio_nombre ? ("GANASTE: " + r.premio_nombre) : ("GANASTE $" + j.premio);
+            html += "<div class='cobro-box'><b>" + premioTxt + "</b> con la jugada #" + j.id + " (" + j.numeros + ").<br>";
             html += (j.premio_pagado ? "Tu vendedor marco el premio como entregado. " : "Premio pendiente de entrega. ");
             if (j.premio_cobrado) {
               html += "<b>Cobrado ✔</b>";
