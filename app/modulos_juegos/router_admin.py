@@ -23,7 +23,6 @@ admin_dep = Depends(requerir_rol(RolUsuario.ADMIN_PRINCIPAL, RolUsuario.ADMIN))
 ESTADOS_VENDIDOS = [EstadoJugada.APROBADA, EstadoJugada.GANADORA, EstadoJugada.PERDEDORA]
 NUMEROS_OCULTOS = "••• (numeros ocultos)"
 HORA_RE = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
-# Tope de tamano del data URI de imagen (~450 KB de imagen binaria). El front comprime antes.
 MAX_IMAGEN_CHARS = 600000
 
 
@@ -350,6 +349,14 @@ def listar_sorteos(sesion: Session = Depends(obtener_sesion), admin: Usuario = D
     for s in sorteos:
         costo = costo_a_cubrir(s)
         cubierto = pozo_cubierto_total(s)
+        modalidad = obtener(s.modalidad)
+        es_pf = bool(modalidad and modalidad.usa_premio_fijo)
+        # En rifa con premio fijo no hay pozo a cubrir: el premio se paga de la casa.
+        # Mostramos cobertura coherente: costo = premio fijo, cubierto = casa bruta.
+        if es_pf:
+            vendidas = sesion.query(Jugada).filter(Jugada.sorteo_id == s.id, Jugada.estado.in_(ESTADOS_VENDIDOS)).all()
+            costo = s.premio_fijo or 0.0
+            cubierto = round(sum(j.monto_casa or 0 for j in vendidas), 2)
         gan = (
             sesion.query(Jugada)
             .filter(Jugada.sorteo_id == s.id, Jugada.estado == EstadoJugada.GANADORA)
@@ -378,6 +385,8 @@ def listar_sorteos(sesion: Session = Depends(obtener_sesion), admin: Usuario = D
                 "premio_nombre": s.premio_nombre,
                 "detalle": s.detalle,
                 "titulo": s.titulo,
+                "es_premio_fijo": es_pf,
+                "requiere_pozo": bool(modalidad and modalidad.requiere_pozo),
                 "costo": costo,
                 "costo_cubierto": cubierto >= costo,
                 "ganadores": [g.jugador_nombre for g in gan],
@@ -398,6 +407,8 @@ def resumen_sorteo(sorteo_id: int, sesion: Session = Depends(obtener_sesion), ad
         raise HTTPException(status_code=404, detail="Sorteo no encontrado")
     jugadas, vendidas, ganadoras = _montos_vendidas(sesion, sorteo_id)
     casa, casa_bruta, premios, es_pf = _ganancia_admin(sorteo, sesion, vendidas, ganadoras)
+    costo = sorteo.premio_fijo or 0.0 if es_pf else costo_a_cubrir(sorteo)
+    cubierto = casa_bruta if es_pf else pozo_cubierto_total(sorteo)
     return {
         "sorteo_id": sorteo.id,
         "modalidad": sorteo.modalidad,
@@ -406,16 +417,16 @@ def resumen_sorteo(sorteo_id: int, sesion: Session = Depends(obtener_sesion), ad
         "estado": sorteo.estado.value,
         "resultados": sorteo.resultados,
         "pozo": sorteo.pozo_actual,
-        "pozo_cubierto": pozo_cubierto_total(sorteo),
+        "pozo_cubierto": cubierto,
+        "es_premio_fijo": es_pf,
         "recaudado": sorteo.recaudado or 0.0,
-        "costo": costo_a_cubrir(sorteo),
-        "costo_cubierto": pozo_cubierto_total(sorteo) >= costo_a_cubrir(sorteo),
+        "costo": costo,
+        "costo_cubierto": cubierto >= costo,
         "jugadas_cargadas": len(jugadas),
         "jugadas_vendidas": len(vendidas),
         "vendido": round(sum(j.precio for j in vendidas), 2),
         "casa": casa,
         "casa_bruta": casa_bruta,
-        "es_premio_fijo": es_pf,
         "vendedores": round(sum(j.monto_vendedor or 0 for j in vendidas), 2),
         "revendedores": round(sum(j.monto_revendedor or 0 for j in vendidas), 2),
         "pozo_aportado": round(sum((j.monto_pozo or 0) + (j.monto_cubrir or 0) for j in vendidas), 2),
@@ -915,15 +926,9 @@ def resumen_general(sesion: Session = Depends(obtener_sesion), admin: Usuario = 
     for j in jugadas:
         s = sesion.get(Sorteo, j.sorteo_id)
         modalidad = obtener(s.modalidad) if s else None
-        if modalidad and modalidad.usa_premio_fijo:
-            # En rifa el premio se descuenta de la casa (no hay pozo progresivo).
-            casa_total += (j.monto_casa or 0.0)
-            if j.estado == EstadoJugada.GANADORA:
-                premios_total += (j.premio or 0.0)
-        else:
-            casa_total += (j.monto_casa or 0.0)
-            if j.estado == EstadoJugada.GANADORA:
-                premios_total += (j.premio or 0.0)
+        casa_total += (j.monto_casa or 0.0)
+        if modalidad and modalidad.usa_premio_fijo and j.estado == EstadoJugada.GANADORA:
+            premios_total += (j.premio or 0.0)
     return {
         "jugadas_aprobadas": len(jugadas),
         "vendido": round(sum(j.precio for j in jugadas), 2),
