@@ -6,10 +6,10 @@ from sqlalchemy.orm import Session
 
 from app.core.database import obtener_sesion
 from app.core.dependencias import requerir_rol
+from app.modulos_juegos import motor
 from app.modulos_juegos.buscador import _zona
 from app.modulos_juegos.jugadas_core import crear_jugada
 from app.modulos_juegos.modalidades import obtener
-from app.modulos_juegos.motor import obtener_reglas
 from app.modelos.juegos import EstadoJugada, EstadoSorteo, Jugada, Sorteo
 from app.modelos.usuario import RolUsuario, Usuario
 
@@ -84,7 +84,7 @@ def _coincidencias(sesion: Session, sorteo_id: int, numeros_clave: str) -> int:
 
 @router.get("/sorteos")
 def sorteos_abiertos(sesion: Session = Depends(obtener_sesion), jugador: Usuario = jug_dep):
-    reglas = obtener_reglas(sesion)
+    reglas = motor.obtener_reglas(sesion)
     sorteos = (
         sesion.query(Sorteo)
         .filter(Sorteo.estado.in_([EstadoSorteo.PROGRAMADO, EstadoSorteo.REPROGRAMANDO]))
@@ -104,6 +104,15 @@ def sorteos_abiertos(sesion: Session = Depends(obtener_sesion), jugador: Usuario
         d["mis_jugadas"] = [j.numeros for j in mis]
         salida.append(d)
     return salida
+
+
+@router.get("/sorteos/{sorteo_id}/ocupados")
+def numeros_ocupados(sorteo_id: int, sesion: Session = Depends(obtener_sesion), jugador: Usuario = jug_dep):
+    """Numeros ya jugados en una rifa de numero unico (para la grilla). None si no aplica."""
+    sorteo = sesion.get(Sorteo, sorteo_id)
+    if sorteo is None:
+        raise HTTPException(status_code=404, detail="Sorteo no encontrado")
+    return {"ocupados": motor.numeros_ocupados_rifa(sesion, sorteo)}
 
 
 @router.get("/resultados")
@@ -163,10 +172,11 @@ def cargar_jugada(datos: JugadaCrear, sesion: Session = Depends(obtener_sesion),
     sorteo = sesion.get(Sorteo, datos.sorteo_id)
     if sorteo is None:
         raise HTTPException(status_code=404, detail="Sorteo no encontrado")
-    reglas = obtener_reglas(sesion)
+    reglas = motor.obtener_reglas(sesion)
     if not _puedo_jugar(sorteo, jugador, reglas):
         raise HTTPException(status_code=400, detail="Este sorteo no esta habilitado para jugar ahora")
     try:
+        motor.validar_numeros_rifa(sesion, sorteo, datos.numeros)
         jugada = crear_jugada(
             sesion,
             sorteo,
