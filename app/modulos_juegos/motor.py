@@ -132,6 +132,7 @@ def liquidar_sorteo(sorteo: Sorteo, sesion: Session, reglas: ReglasSistema) -> d
 
 
 ESTADOS_VENDIDAS = [EstadoJugada.APROBADA, EstadoJugada.GANADORA, EstadoJugada.PERDEDORA]
+ESTADOS_ACTIVAS_RIFA = [EstadoJugada.PENDIENTE, EstadoJugada.APROBADA]
 
 
 def nombres_participantes(sorteo_id: int, sesion: Session) -> str:
@@ -172,3 +173,38 @@ def crear_pozo_vacante(sesion: Session, origen: Sorteo, fecha, reglas: ReglasSis
     )
     sesion.add(nuevo)
     return nuevo
+
+
+# ---------- RIFA: NUMEROS UNICOS (no se repiten entre jugadas) ----------
+
+def es_rifa_numero_unico(sorteo: Sorteo) -> bool:
+    """True si la modalidad es rifa de 1 numero por jugada (numeros no repetibles)."""
+    modalidad = obtener(sorteo.modalidad)
+    return bool(modalidad and modalidad.usa_premio_fijo and modalidad.cantidad_numeros == 1)
+
+
+def numeros_ocupados_rifa(sesion: Session, sorteo: Sorteo):
+    """Lista de numeros ya jugados (pendientes o aprobados) en una rifa de numero unico.
+    Devuelve None si el sorteo no es rifa de numero unico."""
+    if not es_rifa_numero_unico(sorteo):
+        return None
+    jugadas = (
+        sesion.query(Jugada)
+        .filter(Jugada.sorteo_id == sorteo.id, Jugada.estado.in_(ESTADOS_ACTIVAS_RIFA))
+        .all()
+    )
+    ocupados = set()
+    for j in jugadas:
+        for n in j.lista_numeros:
+            ocupados.add(n)
+    return sorted(ocupados)
+
+
+def validar_numeros_rifa(sesion: Session, sorteo: Sorteo, numeros: list[int]) -> None:
+    """Rechaza si algun numero ya esta jugado en esta rifa de numero unico."""
+    ocupados = numeros_ocupados_rifa(sesion, sorteo)
+    if ocupados is None:
+        return
+    for n in numeros:
+        if n in ocupados:
+            raise ValueError(f"El numero {n:02d} ya esta jugado en este sorteo; elegi otro")
