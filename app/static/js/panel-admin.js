@@ -6,6 +6,11 @@ async function cargarModalidades() {
   pintarReglasModalidad();
 }
 
+function intOrNull(id) {
+  const v = document.getElementById(id).value;
+  return v === "" ? null : parseInt(v, 10);
+}
+
 function pintarReglasModalidad() {
   const sel = document.getElementById("sorteo-modalidad");
   if (!sel) return;
@@ -15,6 +20,8 @@ function pintarReglasModalidad() {
   const esRifa = m && m.usa_premio_fijo;
   document.getElementById("caja-premio-fijo").style.display = esRifa ? "block" : "none";
   document.getElementById("caja-minimo").style.display = esRifa ? "block" : "none";
+  const esSemanal = clave === "semanal";
+  document.getElementById("caja-semanal").style.display = esSemanal ? "contents" : "none";
   if (!sorteo_edit_id && m) {
     document.getElementById("sorteo-detalle").value = m.resumen_reglas + " Si no se cumplen las condiciones, el sorteo puede pasar a otro horario; se respetan las jugadas.";
   }
@@ -54,7 +61,7 @@ async function guardarSistema() {
     busqueda_duracion_min: parseInt(document.getElementById("sis-busdur").value),
     vendedor_pct: parseFloat(document.getElementById("sis-vendpct").value),
   };
-  try { await api("/admin/sistema", "PUT", cuerpo); aviso("Sistema guardado"); }
+  try { await api("/admin/sistema", "PUT", cuerpo); aviso("Sistema guardado (horarios oficiales y % default)"); }
   catch (e) { aviso(e.message, true); }
 }
 
@@ -67,6 +74,11 @@ function leerFormSorteo() {
     pozo_base: parseFloat(document.getElementById("sorteo-pozobase").value || 0),
     casa_pct: parseFloat(document.getElementById("sorteo-casa").value),
     titulo: document.getElementById("sorteo-titulo").value || null,
+    busqueda_inicio_min: intOrNull("sorteo-busini"),
+    busqueda_intervalo_min: intOrNull("sorteo-busint"),
+    busqueda_duracion_min: intOrNull("sorteo-busdur"),
+    semanal_dia_inicio: intOrNull("sorteo-semi"),
+    semanal_dia_fin: intOrNull("sorteo-semf"),
   };
   const cierre = document.getElementById("sorteo-cierre").value;
   if (cierre) cuerpo.hora_cierre = cierre;
@@ -119,6 +131,11 @@ function empezarEdicion(id) {
   document.getElementById("sorteo-titulo").value = s.titulo || "";
   document.getElementById("sorteo-imagen").value = s.imagen_url || "";
   document.getElementById("sorteo-detalle").value = s.detalle || "";
+  document.getElementById("sorteo-busini").value = s.busqueda_inicio_min ?? "";
+  document.getElementById("sorteo-busint").value = s.busqueda_intervalo_min ?? "";
+  document.getElementById("sorteo-busdur").value = s.busqueda_duracion_min ?? "";
+  document.getElementById("sorteo-semi").value = s.semanal_dia_inicio ?? "";
+  document.getElementById("sorteo-semf").value = s.semanal_dia_fin ?? "";
   document.getElementById("btn-crear").style.display = "none";
   const bar = document.getElementById("editar-bar");
   bar.style.display = "block";
@@ -160,6 +177,11 @@ async function guardarPlantilla() {
   delete cuerpo.imagen_url;
   delete cuerpo.detalle;
   delete cuerpo.titulo;
+  delete cuerpo.busqueda_inicio_min;
+  delete cuerpo.busqueda_intervalo_min;
+  delete cuerpo.busqueda_duracion_min;
+  delete cuerpo.semanal_dia_inicio;
+  delete cuerpo.semanal_dia_fin;
   try { await api("/admin/plantillas", "POST", cuerpo); aviso("Guia guardada: " + nombre); cargarPlantillas(); }
   catch (e) { aviso(e.message, true); }
 }
@@ -186,7 +208,7 @@ async function cargarPlantillaSel() {
   document.getElementById("sorteo-casa").value = p.casa_pct;
   document.getElementById("sorteo-vend").value = p.vendedor_pct ?? "";
   document.getElementById("sorteo-premio").value = p.premio_fijo ?? "";
-  aviso("Guia cargada, pone el dia, el cierre y el titulo y crea el sorteo");
+  aviso("Guia cargada, pone el dia, el cierre, el titulo y la config de busqueda/semanal y crea el sorteo");
 }
 
 async function borrarPlantillaSel() {
