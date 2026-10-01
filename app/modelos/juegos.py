@@ -1,5 +1,5 @@
 import enum
-from sqlalchemy import Column, Integer, String, Boolean, Float, DateTime, Date, Enum, ForeignKey
+from sqlalchemy import Column, Integer, String, Boolean, Float, DateTime, Date, Enum, ForeignKey, Text
 from sqlalchemy.sql import func
 
 from app.core.database import Base
@@ -77,9 +77,13 @@ class Sorteo(Base):
     participantes = Column(String(2000), nullable=True)
     busqueda_agotada = Column(Boolean, default=False)
     creado_en = Column(DateTime(timezone=True), server_default=func.now())
+    # Imagen de presentacion: URL externa (legacy) o data URI base64 subida por el admin.
     imagen_url = Column(String(500), nullable=True)
+    imagen_data = Column(Text, nullable=True)
     detalle = Column(String(1000), nullable=True)
     titulo = Column(String(120), nullable=True)
+    # Nombre del premio: lo que ve el jugador en vez del monto. Ej: "Smart TV 55 pulgadas".
+    premio_nombre = Column(String(200), nullable=True)
 
     precio_jugada = Column(Float, nullable=True)
     pozo_base = Column(Float, nullable=True)
@@ -95,6 +99,11 @@ class Sorteo(Base):
     # Configuracion POR SORTEO del semanal (None = usa el default del sistema).
     semanal_dia_inicio = Column(Integer, nullable=True)
     semanal_dia_fin = Column(Integer, nullable=True)
+
+    @property
+    def imagen_visible(self):
+        """Data URI si el admin subio archivo; si no, la URL externa; si no, None."""
+        return self.imagen_data or self.imagen_url or None
 
     @property
     def pozo_actual(self):
@@ -140,13 +149,7 @@ class Jugada(Base):
 
 
 class LiquidacionVendedor(Base):
-    """Liquidacion de comisiones de un vendedor en un rango de fechas (gestion del admin).
-
-    El admin genera la liquidacion (suma la comision de las jugadas vendidas del vendedor
-    cuyos sorteos caen en el rango). No se permiten rangos solapados para el mismo vendedor
-    (asi no se paga dos veces la misma semana). Doble confirmacion: el admin marca pagado y
-    el vendedor confirma que cobro.
-    """
+    """Liquidacion de comisiones de un vendedor en un rango de fechas (gestion del admin)."""
     __tablename__ = "liquidaciones_vendedor"
 
     id = Column(Integer, primary_key=True, index=True)
@@ -154,7 +157,6 @@ class LiquidacionVendedor(Base):
     desde = Column(Date, nullable=False)
     hasta = Column(Date, nullable=False)
     monto = Column(Float, nullable=False, default=0.0)
-    # Detalle congelado por sorteo (JSON: [{sorteo_id, modalidad, horario, fecha, jugadas, vendido, comision}]).
     detalle = Column(String(4000), nullable=True)
     pagado_admin = Column(Boolean, default=False)
     cobrado_vendedor = Column(Boolean, default=False)
