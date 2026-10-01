@@ -233,7 +233,8 @@ async function cargarResultadosVendedor() {
       html += "<span class='chico'>Cantidad de ganadores: " + r.cantidad_ganadores + "</span><br>";
       if (r.mis_ganadores && r.mis_ganadores.length) {
         r.mis_ganadores.forEach(g => {
-          html += "<div class='cobro-box'><b>Tu jugador " + g.jugador_nombre + " GANO $" + g.premio + "</b> (jugada #" + g.jugada_id + ").<br>";
+          const premioTxt = r.premio_nombre ? ("GANO: " + r.premio_nombre) : ("GANO $" + g.premio);
+          html += "<div class='cobro-box'><b>Tu jugador " + g.jugador_nombre + " " + premioTxt + "</b> (jugada #" + g.jugada_id + ").<br>";
           html += (g.premio_pagado ? "Marcado como entregado por vos. " : "<b>Pendiente de entrega.</b> ");
           html += (g.premio_cobrado ? "<b>El jugador confirmo que cobro ✔</b>" : "El jugador aun no confirmo el cobro.");
           html += "<br><span class='chico'>Comunicate con tu jugador asi le entregas su premio.</span></div>";
