@@ -85,11 +85,29 @@ function nombreSorteo(s) {
   return (s.titulo || s.nombre_modalidad || s.modalidad || "");
 }
 
-// ---------- CARTEL LLAMATIVO (titulo grande + pozo destacado) ----------
+// ---------- PREMIO CON NOMBRE (oculta el monto interno cuando hay premio_nombre) ----------
+function tienePremioNombre(s) { return !!(s && s.premio_nombre); }
+
+function etiquetaPozo(s) {
+  if (!s) return "";
+  if (s.premio_nombre) return "Premio: " + s.premio_nombre;
+  const esVacante = Boolean(s.solo_participantes);
+  return (esVacante ? "Pozo vacante $" : "$") + s.pozo;
+}
+
+// ---------- CARTEL LLAMATIVO (titulo grande + pozo o premio) ----------
 function cartelSorteoHtml(s) {
   if (!s) return "Seleccioná un sorteo para ver el pozo actual";
-  const esVacante = Boolean(s.solo_participantes);
   const titulo = nombreSorteo(s) || (s.modalidad || "");
+  if (s.premio_nombre) {
+    return (
+      "<div style='font-size:22px;font-weight:bold;color:#fbbf24;line-height:1.1'>" + titulo + "</div>" +
+      "<div style='font-size:13px;color:#94a3b8;margin-top:6px'>PREMIO</div>" +
+      "<div style='font-size:26px;font-weight:bold;color:#22c55e'>" + s.premio_nombre + "</div>" +
+      "<div style='font-size:12px;color:#cbd5e1;margin-top:4px'>Sorteo #" + s.id + " · " + s.horario + " · " + fmtFecha(s.fecha) + "</div>"
+    );
+  }
+  const esVacante = Boolean(s.solo_participantes);
   const rotulo = esVacante ? "POZO VACANTE" : "POZO";
   const colorPozo = esVacante ? "#22c55e" : "#FFC107";
   const arranque = esVacante ? "<div style='font-size:13px;color:#86efac;margin-top:2px'>Arranca en $" + (s.pozo_inicial ?? s.pozo) + "</div>" : "";
@@ -106,6 +124,37 @@ function pintarPozo(divId, s) {
   if (!c) return;
   c.style.display = "block";
   c.innerHTML = cartelSorteoHtml(s);
+}
+
+// ---------- SUBIR IMAGEN (comprime antes de mandar al backend) ----------
+function comprimirImagen(file, maxDim, calidad) {
+  maxDim = maxDim || 900;
+  calidad = calidad || 0.82;
+  return new Promise((resolve, reject) => {
+    if (!file) { resolve(null); return; }
+    if (!file.type || !file.type.startsWith("image/")) { reject(new Error("Elegí un archivo de imagen (jpg o png)")); return; }
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("No se pudo leer la imagen"));
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error("El archivo no es una imagen valida"));
+      img.onload = () => {
+        let w = img.width, h = img.height;
+        if (w > h && w > maxDim) { h = Math.round(h * maxDim / w); w = maxDim; }
+        else if (h >= w && h > maxDim) { w = Math.round(w * maxDim / h); h = maxDim; }
+        const canvas = document.createElement("canvas");
+        canvas.width = w; canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(img, 0, 0, w, h);
+        let dataUri;
+        try { dataUri = canvas.toDataURL("image/jpeg", calidad); }
+        catch (e) { reject(new Error("No se pudo comprimir la imagen")); return; }
+        resolve(dataUri);
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
 }
 
 // ---------- GRILLA DE RIFA (numeros 00-99, libres/ocupados) ----------
@@ -175,6 +224,7 @@ function pintarModo() {
     "<b>FICHA DEL SORTEO #" + s.id + (s.titulo ? " - " + s.titulo : "") + "</b><br>" +
     "Modalidad: " + s.modalidad + " | Horario oficial: " + s.horario + " | Dia: " + fmtFecha(s.fecha) + " | Cierre para anotarse: " + (s.hora_cierre || "sin limite") + "<br>" +
     "Estado: " + s.estado + (s.busqueda_agotada ? " (busqueda agotada, carga manual)" : "") + " | Precio jugada: $" + s.precio_jugada + " | Casa: " + s.casa_pct + "% | Vendedores: " + s.vendedor_pct + "%<br>" +
+    (s.premio_nombre ? ("Premio: " + s.premio_nombre + "<br>") : "") +
     "Pozo mostrado: $" + s.pozo + " | <b>Pozo cubierto (sobrantes): $" + s.pozo_cubierto + " de $" + s.costo + "</b> " + (s.costo_cubierto ? "✔ CUBIERTO" : "✘ SIN CUBRIR") + "<br>" +
     "Vendido total: $" + s.recaudado + " | Resultados: " + (s.resultados || "sin cargar") + "<br>" +
     "<span class='chico'>Las pestanas Jugadas, Resumen, Balance, Pagos y Auditoria muestran solo este sorteo.</span> " +
@@ -334,7 +384,7 @@ async function llenarSelectSorteos(ruta, idSelect) {
     SORTEOS_ABIERTOS_CACHE[idSelect] = {};
     sorteos.forEach(s => { SORTEOS_ABIERTOS_CACHE[idSelect][s.id] = s; });
     document.getElementById(idSelect).innerHTML = sorteos.map(s =>
-      "<option value='" + s.id + "'>#" + s.id + " " + nombreSorteo(s) + " " + s.horario + " " + fmtFecha(s.fecha) + " - $" + s.precio_jugada + " - pozo $" + s.pozo + " - " + s.estado + " - cierre " + (s.hora_cierre || "sin limite") + (s.solo_participantes ? " (VACANTE)" : "") + (s.reprogramando ? " (REPROGRAMANDO)" : "") + "</option>"
+      "<option value='" + s.id + "'>#" + s.id + " " + nombreSorteo(s) + " " + s.horario + " " + fmtFecha(s.fecha) + " - $" + s.precio_jugada + " - " + etiquetaPozo(s) + " - " + s.estado + " - cierre " + (s.hora_cierre || "sin limite") + (s.solo_participantes ? " (VACANTE)" : "") + (s.reprogramando ? " (REPROGRAMANDO)" : "") + "</option>"
     ).join("") || "<option value=''>No hay sorteos abiertos</option>";
     if (previo) document.getElementById(idSelect).value = previo;
     const idImg = idSelect.replace("-sorteo", "-imagen");
@@ -346,7 +396,7 @@ function pintarReglasSelect(idSelect, idCaja, idImagen) {
   const id = document.getElementById(idSelect).value;
   const s = SORTEOS_ABIERTOS_CACHE[idSelect] && SORTEOS_ABIERTOS_CACHE[idSelect][id];
   const caja = document.getElementById(idCaja);
-  if (caja) caja.textContent = s ? (nombreSorteo(s) + ": " + (s.detalle || s.reglas) + " | Precio jugada: $" + s.precio_jugada + " | Pozo: $" + s.pozo + " | Estado: " + s.estado + " | Cierre para anotarse: " + (s.hora_cierre || "sin limite") + (s.reprogramando ? " | REPROGRAMANDO: aguarda nuevo horario" : "")) : "";
+  if (caja) caja.textContent = s ? (nombreSorteo(s) + ": " + (s.detalle || s.reglas) + " | Precio jugada: $" + s.precio_jugada + " | " + etiquetaPozo(s) + " | Estado: " + s.estado + " | Cierre para anotarse: " + (s.hora_cierre || "sin limite") + (s.reprogramando ? " | REPROGRAMANDO: aguarda nuevo horario" : "")) : "";
   const img = document.getElementById(idImagen);
   if (img) {
     if (s && s.imagen_url) { img.src = s.imagen_url; img.style.display = "block"; }
