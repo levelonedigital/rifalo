@@ -1,3 +1,5 @@
+from datetime import date, datetime, timedelta
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
@@ -7,10 +9,11 @@ from app.core.database import obtener_sesion
 from app.core.dependencias import requerir_rol
 from app.core.security import hash_password
 from app.modulos_juegos import motor
+from app.modulos_juegos.buscador import _zona
 from app.modulos_juegos.jugadas_core import crear_jugada
 from app.modulos_juegos.modalidades import obtener
 from app.modulos_juegos.motor import aprobar_jugada, obtener_reglas
-from app.modelos.juegos import EstadoJugada, EstadoSorteo, Jugada, Sorteo
+from app.modelos.juegos import EstadoJugada, EstadoSorteo, Jugada, LiquidacionVendedor, Sorteo
 from app.modelos.usuario import RolUsuario, Usuario
 
 router = APIRouter(prefix="/vendedor", tags=["vendedor"])
@@ -96,6 +99,25 @@ def _sorteo_out(s: Sorteo):
         "titulo": s.titulo,
         "reprogramando": s.estado == EstadoSorteo.REPROGRAMANDO,
         "imagen_url": s.imagen_url,
+    }
+
+
+def _cobro_out(liq: LiquidacionVendedor):
+    import json
+    try:
+        detalle = json.loads(liq.detalle) if liq.detalle else []
+    except Exception:
+        detalle = []
+    return {
+        "id": liq.id,
+        "desde": liq.desde.isoformat(),
+        "hasta": liq.hasta.isoformat(),
+        "monto": liq.monto,
+        "detalle": detalle,
+        "pagado_admin": bool(liq.pagado_admin),
+        "cobrado_vendedor": bool(liq.cobrado_vendedor),
+        "pagado_en": liq.pagado_en.isoformat() if liq.pagado_en else None,
+        "cobrado_en": liq.cobrado_en.isoformat() if liq.cobrado_en else None,
     }
 
 
@@ -430,3 +452,32 @@ def resultados(sesion: Session = Depends(obtener_sesion), vendedor: Usuario = ve
             ],
         })
     return salida
+
+
+# ---------- MIS COBROS (liquidaciones de comisiones) ----------
+
+@router.get("/cobros")
+def mis_cobros(sesion: Session = Depends(obtener_sesion), vendedor: Usuario = vendedor_dep):
+    """Lista las liquidaciones de comisiones de este vendedor (incluidas las ya pagadas)."""
+    liqs = (
+        sesion.query(LiquidacionVendedor)
+        .filter(LiquidacionVendedor.vendedor_id == vendedor.id)
+        .order_by(LiquidacionVendedor.id.desc())
+        .all()
+    )
+    return [_cobro_out(l) for l in liqs]
+
+
+@router.post("/cobros/{liq_id}/confirmar-cobro")
+def confirmar_cobro(liq_id: int, sesion: Session = Depends(obtener_sesion), vendedor: Usuario = vendedor_dep):
+    liq = sesion.get(LiquidacionVendedor, liq_id)
+    if liq is None or liq.vendedor_id != vendedor.id:
+        raise HTTPException(status_code=404, detail="Liquidacion no encontrada")
+    if not liq.pagado_admin:
+        raise HTTPException(status_code=400, detail="El administrador todavia no marco el pago; esperá a que te lo confirme")
+    liq.cobrado_vendedor = True
+    liq.cobrado_en = datetime.now(_zona())
+    sesion.commit()
+    auditoria.registrar(sesion, "COBRO_VENDEDOR_CONFIRMADO", detalle=f"liq={liq_id}", usuario=vendedor)
+    sesion.commit()
+    return _cobro_out(liq)
