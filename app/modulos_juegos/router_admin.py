@@ -23,6 +23,8 @@ admin_dep = Depends(requerir_rol(RolUsuario.ADMIN_PRINCIPAL, RolUsuario.ADMIN))
 ESTADOS_VENDIDOS = [EstadoJugada.APROBADA, EstadoJugada.GANADORA, EstadoJugada.PERDEDORA]
 NUMEROS_OCULTOS = "••• (numeros ocultos)"
 HORA_RE = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
+# Tope de tamano del data URI de imagen (~450 KB de imagen binaria). El front comprime antes.
+MAX_IMAGEN_CHARS = 600000
 
 
 def validar_hora_cierre(valor):
@@ -31,6 +33,12 @@ def validar_hora_cierre(valor):
     if not HORA_RE.match(valor):
         raise HTTPException(status_code=400, detail="Horario de cierre invalido: usa HH:MM (ej: 20:00)")
     return valor
+
+
+def validar_imagen(imagen_data):
+    if imagen_data and len(imagen_data) > MAX_IMAGEN_CHARS:
+        raise HTTPException(status_code=400, detail="La imagen pesa demasiado. Usá una foto mas chica (el sistema la comprime, pero evitá archivos de varios MB).")
+    return imagen_data
 
 
 def detalle_por_defecto(modalidad) -> str:
@@ -104,6 +112,7 @@ class SorteoCrear(BaseModel):
     fecha: datetime
     hora_cierre: str | None = None
     premio_fijo: float | None = Field(default=None, gt=0)
+    premio_nombre: str | None = None
     pozo_inicial: float | None = Field(default=None, ge=0)
     precio_jugada: float = Field(gt=0)
     pozo_base: float = Field(ge=0)
@@ -111,6 +120,7 @@ class SorteoCrear(BaseModel):
     vendedor_pct: float | None = Field(default=None, ge=0, le=100)
     minimo_cubrir: float | None = Field(default=None, ge=0)
     imagen_url: str | None = None
+    imagen_data: str | None = None
     detalle: str | None = None
     titulo: str | None = None
     busqueda_inicio_min: int | None = Field(default=None, ge=0)
@@ -128,8 +138,10 @@ class SorteoEditar(BaseModel):
     casa_pct: float | None = Field(default=None, ge=0, le=100)
     vendedor_pct: float | None = Field(default=None, ge=0, le=100)
     premio_fijo: float | None = Field(default=None, gt=0)
+    premio_nombre: str | None = None
     minimo_cubrir: float | None = Field(default=None, ge=0)
     imagen_url: str | None = None
+    imagen_data: str | None = None
     detalle: str | None = None
     titulo: str | None = None
     busqueda_inicio_min: int | None = Field(default=None, ge=0)
@@ -202,6 +214,7 @@ def crear_sorteo(datos: SorteoCrear, sesion: Session = Depends(obtener_sesion), 
         datos.vendedor_pct = reglas.vendedor_pct
     if datos.casa_pct + datos.vendedor_pct > 100:
         raise HTTPException(status_code=400, detail="Casa + vendedores no puede superar el 100%")
+    validar_imagen(datos.imagen_data)
     hora_cierre = validar_hora_cierre(datos.hora_cierre)
     pozo = datos.pozo_inicial if datos.pozo_inicial is not None else datos.pozo_base
     busq_inicio = datos.busqueda_inicio_min if datos.busqueda_inicio_min is not None else reglas.busqueda_inicio_min
@@ -209,7 +222,6 @@ def crear_sorteo(datos: SorteoCrear, sesion: Session = Depends(obtener_sesion), 
     busq_duracion = datos.busqueda_duracion_min if datos.busqueda_duracion_min is not None else reglas.busqueda_duracion_min
     sem_ini = datos.semanal_dia_inicio if datos.semanal_dia_inicio is not None else reglas.semanal_dia_inicio
     sem_fin = datos.semanal_dia_fin if datos.semanal_dia_fin is not None else reglas.semanal_dia_fin
-    # Titulo automatico atractivo si el admin no puso uno (editable despues).
     titulo = datos.titulo
     if not titulo:
         titulo = f"{modalidad.nombre} {datos.horario.capitalize()}"
@@ -220,6 +232,7 @@ def crear_sorteo(datos: SorteoCrear, sesion: Session = Depends(obtener_sesion), 
         hora_cierre=hora_cierre,
         estado=EstadoSorteo.PREPARACION,
         premio_fijo=datos.premio_fijo,
+        premio_nombre=(datos.premio_nombre or None),
         pozo_inicial=pozo,
         precio_jugada=datos.precio_jugada,
         pozo_base=datos.pozo_base,
@@ -227,6 +240,7 @@ def crear_sorteo(datos: SorteoCrear, sesion: Session = Depends(obtener_sesion), 
         vendedor_pct=datos.vendedor_pct,
         minimo_cubrir=datos.minimo_cubrir,
         imagen_url=datos.imagen_url,
+        imagen_data=datos.imagen_data,
         detalle=datos.detalle or detalle_por_defecto(modalidad),
         titulo=titulo,
         busqueda_inicio_min=busq_inicio,
@@ -280,6 +294,8 @@ def editar_sorteo(sorteo_id: int, datos: SorteoEditar, sesion: Session = Depends
         raise HTTPException(status_code=400, detail="Un sorteo liquidado no se puede editar")
     reglas = motor.obtener_reglas(sesion)
     cambios = datos.model_dump(exclude_none=True)
+    if "imagen_data" in cambios:
+        validar_imagen(cambios["imagen_data"])
     if "hora_cierre" in cambios:
         cambios["hora_cierre"] = validar_hora_cierre(cambios["hora_cierre"])
     if "horario" in cambios and cambios["horario"] not in reglas.dict_horarios():
@@ -342,7 +358,8 @@ def listar_sorteos(sesion: Session = Depends(obtener_sesion), admin: Usuario = D
                 "casa_pct": s.casa_pct,
                 "vendedor_pct": s.vendedor_pct,
                 "minimo_cubrir": s.minimo_cubrir,
-                "imagen_url": s.imagen_url,
+                "imagen_url": s.imagen_visible,
+                "premio_nombre": s.premio_nombre,
                 "detalle": s.detalle,
                 "titulo": s.titulo,
                 "costo": costo,
@@ -421,6 +438,7 @@ def detalle_liquidacion(sorteo_id: int, sesion: Session = Depends(obtener_sesion
         "fecha": sorteo.fecha.isoformat(),
         "estado": sorteo.estado.value,
         "resultados": sorteo.resultados,
+        "premio_nombre": sorteo.premio_nombre,
         "vendido": round(sum(j.precio for j in vendidas), 2),
         "casa": round(sum(j.monto_casa or 0 for j in vendidas), 2),
         "vendedores": round(sum(j.monto_vendedor or 0 for j in vendidas), 2),
@@ -505,7 +523,6 @@ def cargar_resultado(sorteo_id: int, datos: ResultadoCargar, sesion: Session = D
         raise HTTPException(status_code=400, detail="Primero cerrá el sorteo")
     if sorteo.modalidad == "semanal":
         raise HTTPException(status_code=400, detail="El semanal se liquida solo con los sorteos diarios")
-    # Se permiten numeros repetidos: en la quiniela real los 20 premios pueden coincidir.
     if len(datos.numeros) != 20 or any(n < 0 or n > 99 for n in datos.numeros):
         raise HTTPException(status_code=400, detail="Deben ser 20 numeros entre 0 y 99 (se permiten repetidos)")
     sorteo.resultados = ",".join(f"{n:02d}" for n in datos.numeros)
@@ -691,8 +708,6 @@ def editar_vendedor(vendedor_id: int, datos: VendedorEditar, sesion: Session = D
 
 @router.post("/vendedores/{vendedor_id}/liquidaciones")
 def generar_liquidacion(vendedor_id: int, datos: LiquidacionCrear, sesion: Session = Depends(obtener_sesion), admin: Usuario = admin_dep):
-    """Genera la liquidacion de comisiones de un vendedor en un rango de fechas.
-    Rechaza rangos solapados con liquidaciones ya existentes del mismo vendedor."""
     vendedor = sesion.get(Usuario, vendedor_id)
     if vendedor is None or vendedor.rol != RolUsuario.VENDEDOR:
         raise HTTPException(status_code=404, detail="Vendedor no encontrado")
@@ -767,7 +782,6 @@ def generar_liquidacion(vendedor_id: int, datos: LiquidacionCrear, sesion: Sessi
 
 @router.get("/liquidaciones")
 def listar_liquidaciones(vendedor_id: int | None = None, sesion: Session = Depends(obtener_sesion), admin: Usuario = admin_dep):
-    """Lista liquidaciones de vendedores (todas o de uno), incluidas las ya pagadas."""
     consulta = sesion.query(LiquidacionVendedor)
     if vendedor_id is not None:
         consulta = consulta.filter(LiquidacionVendedor.vendedor_id == vendedor_id)
@@ -822,7 +836,6 @@ def balance(
     sesion: Session = Depends(obtener_sesion),
     admin: Usuario = admin_dep,
 ):
-    """Balance de sorteos liquidados en un periodo (dia/semana/mes/anio)."""
     try:
         ref = date.fromisoformat(fecha) if fecha else datetime.now(_zona()).date()
     except ValueError:
