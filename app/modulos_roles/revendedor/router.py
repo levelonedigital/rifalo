@@ -6,6 +6,7 @@ from app.core import auditoria
 from app.core.database import obtener_sesion
 from app.core.dependencias import requerir_rol
 from app.core.security import hash_password
+from app.modulos_juegos import motor
 from app.modulos_juegos.jugadas_core import crear_jugada
 from app.modulos_juegos.modalidades import obtener
 from app.modelos.juegos import EstadoJugada, EstadoSorteo, Jugada, Sorteo
@@ -163,6 +164,15 @@ def sorteos_abiertos(sesion: Session = Depends(obtener_sesion), rev: Usuario = r
     return [_sorteo_out(s) for s in sorteos]
 
 
+@router.get("/sorteos/{sorteo_id}/ocupados")
+def numeros_ocupados(sorteo_id: int, sesion: Session = Depends(obtener_sesion), rev: Usuario = rev_dep):
+    """Numeros ya jugados en una rifa de numero unico (para la grilla). None si no aplica."""
+    sorteo = sesion.get(Sorteo, sorteo_id)
+    if sorteo is None:
+        raise HTTPException(status_code=404, detail="Sorteo no encontrado")
+    return {"ocupados": motor.numeros_ocupados_rifa(sesion, sorteo)}
+
+
 @router.post("/jugadas")
 def cargar_jugada(datos: JugadaCrear, sesion: Session = Depends(obtener_sesion), rev: Usuario = rev_dep):
     vendedor = sesion.get(Usuario, rev.padre_id) if rev.padre_id else None
@@ -180,6 +190,7 @@ def cargar_jugada(datos: JugadaCrear, sesion: Session = Depends(obtener_sesion),
         jugador_id = pj.id
         nombre = pj.nombre
     try:
+        motor.validar_numeros_rifa(sesion, sorteo, datos.numeros)
         jugada = crear_jugada(sesion, sorteo, datos.numeros, vendedor, revendedor_id=rev.id, jugador_id=jugador_id, jugador_nombre=nombre)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
