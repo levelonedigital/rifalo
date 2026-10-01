@@ -90,6 +90,14 @@ class Sorteo(Base):
     minimo_cubrir = Column(Float, nullable=True)
     aviso_costo_enviado = Column(Boolean, default=False)
 
+    # Configuracion POR SORTEO de la busqueda automatica (si es None usa el default del sistema).
+    busqueda_inicio_min = Column(Integer, nullable=True)
+    busqueda_intervalo_min = Column(Integer, nullable=True)
+    busqueda_duracion_min = Column(Integer, nullable=True)
+    # Configuracion POR SORTEO del semanal (si es None usa el default del sistema).
+    semanal_dia_inicio = Column(Integer, nullable=True)
+    semanal_dia_fin = Column(Integer, nullable=True)
+
     @property
     def pozo_actual(self):
         return (self.pozo_inicial or 0.0) + (self.pozo_extra or 0.0)
