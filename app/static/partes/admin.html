@@ -11,8 +11,9 @@
         <div><label>Pozo base (congelado hasta recaudarlo)</label><input id="sorteo-pozobase" type="number"></div>
         <div><label>% administrador (casa)</label><input id="sorteo-casa" type="number"></div>
         <div><label>% vendedores (linea de venta)</label><input id="sorteo-vend" type="number"></div>
-        <div id="caja-premio-fijo" style="display:none"><label>Premio fijo (rifa)</label><input id="sorteo-premio" type="number"></div>
+        <div id="caja-premio-fijo" style="display:none"><label>Premio fijo / valor del premio (lo ves solo vos)</label><input id="sorteo-premio" type="number"></div>
         <div id="caja-minimo" style="display:none"><label>Minimo a cubrir (rifa, vacio = premio fijo)</label><input id="sorteo-minimo" type="number"></div>
+        <div><label>Nombre del premio (opcional, cualquier modalidad)</label><input id="sorteo-premio-nombre" placeholder="Ej: Smart TV 55 pulgadas. Si lo pones, el jugador ve esto en vez del monto."></div>
         <div id="caja-semanal" style="display:none">
           <label>Dia inicio semanal (0=lunes .. 6=sabado)</label><input id="sorteo-semi" type="number" min="0" max="6">
           <label>Dia fin semanal (0=lunes .. 6=sabado)</label><input id="sorteo-semf" type="number" min="0" max="6">
@@ -21,8 +22,24 @@
         <div><label>Búsqueda: reintento cada (min)</label><input id="sorteo-busint" type="number" placeholder="vacio = default"></div>
         <div><label>Búsqueda: rendirse a los (min)</label><input id="sorteo-busdur" type="number" placeholder="vacio = default"></div>
         <div><label>Titulo del sorteo (opcional)</label><input id="sorteo-titulo" placeholder="Vacio = titulo automatico"></div>
-        <div><label>Imagen de presentacion (URL, opcional)</label><input id="sorteo-imagen" placeholder="https://... foto del premio o cartel del pozo"></div>
       </div>
+
+      <h3>Imagen de presentacion (foto del premio o cartel)</h3>
+      <div class="grilla">
+        <div>
+          <label>Subir desde tu PC (se comprime sola)</label>
+          <input id="sorteo-imagen-file" type="file" accept="image/*" onchange="subirImagenSorteo()">
+        </div>
+        <div>
+          <label>O pegar una URL (opcional)</label>
+          <input id="sorteo-imagen" placeholder="https://...">
+        </div>
+      </div>
+      <div id="sorteo-imagen-preview-box" style="display:none;margin:6px 0">
+        <img id="sorteo-imagen-preview" style="max-width:220px;border-radius:6px;display:block">
+        <button class="peligro" id="sorteo-imagen-quitar" onclick="quitarImagenSorteo()" style="margin-top:4px">Quitar imagen</button>
+      </div>
+
       <label>Detalle visible para los jugadores (reglas y condiciones de este sorteo)</label>
       <textarea id="sorteo-detalle"></textarea>
       <div id="reglas-modalidad" class="reglas-box"></div>
