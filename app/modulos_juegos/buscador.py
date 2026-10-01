@@ -57,6 +57,18 @@ def _normalizar(texto: str) -> str:
     )
 
 
+def _inicio_min(sorteo, reglas):
+    return sorteo.busqueda_inicio_min if sorteo.busqueda_inicio_min is not None else (reglas.busqueda_inicio_min or 35)
+
+
+def _intervalo_min(sorteo, reglas):
+    return sorteo.busqueda_intervalo_min if sorteo.busqueda_intervalo_min is not None else (reglas.busqueda_intervalo_min or 2)
+
+
+def _duracion_min(sorteo, reglas):
+    return sorteo.busqueda_duracion_min if sorteo.busqueda_duracion_min is not None else (reglas.busqueda_duracion_min or 30)
+
+
 def obtener_resultado_oficial(nombre_horario: str, fecha: datetime):
     """Lee los 20 numeros del horario en la fecha dada desde la API oficial de la Caja.
 
@@ -162,24 +174,30 @@ def chequeo_costo(sesion, reglas, ahora: datetime):
 
 
 def _actualizar_semanal(sesion, sorteo_dia: Sorteo, reglas):
-    if sorteo_dia.horario != reglas.semanal_horario:
-        return
+    """Alimenta al semanal abierto cuyo horario coincida y cuyo rango de dias incluya
+    el dia del sorteo diario. Cada semanal usa SU PROPIA configuracion de dias."""
     dia = sorteo_dia.fecha.weekday()
-    if not (reglas.semanal_dia_inicio <= dia <= reglas.semanal_dia_fin):
-        return
     semanal = (
         sesion.query(Sorteo)
-        .filter(Sorteo.modalidad == "semanal", Sorteo.estado != EstadoSorteo.LIQUIDADO)
+        .filter(
+            Sorteo.modalidad == "semanal",
+            Sorteo.estado != EstadoSorteo.LIQUIDADO,
+            Sorteo.horario == sorteo_dia.horario,
+        )
         .order_by(Sorteo.id.desc())
         .first()
     )
     if semanal is None:
         return
+    ini = semanal.semanal_dia_inicio if semanal.semanal_dia_inicio is not None else (reglas.semanal_dia_inicio or 0)
+    fin = semanal.semanal_dia_fin if semanal.semanal_dia_fin is not None else (reglas.semanal_dia_fin or 4)
+    if not (ini <= dia <= fin):
+        return
     acumulados = set(semanal.lista_resultados)
     acumulados.update(sorteo_dia.lista_resultados)
     semanal.resultados = ",".join(f"{n:02d}" for n in sorted(acumulados))
     sesion.commit()
-    if dia >= reglas.semanal_dia_fin:
+    if dia >= fin:
         resumen = liquidar_sorteo(semanal, sesion, reglas)
         auditoria.registrar(sesion, "SEMANAL_LIQUIDADO", detalle=str(resumen))
         sesion.commit()
@@ -227,13 +245,22 @@ def ciclo():
             if not hhmm:
                 continue
             momento = _momento_horario(sorteo, hhmm)
-            # Empieza a buscar 35 min despues del horario oficial (la Caja publica ~27 min despues).
-            if ahora < momento + timedelta(minutes=reglas.busqueda_inicio_min or 35):
+            inicio = _inicio_min(sorteo, reglas)
+            intervalo = _intervalo_min(sorteo, reglas)
+            duracion = _duracion_min(sorteo, reglas)
+            # Empieza a buscar recien pasado el inicio configurado para ESTE sorteo.
+            if ahora < momento + timedelta(minutes=inicio):
                 continue
 
-            estado = _intentos.setdefault(sorteo.id, {"primero": ahora, "lecturas": []})
+            estado = _intentos.setdefault(sorteo.id, {"primero": ahora, "lecturas": [], "ultimo_ts": None})
+
+            # Respeta el intervalo de reintento propio de este sorteo.
+            ultimo_ts = estado.get("ultimo_ts")
+            if ultimo_ts is not None and (ahora - ultimo_ts) < timedelta(minutes=intervalo):
+                continue
 
             numeros = obtener_resultado_oficial(sorteo.horario, sorteo.fecha)
+            estado["ultimo_ts"] = ahora
 
             if numeros:
                 nums_str = ",".join(f"{n:02d}" for n in numeros)
@@ -268,7 +295,7 @@ def ciclo():
                 )
                 sesion.commit()
 
-                if ahora - estado["primero"] > timedelta(minutes=reglas.busqueda_duracion_min or 30):
+                if ahora - estado["primero"] > timedelta(minutes=duracion):
                     sorteo.busqueda_agotada = True
                     aviso = Aviso(
                         texto=(
