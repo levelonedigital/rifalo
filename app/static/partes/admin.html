@@ -13,6 +13,13 @@
         <div><label>% vendedores (linea de venta)</label><input id="sorteo-vend" type="number"></div>
         <div id="caja-premio-fijo" style="display:none"><label>Premio fijo (rifa)</label><input id="sorteo-premio" type="number"></div>
         <div id="caja-minimo" style="display:none"><label>Minimo a cubrir (rifa, vacio = premio fijo)</label><input id="sorteo-minimo" type="number"></div>
+        <div id="caja-semanal" style="display:none">
+          <label>Dia inicio semanal (0=lunes .. 6=sabado)</label><input id="sorteo-semi" type="number" min="0" max="6">
+          <label>Dia fin semanal (0=lunes .. 6=sabado)</label><input id="sorteo-semf" type="number" min="0" max="6">
+        </div>
+        <div><label>Búsqueda: empezar a los (min post horario)</label><input id="sorteo-busini" type="number" placeholder="vacio = default"></div>
+        <div><label>Búsqueda: reintento cada (min)</label><input id="sorteo-busint" type="number" placeholder="vacio = default"></div>
+        <div><label>Búsqueda: rendirse a los (min)</label><input id="sorteo-busdur" type="number" placeholder="vacio = default"></div>
         <div><label>Titulo del sorteo (opcional, ej: Pozo Millonario)</label><input id="sorteo-titulo" placeholder="Vacio = nombre automatico"></div>
         <div><label>Imagen de presentacion (URL, opcional)</label><input id="sorteo-imagen" placeholder="https://... foto del premio o cartel del pozo"></div>
       </div>
@@ -33,16 +40,15 @@
       <div id="lista-sorteos"></div>
 
       <details style="margin-top:16px">
-        <summary style="cursor:pointer; color:#93c5fd">Horarios oficiales y busqueda automatica (solo admin principal)</summary>
+        <summary style="cursor:pointer; color:#93c5fd">Horarios oficiales de la quiniela y % default (solo admin principal)</summary>
+        <p class="chico">Los horarios son los unicos globales (son los de la Caja de Tucuman). La busqueda y el semanal se configuran POR SORTEO al crearlo/editarlo; los valores de abajo son solo el default que se copia si dejas vacio el campo del sorteo.</p>
         <div class="grilla">
           <div><label>Horarios (JSON)</label><input id="sis-horarios"></div>
-          <div><label>Horario del semanal</label><input id="sis-semhor"></div>
-          <div><label>Semanal dia inicio (0=lunes)</label><input id="sis-semini" type="number"></div>
-          <div><label>Semanal dia fin (4=viernes)</label><input id="sis-semfin" type="number"></div>
-          <div><label>Busqueda: empezar a los (min)</label><input id="sis-busini" type="number"></div>
-          <div><label>Busqueda: reintento cada (min)</label><input id="sis-busint" type="number"></div>
-          <div><label>Busqueda: rendirse a los (min)</label><input id="sis-busdur" type="number"></div>
           <div><label>% vendedores por defecto</label><input id="sis-vendpct" type="number"></div>
+        </div>
+        <div style="display:none">
+          <input id="sis-semhor"><input id="sis-semini"><input id="sis-semfin">
+          <input id="sis-busini"><input id="sis-busint"><input id="sis-busdur">
         </div>
         <button onclick="guardarSistema()">Guardar sistema</button>
       </details>
