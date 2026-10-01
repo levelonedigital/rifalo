@@ -2,8 +2,11 @@
 async function cargarRSorteos() {
   try {
     const ss = await api("/revendedor/sorteos", "GET");
-    let html = "<table><tr><th>#</th><th>Img</th><th>Sorteo</th><th>Horario</th><th>Dia</th><th>Cierre</th><th>Estado</th><th>Precio</th><th>Pozo actual</th></tr>";
-    ss.forEach(s => { html += "<tr><td>" + s.id + "</td><td>" + (s.imagen_url ? "<img src='" + s.imagen_url + "' style='width:40px;height:40px;object-fit:cover;border-radius:4px'>" : "-") + "</td><td><b>" + nombreSorteo(s) + "</b>" + (s.titulo ? "<div class='chico'>" + s.modalidad + "</div>" : "") + (s.reprogramando ? " (REPROGRAMANDO)" : "") + "<div class='chico'>" + (s.detalle || "") + "</div></td><td>" + s.horario + "</td><td>" + fmtFecha(s.fecha) + "</td><td>" + (s.hora_cierre || "sin limite") + "</td><td>" + s.estado + "</td><td>$" + s.precio_jugada + "</td><td><b style='color:#22c55e'>$" + s.pozo + "</b></td></tr>"; });
+    let html = "<table><tr><th>#</th><th>Img</th><th>Sorteo</th><th>Horario</th><th>Dia</th><th>Cierre</th><th>Estado</th><th>Precio</th><th>Pozo / Premio</th></tr>";
+    ss.forEach(s => {
+      const celdaPozo = tienePremioNombre(s) ? "<b style='color:#22c55e'>" + s.premio_nombre + "</b>" : "<b style='color:#22c55e'>$" + s.pozo + "</b>";
+      html += "<tr><td>" + s.id + "</td><td>" + (s.imagen_url ? "<img src='" + s.imagen_url + "' style='width:40px;height:40px;object-fit:cover;border-radius:4px'>" : "-") + "</td><td><b>" + nombreSorteo(s) + "</b>" + (s.titulo ? "<div class='chico'>" + s.modalidad + "</div>" : "") + (s.reprogramando ? " (REPROGRAMANDO)" : "") + "<div class='chico'>" + (s.detalle || "") + "</div></td><td>" + s.horario + "</td><td>" + fmtFecha(s.fecha) + "</td><td>" + (s.hora_cierre || "sin limite") + "</td><td>" + s.estado + "</td><td>$" + s.precio_jugada + "</td><td>" + celdaPozo + "</td></tr>";
+    });
     document.getElementById("lista-rsorteos").innerHTML = html + "</table>";
   } catch (e) { aviso(e.message, true); }
 }
@@ -138,7 +141,8 @@ async function cargarResultadosRevendedor() {
       html += "<span class='chico'>Cantidad de ganadores: " + r.cantidad_ganadores + "</span><br>";
       if (r.mis_ganadores && r.mis_ganadores.length) {
         r.mis_ganadores.forEach(g => {
-          html += "<div class='cobro-box'><b>Tu jugador " + g.jugador_nombre + " GANO $" + g.premio + "</b> (jugada #" + g.jugada_id + ").<br>";
+          const premioTxt = r.premio_nombre ? ("GANO: " + r.premio_nombre) : ("GANO $" + g.premio);
+          html += "<div class='cobro-box'><b>Tu jugador " + g.jugador_nombre + " " + premioTxt + "</b> (jugada #" + g.jugada_id + ").<br>";
           html += (g.premio_pagado ? "El vendedor marco el premio como entregado. " : "<b>Pendiente de entrega.</b> ");
           html += (g.premio_cobrado ? "<b>El jugador confirmo que cobro ✔</b>" : "El jugador aun no confirmo el cobro.");
           html += "<br><span class='chico'>Comunicate con tu jugador asi le entregas su premio.</span></div>";
