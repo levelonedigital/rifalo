@@ -12,14 +12,18 @@ async function cargarJSorteos() {
     }
     let html = "<table><tr><th>#</th><th>Sorteo</th><th>Horario</th><th>Dia</th><th>Cierre</th><th>Estado</th><th>Precio</th><th>Pozo / Premio</th><th></th></tr>";
     ss.forEach(s => {
-      const imgHtml = s.imagen_url
-        ? "<img src='" + s.imagen_url + "' style='display:block;width:100%;max-width:360px;height:auto;max-height:260px;object-fit:contain;border-radius:12px;margin:0 auto 10px;background:#0f172a;box-shadow:0 8px 22px rgba(0,0,0,.35)'>"
+      // Banner de imagen: centrado, sin fondo, arriba del detalle del sorteo.
+      const filaImagen = s.imagen_url
+        ? "<tr><td colspan='9' style='padding:10px 4px 2px;text-align:center'>" +
+            "<img src='" + s.imagen_url + "' style='display:block;margin:0 auto;max-width:560px;width:100%;height:auto;max-height:320px;object-fit:contain;border-radius:14px;box-shadow:0 6px 18px rgba(0,0,0,.25)'>" +
+          "</td></tr>"
         : "";
       const jugando = (s.mis_jugadas && s.mis_jugadas.length) ? "<div class='chico' style='color:#FFC107'>Jugando: " + s.mis_jugadas.map((n, i) => ((i + 1) + ": " + n)).join(" - ") + "</div>" : "";
       const botonPozo = "<button class='secundario' onclick='elegirSorteoJugador(" + s.id + ")'>Ver pozo</button>";
       const botonJugar = s.puedo_jugar ? "<button onclick='jugarSorteo(" + s.id + ")'>Jugar</button>" : "<span class='chico'>no habilitado</span>";
       const celdaPozo = tienePremioNombre(s) ? "<b style='color:#22c55e'>" + s.premio_nombre + "</b>" : "<b style='color:#FFC107'>$" + s.pozo + "</b>";
-      html += "<tr><td>" + s.id + "</td><td>" + imgHtml + "<b>" + nombreSorteo(s) + "</b>" + (s.titulo ? "<div class='chico'>" + s.modalidad + "</div>" : "") + (s.reprogramando ? " (REPROGRAMANDO)" : "") + "<div class='chico'>" + (s.detalle || "") + "</div>" + jugando + "</td><td>" + s.horario + "</td><td>" + fmtFecha(s.fecha) + "</td><td>" + (s.hora_cierre || "sin limite") + "</td><td>" + s.estado + "</td><td>$" + s.precio_jugada + "</td><td>" + celdaPozo + "</td><td>" + botonPozo + botonJugar + "</td></tr>";
+      html += filaImagen;
+      html += "<tr><td>" + s.id + "</td><td><b>" + nombreSorteo(s) + "</b>" + (s.titulo ? "<div class='chico'>" + s.modalidad + "</div>" : "") + (s.reprogramando ? " (REPROGRAMANDO)" : "") + "<div class='chico'>" + (s.detalle || "") + "</div>" + jugando + "</td><td>" + s.horario + "</td><td>" + fmtFecha(s.fecha) + "</td><td>" + (s.hora_cierre || "sin limite") + "</td><td>" + s.estado + "</td><td>$" + s.precio_jugada + "</td><td>" + celdaPozo + "</td><td>" + botonPozo + botonJugar + "</td></tr>";
       html += "<tr id='pozo-fila-" + s.id + "' style='display:none'><td colspan='9'><div class='pozo-grande' style='font-size:16px'>" + cartelSorteoHtml(s) + "</div></td></tr>";
     });
     document.getElementById("lista-jsorteos").innerHTML = html + "</table>";
