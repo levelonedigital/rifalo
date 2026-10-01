@@ -1,3 +1,22 @@
+// ---------- MENSAJE LOCAL (debajo del boton Cargar) ----------
+function mostrarMsgJugada(texto, err) {
+  let div = document.getElementById("j-msg");
+  if (!div) {
+    div = document.createElement("div");
+    div.id = "j-msg";
+    const boton = document.querySelector('#seccion-jcargar button[onclick*="jCargarJugada"]');
+    if (boton) boton.insertAdjacentElement("afterend", div);
+    else {
+      const sec = document.getElementById("seccion-jcargar");
+      if (sec) sec.appendChild(div);
+    }
+  }
+  div.className = "mensaje " + (err ? "error" : "ok");
+  div.textContent = texto || "";
+}
+
+function limpiarMsgJugada() { mostrarMsgJugada("", false); }
+
 // ---------- JUGADOR: SORTEOS ----------
 async function cargarJSorteos() {
   try {
@@ -63,10 +82,10 @@ async function jCargarJugada() {
   };
   try {
     const d = await api("/jugador/jugadas", "POST", cuerpo);
-    aviso("Jugada #" + d.id + " cargada, espera aprobacion de tu vendedor.");
+    mostrarMsgJugada("Jugada #" + d.id + " cargada, espera aprobación de tu vendedor.", false);
     document.getElementById("j-numeros").value = "";
   }
-  catch (e) { aviso(e.message, true); }
+  catch (e) { mostrarMsgJugada(e.message, true); }
 }
 
 // ---------- JUGADOR: RESULTADOS Y COBRO ----------
@@ -120,6 +139,7 @@ async function confirmarCobroJugador(jugadaId) {
 window.ACCIONES = window.ACCIONES || {};
 ACCIONES.jsorteos = cargarJSorteos;
 ACCIONES.jcargar = async () => {
+  limpiarMsgJugada();
   await llenarSelectSorteos("/jugador/sorteos", "j-sorteo");
   if (JUGADOR_SORTEO_ELEGIDO && SORTEOS_ABIERTOS_CACHE["j-sorteo"] && SORTEOS_ABIERTOS_CACHE["j-sorteo"][JUGADOR_SORTEO_ELEGIDO]) {
     document.getElementById("j-sorteo").value = String(JUGADOR_SORTEO_ELEGIDO);
