@@ -71,8 +71,9 @@ def _sorteo_out(s: Sorteo):
         "solo_participantes": s.solo_participantes,
         "participantes": [n.strip() for n in (s.participantes or "").split("|") if n.strip()] if s.solo_participantes else None,
         "titulo": s.titulo,
+        "premio_nombre": s.premio_nombre,
         "reprogramando": s.estado == EstadoSorteo.REPROGRAMANDO,
-        "imagen_url": s.imagen_url,
+        "imagen_url": s.imagen_visible,
     }
 
 
@@ -250,6 +251,7 @@ def resultados(sesion: Session = Depends(obtener_sesion), revendedor: Usuario = 
             "modalidad": s.modalidad,
             "horario": s.horario,
             "fecha": s.fecha.isoformat(),
+            "premio_nombre": s.premio_nombre,
             "resultados": s.lista_resultados,
             "cantidad_ganadores": len(ganadoras),
             "tuve_jugadores": tuve,
