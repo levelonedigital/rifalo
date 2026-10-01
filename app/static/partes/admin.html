@@ -20,7 +20,7 @@
         <div><label>Búsqueda: empezar a los (min post horario)</label><input id="sorteo-busini" type="number" placeholder="vacio = default"></div>
         <div><label>Búsqueda: reintento cada (min)</label><input id="sorteo-busint" type="number" placeholder="vacio = default"></div>
         <div><label>Búsqueda: rendirse a los (min)</label><input id="sorteo-busdur" type="number" placeholder="vacio = default"></div>
-        <div><label>Titulo del sorteo (opcional, ej: Pozo Millonario)</label><input id="sorteo-titulo" placeholder="Vacio = nombre automatico"></div>
+        <div><label>Titulo del sorteo (opcional)</label><input id="sorteo-titulo" placeholder="Vacio = titulo automatico"></div>
         <div><label>Imagen de presentacion (URL, opcional)</label><input id="sorteo-imagen" placeholder="https://... foto del premio o cartel del pozo"></div>
       </div>
       <label>Detalle visible para los jugadores (reglas y condiciones de este sorteo)</label>
@@ -81,6 +81,22 @@
       <button onclick="crearVendedor()">Crear vendedor</button>
       <h2>Vendedores</h2>
       <div id="lista-vendedores"></div>
+    </div>
+
+    <!-- ADMIN: PAGOS A VENDEDORES -->
+    <div id="seccion-pagos" class="tarjeta" style="display:none">
+      <h2>Pagos a vendedores (liquidacion de comisiones)</h2>
+      <p class="chico">Elegi un vendedor, pone el rango de fechas (desde/hasta) y generá la liquidacion: el sistema suma la comision de las jugadas vendidas de ese vendedor cuyos sorteos caen en el rango. No se permiten rangos solapados para el mismo vendedor (asi no pagas dos veces el mismo periodo). Cuando pagues, tocalo "Marcar pagado"; el vendedor confirmara el cobro desde su panel.</p>
+      <div class="grilla">
+        <div><label>Vendedor</label><select id="pago-vendedor" onchange="cargarLiquidaciones()"></select></div>
+        <div><label>Desde (AAAA-MM-DD)</label><input id="pago-desde" type="date"></div>
+        <div><label>Hasta (AAAA-MM-DD)</label><input id="pago-hasta" type="date"></div>
+        <div><button onclick="generarLiquidacion()">Generar liquidacion</button></div>
+      </div>
+      <h2>Liquidaciones</h2>
+      <button class="secundario" onclick="cargarLiquidaciones()">Actualizar</button>
+      <div id="lista-liquidaciones"></div>
+      <div id="detalle-liquidacion" class="modo-box" style="display:block;margin-top:12px"></div>
     </div>
 
     <!-- ADMIN: JUGADAS -->
