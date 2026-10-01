@@ -178,6 +178,56 @@ function asegurarDivGrilla(pref) {
   return div;
 }
 
+function inyectarCssGrillaJugador() {
+  if (document.getElementById("css-grilla-rifa")) return;
+  const css = `
+    .grilla-rifa-jugador { display:grid; grid-template-columns:repeat(10,1fr); gap:6px; }
+    .grilla-rifa-jugador .libre {
+      background: linear-gradient(135deg,#22c55e,#15803d);
+      color:#ffffff;
+      font-weight:800;
+      border:2px solid #86efac;
+      box-shadow:0 4px 12px rgba(34,197,94,.35);
+      transition:transform .12s ease, box-shadow .12s ease, background .12s ease;
+      cursor:pointer;
+      padding:10px 0;
+      border-radius:9px;
+      text-align:center;
+      font-size:14px;
+      user-select:none;
+    }
+    .grilla-rifa-jugador .libre:hover {
+      transform:translateY(-2px) scale(1.07);
+      background: linear-gradient(135deg,#4ade80,#16a34a);
+      box-shadow:0 8px 18px rgba(34,197,94,.5);
+    }
+    .grilla-rifa-jugador .libre:active { transform:scale(.95); }
+    .grilla-rifa-jugador .libre.elegido {
+      background: linear-gradient(135deg,#fbbf24,#f59e0b) !important;
+      color:#111827 !important;
+      border-color:#fde68a !important;
+      box-shadow:0 0 0 3px rgba(251,191,36,.45), 0 8px 18px rgba(245,158,11,.45) !important;
+    }
+    .grilla-rifa-jugador .ocupado {
+      background: repeating-linear-gradient(45deg,#334155,#334155 6px,#1e293b 6px,#1e293b 12px);
+      color:#94a3b8;
+      text-decoration:line-through;
+      font-weight:700;
+      border:2px solid #475569;
+      padding:10px 0;
+      border-radius:9px;
+      text-align:center;
+      font-size:14px;
+      cursor:not-allowed;
+      user-select:none;
+    }
+  `;
+  const st = document.createElement("style");
+  st.id = "css-grilla-rifa";
+  st.textContent = css;
+  document.head.appendChild(st);
+}
+
 async function refrescarGrillaRifa(idSelect, s) {
   const pref = idSelect.replace("-sorteo", "");
   const div = asegurarDivGrilla(pref);
@@ -189,14 +239,25 @@ async function refrescarGrillaRifa(idSelect, s) {
   try {
     const d = await api(base + s.id + "/ocupados", "GET");
     const ocupados = new Set(d.ocupados || []);
-    let html = "<div class='chico' style='margin-bottom:4px'>Elegí tu número tocando un casillero verde. Los rojos ya están jugados (no se repiten).</div>";
-    html += "<div style='display:grid;grid-template-columns:repeat(10,1fr);gap:3px;'>";
+    const esJugador = rol === "jugador";
+    if (esJugador) inyectarCssGrillaJugador();
+
+    let html = "<div class='chico' style='margin-bottom:6px'>Elegí tu número tocando un casillero verde. Los rayados ya están jugados.</div>";
+    html += "<div class='" + (esJugador ? "grilla-rifa-jugador" : "") + "' style='" + (esJugador ? "" : "display:grid;grid-template-columns:repeat(10,1fr);gap:3px;") + "'>";
     for (let n = 0; n < 100; n++) {
       const lab = String(n).padStart(2, "0");
       if (ocupados.has(n)) {
-        html += "<div style='background:#7f1d1d;color:#fca5a5;text-align:center;padding:6px 0;border-radius:4px;font-size:12px;cursor:not-allowed'>" + lab + "</div>";
+        if (esJugador) {
+          html += "<div class='ocupado'>" + lab + "</div>";
+        } else {
+          html += "<div style='background:#7f1d1d;color:#fca5a5;text-align:center;padding:6px 0;border-radius:4px;font-size:12px;cursor:not-allowed'>" + lab + "</div>";
+        }
       } else {
-        html += "<div onclick=\"tocarNumeroRifa('" + pref + "'," + n + ")\" style='background:#14532d;color:#bbf7d0;text-align:center;padding:6px 0;border-radius:4px;font-size:12px;cursor:pointer'>" + lab + "</div>";
+        if (esJugador) {
+          html += "<div class='libre' onclick=\"tocarNumeroRifa('" + pref + "'," + n + ",event)\">" + lab + "</div>";
+        } else {
+          html += "<div onclick=\"tocarNumeroRifa('" + pref + "'," + n + ",event)\" style='background:#14532d;color:#bbf7d0;text-align:center;padding:6px 0;border-radius:4px;font-size:12px;cursor:pointer'>" + lab + "</div>";
+        }
       }
     }
     html += "</div>";
@@ -205,9 +266,15 @@ async function refrescarGrillaRifa(idSelect, s) {
   } catch (e) { div.style.display = "none"; }
 }
 
-function tocarNumeroRifa(pref, n) {
+function tocarNumeroRifa(pref, n, ev) {
   const input = document.getElementById(pref + "-numeros");
   if (input) input.value = String(n).padStart(2, "0");
+  if (rol !== "jugador") return;
+  const div = document.getElementById(pref + "-grilla");
+  if (!div) return;
+  div.querySelectorAll(".libre").forEach(el => el.classList.remove("elegido"));
+  const btn = ev && ev.currentTarget ? ev.currentTarget : null;
+  if (btn) btn.classList.add("elegido");
 }
 
 // ---------- MODO SORTEO (ficha admin) ----------
