@@ -89,6 +89,11 @@ class SorteoCrear(BaseModel):
     imagen_url: str | None = None
     detalle: str | None = None
     titulo: str | None = None
+    busqueda_inicio_min: int | None = Field(default=None, ge=0)
+    busqueda_intervalo_min: int | None = Field(default=None, ge=0)
+    busqueda_duracion_min: int | None = Field(default=None, ge=0)
+    semanal_dia_inicio: int | None = Field(default=None, ge=0, le=6)
+    semanal_dia_fin: int | None = Field(default=None, ge=0, le=6)
 
 class SorteoEditar(BaseModel):
     horario: str | None = None
@@ -103,6 +108,11 @@ class SorteoEditar(BaseModel):
     imagen_url: str | None = None
     detalle: str | None = None
     titulo: str | None = None
+    busqueda_inicio_min: int | None = Field(default=None, ge=0)
+    busqueda_intervalo_min: int | None = Field(default=None, ge=0)
+    busqueda_duracion_min: int | None = Field(default=None, ge=0)
+    semanal_dia_inicio: int | None = Field(default=None, ge=0, le=6)
+    semanal_dia_fin: int | None = Field(default=None, ge=0, le=6)
 
 class ResultadoCargar(BaseModel):
     numeros: list[int]
@@ -165,6 +175,11 @@ def crear_sorteo(datos: SorteoCrear, sesion: Session = Depends(obtener_sesion), 
         raise HTTPException(status_code=400, detail="Casa + vendedores no puede superar el 100%")
     hora_cierre = validar_hora_cierre(datos.hora_cierre)
     pozo = datos.pozo_inicial if datos.pozo_inicial is not None else datos.pozo_base
+    busq_inicio = datos.busqueda_inicio_min if datos.busqueda_inicio_min is not None else reglas.busqueda_inicio_min
+    busq_intervalo = datos.busqueda_intervalo_min if datos.busqueda_intervalo_min is not None else reglas.busqueda_intervalo_min
+    busq_duracion = datos.busqueda_duracion_min if datos.busqueda_duracion_min is not None else reglas.busqueda_duracion_min
+    sem_ini = datos.semanal_dia_inicio if datos.semanal_dia_inicio is not None else reglas.semanal_dia_inicio
+    sem_fin = datos.semanal_dia_fin if datos.semanal_dia_fin is not None else reglas.semanal_dia_fin
     sorteo = Sorteo(
         modalidad=datos.modalidad,
         horario=datos.horario,
@@ -181,6 +196,11 @@ def crear_sorteo(datos: SorteoCrear, sesion: Session = Depends(obtener_sesion), 
         imagen_url=datos.imagen_url,
         detalle=datos.detalle or detalle_por_defecto(modalidad),
         titulo=datos.titulo,
+        busqueda_inicio_min=busq_inicio,
+        busqueda_intervalo_min=busq_intervalo,
+        busqueda_duracion_min=busq_duracion,
+        semanal_dia_inicio=sem_ini,
+        semanal_dia_fin=sem_fin,
     )
     sesion.add(sorteo)
     sesion.commit()
@@ -295,6 +315,11 @@ def listar_sorteos(sesion: Session = Depends(obtener_sesion), admin: Usuario = D
                 "costo": costo,
                 "costo_cubierto": cubierto >= costo,
                 "ganadores": [g.jugador_nombre for g in gan],
+                "busqueda_inicio_min": s.busqueda_inicio_min,
+                "busqueda_intervalo_min": s.busqueda_intervalo_min,
+                "busqueda_duracion_min": s.busqueda_duracion_min,
+                "semanal_dia_inicio": s.semanal_dia_inicio,
+                "semanal_dia_fin": s.semanal_dia_fin,
             }
         )
     return salida
