@@ -136,10 +136,9 @@ function leerFormSorteo() {
   if (url) cuerpo.imagen_url = url;
   const detalle = document.getElementById("sorteo-detalle").value;
   if (detalle) cuerpo.detalle = detalle;
-  // Imagen subida o quitada (tiene prioridad sobre la URL).
   if (imagen_data_pending !== null) {
     cuerpo.imagen_data = imagen_data_pending;
-    if (imagen_data_pending === "") cuerpo.imagen_url = ""; // quitar tambien limpia la URL
+    if (imagen_data_pending === "") cuerpo.imagen_url = "";
   }
   return cuerpo;
 }
@@ -187,7 +186,6 @@ function empezarEdicion(id) {
   document.getElementById("sorteo-busdur").value = s.busqueda_duracion_min ?? "";
   document.getElementById("sorteo-semi").value = s.semanal_dia_inicio ?? "";
   document.getElementById("sorteo-semf").value = s.semanal_dia_fin ?? "";
-  // Imagen: si es URL externa la dejo editable; si es subida (data:) solo preview.
   imagen_data_pending = null;
   const urlInput = document.getElementById("sorteo-imagen");
   const actual = s.imagen_url || "";
@@ -294,6 +292,7 @@ async function cargarSorteos() {
       const premioLinea = s.premio_nombre ? "<div class='chico' style='color:#22c55e'>PREMIO: " + s.premio_nombre + "</div>" : "";
       const celdaNombre = "<td><b>" + (s.titulo || s.modalidad) + "</b>" + (s.titulo ? "<div class='chico'>" + s.modalidad + "</div>" : "") + premioLinea + (s.solo_participantes ? " <span class='chico'>VACANTE</span>" : "") + "</td>";
       const celdaGanadores = "<td>" + ((s.ganadores && s.ganadores.length) ? s.ganadores.join(", ") : "-") + "</td>";
+      const rotuloCobertura = s.es_premio_fijo ? "Premio cubierto" : "Cubriendo / costo";
       html += "<tr><td>" + s.id + "</td><td>" + (s.imagen_url ? "<img src='" + s.imagen_url + "' style='width:44px;height:44px;object-fit:cover;border-radius:4px'>" : "-") + "</td>" + celdaNombre + "<td>" + s.horario + "</td><td>" + fmtFecha(s.fecha) + "</td><td>" + (s.hora_cierre || "sin limite") + "</td><td>" + s.estado + (s.busqueda_agotada ? " (manual)" : "") + "</td><td>$" + s.pozo + "</td><td>$" + s.pozo_cubierto + " / $" + s.costo + (s.costo_cubierto ? " ✔" : " ✘") + "</td><td>$" + (s.recaudado || 0) + "</td>" + celdaGanadores + "<td>";
       html += "<button class='secundario' onclick='seleccionarSorteo(" + s.id + ")'>Detalles</button>";
       if (s.estado === "preparacion") html += "<button onclick='activarSorteo(" + s.id + ")'>Activar</button>";
@@ -304,7 +303,10 @@ async function cargarSorteos() {
         html += "<button class='secundario' onclick='empezarEdicion(" + s.id + ")'>Editar</button>";
         html += "<button class='peligro' onclick='borrarSorteo(" + s.id + ")'>Borrar</button>";
       }
-      if (s.estado === "liquidado") html += "<button class='secundario' onclick='pozoVacante(" + s.id + ")'>Pozo vacante</button>";
+      // Boton Pozo vacante: SOLO si es liquidado, la modalidad tiene pozo y NO hubo ganadores.
+      if (s.estado === "liquidado" && s.requiere_pozo && (!s.ganadores || s.ganadores.length === 0)) {
+        html += "<button class='secundario' onclick='pozoVacante(" + s.id + ")'>Pozo vacante</button>";
+      }
       html += "</td></tr>";
     });
     document.getElementById("lista-sorteos").innerHTML = html + "</table>";
@@ -627,15 +629,16 @@ async function cargarResumen() {
   try {
     if (SORT_ACTUAL) {
       const r = await api("/admin/sorteos/" + SORT_ACTUAL + "/resumen", "GET");
+      const rotuloCob = r.es_premio_fijo ? "Premio cubierto" : "Pozo cubierto";
       document.getElementById("caja-resumen").innerHTML =
-        "<table><tr><th>Sorteo</th><th>Estado</th><th>Jugadas</th><th>Vendido</th><th>Casa</th><th>Vendedores</th><th>Revend.</th><th>Pozo</th><th>Pozo cubierto</th><th>Premios</th><th>Ganadoras</th></tr>" +
+        "<table><tr><th>Sorteo</th><th>Estado</th><th>Jugadas</th><th>Vendido</th><th>Casa (neta)</th><th>Vendedores</th><th>Revend.</th><th>Pozo</th><th>" + rotuloCob + "</th><th>Premios</th><th>Ganadoras</th></tr>" +
         "<tr><td>#" + r.sorteo_id + " " + r.modalidad + " " + r.horario + "</td><td>" + r.estado + "</td><td>" + r.jugadas_vendidas + "</td><td>$" + r.vendido + "</td><td>$" + r.casa + "</td><td>$" + r.vendedores + "</td><td>$" + r.revendedores + "</td><td>$" + r.pozo + "</td><td>$" + r.pozo_cubierto + " / $" + r.costo + (r.costo_cubierto ? " ✔" : " ✘") + "</td><td>$" + r.premios_pagados + "</td><td>" + (r.ganadoras.join(", ") || "-") + "</td></tr></table>" +
-        "<p class='chico'>Recaudado $" + r.recaudado + ". Pozo aportado (cobertura + extra): $" + r.pozo_aportado + ". Resultados: " + (r.resultados || "sin cargar") + "</p>";
+        "<p class='chico'>Recaudado $" + r.recaudado + ". " + (r.es_premio_fijo ? "Casa bruta $" + r.casa_bruta + " menos premios $" + r.premios_pagados + " = ganancia neta $" + r.casa + ". " : "Pozo aportado (cobertura + extra): $" + r.pozo_aportado + ". ") + "Resultados: " + (r.resultados || "sin cargar") + "</p>";
       if (r.estado === "liquidado") await cargarLiquidacion(SORT_ACTUAL);
       return;
     }
     const r = await api("/admin/resumen-general", "GET");
-    document.getElementById("caja-resumen").innerHTML = "<table><tr><th>Jugadas</th><th>Vendido</th><th>Casa</th><th>Vendedores</th><th>Revendedores</th><th>Premios</th></tr><tr><td>" + r.jugadas_aprobadas + "</td><td>$" + r.vendido + "</td><td>$" + r.casa + "</td><td>$" + r.vendedores + "</td><td>$" + r.revendedores + "</td><td>$" + r.premios_pagados + "</td></tr></table>";
+    document.getElementById("caja-resumen").innerHTML = "<table><tr><th>Jugadas</th><th>Vendido</th><th>Casa (neta)</th><th>Vendedores</th><th>Revendedores</th><th>Premios</th></tr><tr><td>" + r.jugadas_aprobadas + "</td><td>$" + r.vendido + "</td><td>$" + r.casa + "</td><td>$" + r.vendedores + "</td><td>$" + r.revendedores + "</td><td>$" + r.premios_pagados + "</td></tr></table>";
   } catch (e) { aviso(e.message, true); }
 }
 
@@ -645,8 +648,12 @@ async function cargarLiquidacion(sorteoId) {
     let html = "<h2>Detalle de liquidacion</h2>";
     html += "<p><b>Resultados oficiales:</b> " + (d.resultados || "-") + "</p>";
     if (d.premio_nombre) html += "<p><b>Premio:</b> " + d.premio_nombre + "</p>";
-    html += "<p><b>Pozo formado:</b> $" + d.pozo_formado + " | <b>Pozo pagado en premios:</b> $" + d.pozo_pagado + " | <b>Ganadores:</b> " + d.cantidad_ganadoras + "</p>";
-    html += "<p><b>Ganancia casa (admin):</b> $" + d.casa + " | <b>Vendedores:</b> $" + d.vendedores + " | <b>Revendedores:</b> $" + d.revendedores + "</p>";
+    if (d.es_premio_fijo) {
+      html += "<p><b>Casa bruta:</b> $" + d.casa_bruta + " | <b>Premios pagados:</b> $" + d.pozo_pagado + " | <b>Ganadores:</b> " + d.cantidad_ganadoras + "</p>";
+    } else {
+      html += "<p><b>Pozo formado:</b> $" + d.pozo_formado + " | <b>Pozo pagado en premios:</b> $" + d.pozo_pagado + " | <b>Ganadores:</b> " + d.cantidad_ganadoras + "</p>";
+    }
+    html += "<p><b>Ganancia casa (admin, neta):</b> $" + d.casa + " | <b>Vendedores:</b> $" + d.vendedores + " | <b>Revendedores:</b> $" + d.revendedores + "</p>";
     if (d.ganadoras.length) {
       html += "<table><tr><th>Jugada</th><th>Ganador</th><th>Numeros ganadores</th><th>Premio</th><th>Premio pagado</th><th>Jugador cobro</th><th>Vendedor</th><th>Comision pagada</th></tr>";
       d.ganadoras.forEach(g => {
@@ -683,7 +690,7 @@ async function cargarBalance() {
   try {
     const d = await api(ruta, "GET");
     let html = "<p><b>Periodo:</b> " + periodo + " | <b>Desde:</b> " + fmtFecha(d.desde) + " | <b>Hasta:</b> " + fmtFecha(d.hasta) + " | <b>Sorteos liquidados:</b> " + d.sorteos_liquidados + "</p>";
-    html += "<table><tr><th>Vendido</th><th>Casa (ganancia admin)</th><th>Vendedores</th><th>Revendedores</th><th>Pozo formado</th><th>Premios pagados</th></tr>" +
+    html += "<table><tr><th>Vendido</th><th>Casa (ganancia admin neta)</th><th>Vendedores</th><th>Revendedores</th><th>Pozo formado</th><th>Premios pagados</th></tr>" +
       "<tr><td>$" + d.totales.vendido + "</td><td>$" + d.totales.casa + "</td><td>$" + d.totales.vendedores + "</td><td>$" + d.totales.revendedores + "</td><td>$" + d.totales.pozo_formado + "</td><td>$" + d.totales.premios + "</td></tr></table>";
     if (d.por_sorteo.length) {
       html += "<h3 style='color:#93c5fd;margin-top:12px'>Detalle por sorteo</h3>";
