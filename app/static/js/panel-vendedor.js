@@ -249,6 +249,50 @@ async function cargarResultadosVendedor() {
   } catch (e) { aviso(e.message, true); }
 }
 
+// ---------- VENDEDOR: MIS COBROS (liquidaciones de comisiones) ----------
+async function cargarCobrosVendedor() {
+  const caja = document.getElementById("lista-cobros-vendedor");
+  if (!caja) return;
+  try {
+    const ls = await api("/vendedor/cobros", "GET");
+    if (!ls.length) { caja.innerHTML = "<p class='chico'>Todavia no hay liquidaciones. El administrador genera la liquidacion de tus comisiones por periodo.</p>"; return; }
+    let html = "";
+    ls.forEach(l => {
+      let estado;
+      if (l.pagado_admin && l.cobrado_vendedor) estado = "<span class='ok'>Pagado y confirmado ✔</span>";
+      else if (l.pagado_admin) estado = "<span class='warn'>El admin marco el pago. Confirmá que cobraste.</span>";
+      else estado = "<span class='chico'>Pendiente de pago por el admin.</span>";
+      html += "<div class='buscador-box'>";
+      html += "<b>Liquidacion #" + l.id + "</b> · Periodo " + fmtFecha(l.desde) + " a " + fmtFecha(l.hasta) + "<br>";
+      html += "<span style='font-size:20px;font-weight:bold;color:#22c55e'>$" + l.monto + "</span> " + estado + "<br>";
+      if (l.pagado_en) html += "<span class='chico'>Pagado el " + l.pagado_en.slice(0,10) + "</span><br>";
+      if (l.cobrado_en) html += "<span class='chico'>Cobrado el " + l.cobrado_en.slice(0,10) + "</span><br>";
+      if (l.detalle && l.detalle.length) {
+        html += "<details style='margin-top:6px'><summary class='chico' style='cursor:pointer'>Ver detalle por sorteo (" + l.detalle.length + ")</summary>";
+        html += "<table><tr><th>Sorteo</th><th>Modalidad</th><th>Horario</th><th>Dia</th><th>Jugadas</th><th>Vendido</th><th>Comision</th></tr>";
+        l.detalle.forEach(d => {
+          html += "<tr><td>#" + d.sorteo_id + "</td><td>" + d.modalidad + "</td><td>" + d.horario + "</td><td>" + fmtFecha(d.fecha) + "</td><td>" + d.jugadas + "</td><td>$" + d.vendido + "</td><td>$" + d.comision + "</td></tr>";
+        });
+        html += "</table></details>";
+      }
+      if (l.pagado_admin && !l.cobrado_vendedor) {
+        html += "<button onclick='confirmarCobroVendedor(" + l.id + ")'>Confirmar que cobré</button>";
+      }
+      html += "</div>";
+    });
+    caja.innerHTML = html;
+  } catch (e) { aviso(e.message, true); }
+}
+
+async function confirmarCobroVendedor(id) {
+  if (!confirm("Confirmas que ya cobraste esta liquidacion?")) return;
+  try {
+    await api("/vendedor/cobros/" + id + "/confirmar-cobro", "POST");
+    aviso("Listo, confirmaste el cobro. El administrador ya lo ve.");
+    cargarCobrosVendedor();
+  } catch (e) { aviso(e.message, true); }
+}
+
 // ---------- REGISTRO DE PESTANAS DEL VENDEDOR ----------
 window.ACCIONES = window.ACCIONES || {};
 ACCIONES.vresumen = cargarVResumen;
