@@ -5,7 +5,7 @@ let imagen_data_pending = null; // null = no cambiar; dataUri = subir; "" = quit
 async function cargarModalidades() {
   MODALIDADES = await api("/admin/modalidades", "GET");
   const sel = document.getElementById("sorteo-modalidad");
-  sel.innerHTML = MODALIDADES.map(m => "<option value='" + m.clave + "'>" + m.nombre + " (" + m.cantidad_numeros + " numeros)</option>").join("");
+  sel.innerHTML = "<option value=''>Elegí una modalidad...</option>" + MODALIDADES.map(m => "<option value='" + m.clave + "'>" + m.nombre + " (" + m.cantidad_numeros + " numeros)</option>").join("");
   cambiarModalidadSorteo();
 }
 
@@ -148,6 +148,7 @@ function leerFormSorteo() {
 
 async function crearSorteo() {
   const cuerpo = leerFormSorteo();
+  if (!cuerpo.modalidad) { aviso("Elegí una modalidad antes de crear el sorteo", true); return; }
   try {
     const d = await api("/admin/sorteos", "POST", cuerpo);
     aviso("Sorteo #" + d.id + " creado EN PREPARACION (inactivo) con titulo \"" + (d.titulo || "") + "\". Revisalo, editalo si hace falta y recien ahi activalo.");
