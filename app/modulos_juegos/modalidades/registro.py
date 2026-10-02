@@ -1,31 +1,19 @@
-from app.modulos_juegos.clasico.plugin import ModalidadClasico
-from app.modulos_juegos.modalidades.semanal import ModalidadSemanal
-from app.modulos_juegos.rifa.plugin import ModalidadRifa
+"""Registro de modalidades: ahora se llena por descubrimiento automatico.
 
-REGISTRO = {
-    ModalidadClasico.clave: ModalidadClasico(),
-    ModalidadSemanal.clave: ModalidadSemanal(),
-    ModalidadRifa.clave: ModalidadRifa(),
-}
+Ya no hay lista manual: el descubrimiento escanea las carpetas de modulos_juegos que
+tienen plugin.py y las registra. Agregar una modalidad nueva no requiere tocar este
+archivo ni ningun otro: se descubre sola al arrancar.
+"""
+from app.modulos_juegos import descubrimiento
+
+REGISTRO = descubrimiento.plugins()
 
 
 def obtener(clave: str):
-    """Devuelve la instancia de la modalidad por su clave."""
-    return REGISTRO.get(clave)
+    """Devuelve la instancia del plugin de la modalidad, o None."""
+    return descubrimiento.obtener_plugin(clave)
 
 
 def listar():
-    """Devuelve todas las modalidades disponibles con su resumen."""
-    return [
-        {
-            "clave": m.clave,
-            "nombre": m.nombre,
-            "resumen_reglas": m.resumen_reglas,
-            "cantidad_numeros": m.cantidad_numeros,
-            "permite_repetidos": m.permite_repetidos,
-            "requiere_pozo": m.requiere_pozo,
-            "usa_premio_fijo": m.usa_premio_fijo,
-            "oculta": getattr(m, "oculta", False),
-        }
-        for m in REGISTRO.values()
-    ]
+    """Devuelve todas las modalidades descubiertas con su resumen."""
+    return descubrimiento.listar_modalidades()
