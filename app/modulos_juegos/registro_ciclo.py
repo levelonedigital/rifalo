@@ -1,14 +1,17 @@
 """Registro de ciclos de vida por modalidad de sorteo.
 
-Cada modalidad puede tener su propio ciclo (preventivo + cancelacion automatica).
-El buscador consulta este registro para delegar el comportamiento especifico.
-Si una modalidad no tiene ciclo propio, el buscador usa su comportamiento generico.
+Cada modalidad con cierre por horario tiene su propio ciclo (preventivo + cancelacion
+automatica). El buscador consulta este registro y delega; ninguna modalidad conoce a
+las otras. El semanal no tiene ciclo porque no cierra por horario (se liquida al fin
+del rango de dias).
 """
 
-from app.modulos_juegos.rifa import ciclo as rifa_ciclo
+from app.modulos_juegos.clasico import ciclo as ciclo_clasico
+from app.modulos_juegos.rifa import ciclo as ciclo_rifa
 
 REGISTRO_CICLO = {
-    "rifa": rifa_ciclo,
+    "rifa": ciclo_rifa,
+    "clasico": ciclo_clasico,
 }
 
 
