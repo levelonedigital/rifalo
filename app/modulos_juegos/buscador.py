@@ -9,6 +9,7 @@ import requests
 from app.core import auditoria
 from app.core.config import Configuracion
 from app.core.database import SessionLocal
+from app.modulos_juegos.modalidades import obtener
 from app.modulos_juegos.motor import liquidar_sorteo, obtener_reglas
 from app.modelos.juegos import Aviso, EstadoSorteo, Sorteo
 
@@ -127,6 +128,13 @@ def pozo_cubierto_total(sorteo: Sorteo) -> float:
     return (sorteo.pozo_cubierto or 0.0) + (sorteo.pozo_extra or 0.0)
 
 
+def _es_premio_fijo(sorteo: Sorteo) -> bool:
+    """True si la modalidad usa premio fijo (rifa). En ese caso no hay pozo que cubrir:
+    el premio lo paga la casa, asi que el chequeo de cobertura por sobrantes no aplica."""
+    m = obtener(sorteo.modalidad)
+    return bool(m and m.usa_premio_fijo)
+
+
 def estado_busquedas():
     resultado = {}
     for sorteo_id, estado in _intentos.items():
@@ -144,7 +152,11 @@ def estado_busquedas():
 
 
 def chequeo_costo(sesion, reglas, ahora: datetime):
-    """A 30 min del horario oficial, avisa al admin si el acumulado de sobrantes no cubre el costo."""
+    """A 30 min del horario oficial, avisa al admin si el acumulado de sobrantes no cubre el costo.
+
+    Se saltea en modalidades con premio fijo (rifa): ahi no hay pozo que cubrir con sobrantes,
+    el premio se paga de la casa. La cobertura informativa de rifa se ve en la columna
+    "Premio cubierto" del listado de sorteos (router_admin)."""
     pendientes = (
         sesion.query(Sorteo)
         .filter(
@@ -154,6 +166,8 @@ def chequeo_costo(sesion, reglas, ahora: datetime):
         .all()
     )
     for sorteo in pendientes:
+        if _es_premio_fijo(sorteo):
+            continue
         hhmm = reglas.dict_horarios().get(sorteo.horario)
         if not hhmm:
             continue
