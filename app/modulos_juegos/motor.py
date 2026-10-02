@@ -13,6 +13,10 @@ from app.modulos_juegos.rifa.validar import (
     validar_numeros_rifa,
 )
 
+# Delegacion de CLASICO: su logica vive aislada en app/modulos_juegos/clasico/.
+from app.modulos_juegos.clasico.aprobar import aprobar_jugada_clasico
+from app.modulos_juegos.clasico.liquidar import liquidar_sorteo_clasico
+
 __all__ = [
     "obtener_reglas",
     "base_pozo",
@@ -53,12 +57,14 @@ def porcentajes_sorteo(sorteo: Sorteo, reglas: ReglasSistema):
 def aprobar_jugada(sesion: Session, jugada: Jugada, reglas: ReglasSistema) -> Jugada:
     """Aprueba y reparte el precio.
 
-    RIFA delega a su propio modulo (reparto con sobrante que cubre la meta).
-    CLASICO y SEMANAL mantienen su regla historica del pozo.
+    RIFA y CLASICO delegan a sus propios modulos. SEMANAL mantiene su regla historica
+    del pozo hasta que lo separemos.
     """
     sorteo = sesion.get(Sorteo, jugada.sorteo_id)
     if sorteo is not None and sorteo.modalidad == "rifa":
         return aprobar_jugada_rifa(sesion, jugada, reglas)
+    if sorteo is not None and sorteo.modalidad == "clasico":
+        return aprobar_jugada_clasico(sesion, jugada, reglas)
 
     modalidad = obtener(sorteo.modalidad)
     vendedor = sesion.get(Usuario, jugada.vendedor_id)
@@ -77,7 +83,6 @@ def aprobar_jugada(sesion: Session, jugada: Jugada, reglas: ReglasSistema) -> Ju
     base = base_pozo(sorteo)
     sorteo.recaudado = (sorteo.recaudado or 0.0) + precio
 
-    # Sobrante destinado al pozo (solo modalidades con pozo).
     sobrante = round(precio * pozo_pct / 100.0, 2) if (modalidad and modalidad.requiere_pozo) else 0.0
 
     aporte_cubrir = 0.0
@@ -110,10 +115,12 @@ def aprobar_jugada(sesion: Session, jugada: Jugada, reglas: ReglasSistema) -> Ju
 def liquidar_sorteo(sorteo: Sorteo, sesion: Session, reglas: ReglasSistema) -> dict:
     """Compara jugadas aprobadas contra resultados y asigna premios usando el plugin.
 
-    RIFA delega a su propio modulo (premio fijo, excedente para la casa).
+    RIFA y CLASICO delegan a sus propios modulos.
     """
     if sorteo.modalidad == "rifa":
         return liquidar_sorteo_rifa(sorteo, sesion, reglas)
+    if sorteo.modalidad == "clasico":
+        return liquidar_sorteo_clasico(sorteo, sesion, reglas)
 
     modalidad = obtener(sorteo.modalidad)
     if modalidad is None:
