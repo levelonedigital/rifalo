@@ -1,12 +1,12 @@
 let LIQ_CACHE = {};
 let imagen_data_pending = null; // null = no cambiar; dataUri = subir; "" = quitar
 
-// ---------- MODALIDADES Y REGLAS (admin) ----------
+// ---------- MODALIDADES Y BLOQUES POR MODALIDAD ----------
 async function cargarModalidades() {
   MODALIDADES = await api("/admin/modalidades", "GET");
   const sel = document.getElementById("sorteo-modalidad");
   sel.innerHTML = MODALIDADES.map(m => "<option value='" + m.clave + "'>" + m.nombre + " (" + m.cantidad_numeros + " numeros)</option>").join("");
-  pintarReglasModalidad();
+  cambiarModalidadSorteo();
 }
 
 function intOrNull(id) {
@@ -14,23 +14,19 @@ function intOrNull(id) {
   return v === "" ? null : parseInt(v, 10);
 }
 
-function pintarReglasModalidad() {
-  const sel = document.getElementById("sorteo-modalidad");
-  if (!sel) return;
-  const clave = sel.value;
+function cambiarModalidadSorteo() {
+  const clave = document.getElementById("sorteo-modalidad").value;
   const m = MODALIDADES.find(x => x.clave === clave);
   document.getElementById("reglas-modalidad").textContent = m ? m.resumen_reglas : "";
-  const esRifa = m && m.usa_premio_fijo;
-  document.getElementById("caja-premio-fijo").style.display = esRifa ? "block" : "none";
-  document.getElementById("caja-minimo").style.display = esRifa ? "block" : "none";
-  const esSemanal = clave === "semanal";
-  document.getElementById("caja-semanal").style.display = esSemanal ? "contents" : "none";
+  document.getElementById("bloque-rifa").style.display = clave === "rifa" ? "block" : "none";
+  document.getElementById("bloque-clasico").style.display = clave === "clasico" ? "block" : "none";
+  document.getElementById("bloque-semanal").style.display = clave === "semanal" ? "block" : "none";
   if (!sorteo_edit_id && m) {
     document.getElementById("sorteo-detalle").value = m.resumen_reglas + " Si no se cumplen las condiciones, el sorteo puede pasar a otro horario; se respetan las jugadas.";
   }
 }
 
-// ---------- IMAGEN DE PRESENTACION (subir / quitar / preview) ----------
+// ---------- IMAGEN DE PRESENTACION ----------
 function mostrarPreviewImagen(src) {
   const box = document.getElementById("sorteo-imagen-preview-box");
   const img = document.getElementById("sorteo-imagen-preview");
@@ -109,29 +105,37 @@ async function guardarSistema() {
 }
 
 function leerFormSorteo() {
+  const modalidad = document.getElementById("sorteo-modalidad").value;
   const cuerpo = {
-    modalidad: document.getElementById("sorteo-modalidad").value,
+    modalidad: modalidad,
     horario: document.getElementById("sorteo-horario").value,
     fecha: document.getElementById("sorteo-fecha").value,
     precio_jugada: parseFloat(document.getElementById("sorteo-precio").value),
-    pozo_base: parseFloat(document.getElementById("sorteo-pozobase").value || 0),
     casa_pct: parseFloat(document.getElementById("sorteo-casa").value),
     titulo: document.getElementById("sorteo-titulo").value || null,
-    premio_nombre: document.getElementById("sorteo-premio-nombre").value || null,
     busqueda_inicio_min: intOrNull("sorteo-busini"),
     busqueda_intervalo_min: intOrNull("sorteo-busint"),
     busqueda_duracion_min: intOrNull("sorteo-busdur"),
-    semanal_dia_inicio: intOrNull("sorteo-semi"),
-    semanal_dia_fin: intOrNull("sorteo-semf"),
   };
+
+  // Campos especificos de la modalidad activa.
+  if (modalidad === "rifa") {
+    const p = document.getElementById("rifa-premio").value;
+    if (p) cuerpo.premio_fijo = parseFloat(p);
+    cuerpo.premio_nombre = document.getElementById("rifa-premio-nombre").value || null;
+    cuerpo.pozo_base = 0;
+  } else if (modalidad === "semanal") {
+    cuerpo.pozo_base = parseFloat(document.getElementById("semanal-pozobase").value || 0);
+    cuerpo.semanal_dia_inicio = intOrNull("semanal-semi");
+    cuerpo.semanal_dia_fin = intOrNull("semanal-semf");
+  } else {
+    cuerpo.pozo_base = parseFloat(document.getElementById("clasico-pozobase").value || 0);
+  }
+
   const cierre = document.getElementById("sorteo-cierre").value;
   if (cierre) cuerpo.hora_cierre = cierre;
   const vend = document.getElementById("sorteo-vend").value;
   if (vend) cuerpo.vendedor_pct = parseFloat(vend);
-  const premio = document.getElementById("sorteo-premio").value;
-  if (premio) cuerpo.premio_fijo = parseFloat(premio);
-  const minimo = document.getElementById("sorteo-minimo").value;
-  if (minimo) cuerpo.minimo_cubrir = parseFloat(minimo);
   const url = document.getElementById("sorteo-imagen").value;
   if (url) cuerpo.imagen_url = url;
   const detalle = document.getElementById("sorteo-detalle").value;
@@ -149,7 +153,6 @@ async function crearSorteo() {
     const d = await api("/admin/sorteos", "POST", cuerpo);
     aviso("Sorteo #" + d.id + " creado EN PREPARACION (inactivo) con titulo \"" + (d.titulo || "") + "\". Revisalo, editalo si hace falta y recien ahi activalo.");
     resetImagenForm();
-    const pn = document.getElementById("sorteo-premio-nombre"); if (pn) pn.value = "";
     cargarSorteos();
   }
   catch (e) { aviso(e.message, true); }
@@ -169,23 +172,32 @@ function empezarEdicion(id) {
   const s = SORT_CACHE[id];
   if (!s) return;
   sorteo_edit_id = id;
+  document.getElementById("sorteo-modalidad").value = s.modalidad;
+  cambiarModalidadSorteo();
+  // Especificos segun modalidad.
+  if (s.modalidad === "rifa") {
+    document.getElementById("rifa-premio").value = s.premio_fijo ?? "";
+    document.getElementById("rifa-premio-nombre").value = s.premio_nombre || "";
+  } else if (s.modalidad === "semanal") {
+    document.getElementById("semanal-pozobase").value = s.pozo_base ?? "";
+    document.getElementById("semanal-semi").value = s.semanal_dia_inicio ?? "";
+    document.getElementById("semanal-semf").value = s.semanal_dia_fin ?? "";
+  } else {
+    document.getElementById("clasico-pozobase").value = s.pozo_base ?? "";
+  }
+  // Comunes.
   document.getElementById("sorteo-horario").value = s.horario;
   document.getElementById("sorteo-fecha").value = s.fecha.slice(0,10);
   document.getElementById("sorteo-cierre").value = s.hora_cierre || "";
   document.getElementById("sorteo-precio").value = s.precio_jugada;
-  document.getElementById("sorteo-pozobase").value = s.pozo_base;
   document.getElementById("sorteo-casa").value = s.casa_pct;
   document.getElementById("sorteo-vend").value = s.vendedor_pct ?? "";
-  document.getElementById("sorteo-premio").value = s.premio_fijo ?? "";
-  document.getElementById("sorteo-minimo").value = s.minimo_cubrir ?? "";
   document.getElementById("sorteo-titulo").value = s.titulo || "";
-  document.getElementById("sorteo-premio-nombre").value = s.premio_nombre || "";
   document.getElementById("sorteo-detalle").value = s.detalle || "";
   document.getElementById("sorteo-busini").value = s.busqueda_inicio_min ?? "";
   document.getElementById("sorteo-busint").value = s.busqueda_intervalo_min ?? "";
   document.getElementById("sorteo-busdur").value = s.busqueda_duracion_min ?? "";
-  document.getElementById("sorteo-semi").value = s.semanal_dia_inicio ?? "";
-  document.getElementById("sorteo-semf").value = s.semanal_dia_fin ?? "";
+  // Imagen.
   imagen_data_pending = null;
   const urlInput = document.getElementById("sorteo-imagen");
   const actual = s.imagen_url || "";
@@ -199,8 +211,8 @@ function empezarEdicion(id) {
   document.getElementById("btn-crear").style.display = "none";
   const bar = document.getElementById("editar-bar");
   bar.style.display = "block";
-  bar.innerHTML = "Editando sorteo #" + id + ". Modificá los campos del formulario de arriba y guarda. <button onclick='guardarEdicion()'>Guardar cambios</button><button class='peligro' onclick='cancelarEdicion()'>Cancelar edicion</button>";
-  document.getElementById("editar-bar").scrollIntoView({ behavior: "smooth" });
+  bar.innerHTML = "Editando sorteo #" + id + ". Modificá los campos y guarda. <button onclick='guardarEdicion()'>Guardar cambios</button><button class='peligro' onclick='cancelarEdicion()'>Cancelar edicion</button>";
+  bar.scrollIntoView({ behavior: "smooth" });
 }
 
 function cancelarEdicion() {
@@ -208,9 +220,8 @@ function cancelarEdicion() {
   document.getElementById("editar-bar").style.display = "none";
   document.getElementById("btn-crear").style.display = "";
   resetImagenForm();
-  const pn = document.getElementById("sorteo-premio-nombre"); if (pn) pn.value = "";
   const ui = document.getElementById("sorteo-imagen"); if (ui) ui.value = "";
-  pintarReglasModalidad();
+  cambiarModalidadSorteo();
 }
 
 async function guardarEdicion() {
@@ -241,12 +252,9 @@ async function guardarPlantilla() {
   delete cuerpo.imagen_data;
   delete cuerpo.detalle;
   delete cuerpo.titulo;
-  delete cuerpo.premio_nombre;
   delete cuerpo.busqueda_inicio_min;
   delete cuerpo.busqueda_intervalo_min;
   delete cuerpo.busqueda_duracion_min;
-  delete cuerpo.semanal_dia_inicio;
-  delete cuerpo.semanal_dia_fin;
   try { await api("/admin/plantillas", "POST", cuerpo); aviso("Guia guardada: " + nombre); cargarPlantillas(); }
   catch (e) { aviso(e.message, true); }
 }
@@ -266,14 +274,19 @@ async function cargarPlantillaSel() {
   if (!p) return;
   cancelarEdicion();
   document.getElementById("sorteo-modalidad").value = p.modalidad;
-  pintarReglasModalidad();
+  cambiarModalidadSorteo();
+  if (p.modalidad === "rifa") {
+    document.getElementById("rifa-premio").value = p.premio_fijo ?? "";
+  } else if (p.modalidad === "semanal") {
+    document.getElementById("semanal-pozobase").value = p.pozo_base ?? "";
+  } else {
+    document.getElementById("clasico-pozobase").value = p.pozo_base ?? "";
+  }
   if (p.horario) document.getElementById("sorteo-horario").value = p.horario;
   document.getElementById("sorteo-precio").value = p.precio_jugada;
-  document.getElementById("sorteo-pozobase").value = p.pozo_base;
   document.getElementById("sorteo-casa").value = p.casa_pct;
   document.getElementById("sorteo-vend").value = p.vendedor_pct ?? "";
-  document.getElementById("sorteo-premio").value = p.premio_fijo ?? "";
-  aviso("Guia cargada, pone el dia, el cierre, el titulo, el nombre del premio, la imagen y la config de busqueda/semanal y crea el sorteo");
+  aviso("Guia cargada. Completa dia, cierre, titulo, imagen y busqueda, y crea el sorteo.");
 }
 
 async function borrarPlantillaSel() {
@@ -292,7 +305,6 @@ async function cargarSorteos() {
       const premioLinea = s.premio_nombre ? "<div class='chico' style='color:#22c55e'>PREMIO: " + s.premio_nombre + "</div>" : "";
       const celdaNombre = "<td><b>" + (s.titulo || s.modalidad) + "</b>" + (s.titulo ? "<div class='chico'>" + s.modalidad + "</div>" : "") + premioLinea + (s.solo_participantes ? " <span class='chico'>VACANTE</span>" : "") + "</td>";
       const celdaGanadores = "<td>" + ((s.ganadores && s.ganadores.length) ? s.ganadores.join(", ") : "-") + "</td>";
-      const rotuloCobertura = s.es_premio_fijo ? "Premio cubierto" : "Cubriendo / costo";
       html += "<tr><td>" + s.id + "</td><td>" + (s.imagen_url ? "<img src='" + s.imagen_url + "' style='width:44px;height:44px;object-fit:cover;border-radius:4px'>" : "-") + "</td>" + celdaNombre + "<td>" + s.horario + "</td><td>" + fmtFecha(s.fecha) + "</td><td>" + (s.hora_cierre || "sin limite") + "</td><td>" + s.estado + (s.busqueda_agotada ? " (manual)" : "") + "</td><td>$" + s.pozo + "</td><td>$" + s.pozo_cubierto + " / $" + s.costo + (s.costo_cubierto ? " ✔" : " ✘") + "</td><td>$" + (s.recaudado || 0) + "</td>" + celdaGanadores + "<td>";
       html += "<button class='secundario' onclick='seleccionarSorteo(" + s.id + ")'>Detalles</button>";
       if (s.estado === "preparacion") html += "<button onclick='activarSorteo(" + s.id + ")'>Activar</button>";
@@ -303,7 +315,6 @@ async function cargarSorteos() {
         html += "<button class='secundario' onclick='empezarEdicion(" + s.id + ")'>Editar</button>";
         html += "<button class='peligro' onclick='borrarSorteo(" + s.id + ")'>Borrar</button>";
       }
-      // Boton Pozo vacante: SOLO si es liquidado, la modalidad tiene pozo y NO hubo ganadores.
       if (s.estado === "liquidado" && s.requiere_pozo && (!s.ganadores || s.ganadores.length === 0)) {
         html += "<button class='secundario' onclick='pozoVacante(" + s.id + ")'>Pozo vacante</button>";
       }
@@ -513,232 +524,4 @@ async function cargarLiquidaciones() {
       let estado;
       if (l.pagado_admin && l.cobrado_vendedor) estado = "<span class='ok'>Pagado y cobrado ✔</span>";
       else if (l.pagado_admin) estado = "<span class='warn'>Pagado por vos; esperando confirmacion del vendedor</span>";
-      else estado = "<span class='chico'>Pendiente de pago</span>";
-      html += "<tr><td>" + l.id + "</td><td>" + l.vendedor + "</td><td>" + fmtFecha(l.desde) + "</td><td>" + fmtFecha(l.hasta) + "</td><td><b>$" + l.monto + "</b></td><td>" + estado + "</td><td>";
-      html += "<button class='secundario' onclick='verDetalleLiq(" + l.id + ")'>Ver detalle</button>";
-      if (!l.pagado_admin) html += "<button onclick='marcarLiqPagada(" + l.id + ")'>Marcar pagado</button>";
-      html += "</td></tr>";
-    });
-    caja.innerHTML = html + "</table>";
-  } catch (e) { aviso(e.message, true); }
-}
-
-async function generarLiquidacion() {
-  const vid = document.getElementById("pago-vendedor").value;
-  const desde = document.getElementById("pago-desde").value;
-  const hasta = document.getElementById("pago-hasta").value;
-  if (!vid) { aviso("Elegi un vendedor para liquidar", true); return; }
-  if (!desde || !hasta) { aviso("Pone la fecha DESDE y HASTA", true); return; }
-  try {
-    const d = await api("/admin/vendedores/" + vid + "/liquidaciones", "POST", { desde: desde, hasta: hasta });
-    aviso("Liquidacion #" + d.id + " generada por $" + d.monto + " para " + d.vendedor + ". Revisala con 'Ver detalle' y marcala pagada cuando pagues.");
-    cargarLiquidaciones();
-  } catch (e) { aviso(e.message, true); }
-}
-
-async function marcarLiqPagada(id) {
-  if (!confirm("Confirmas que ya le pagaste al vendedor la liquidacion #" + id + "?")) return;
-  try { await api("/admin/liquidaciones/" + id + "/marcar-pagado", "POST"); aviso("Liquidacion #" + id + " marcada como pagada"); cargarLiquidaciones(); }
-  catch (e) { aviso(e.message, true); }
-}
-
-function verDetalleLiq(id) {
-  const l = LIQ_CACHE[id];
-  if (!l) return;
-  const caja = document.getElementById("detalle-liquidacion");
-  if (!caja) return;
-  let html = "<h3>Liquidacion #" + l.id + " - " + l.vendedor + " (" + l.vendedor_usuario + ")</h3>";
-  html += "<p>Periodo: " + fmtFecha(l.desde) + " a " + fmtFecha(l.hasta) + " | <b>Total a cobrar: $" + l.monto + "</b></p>";
-  html += "<table><tr><th>Sorteo</th><th>Modalidad</th><th>Horario</th><th>Dia</th><th>Jugadas vendidas</th><th>Vendido</th><th>Comision</th></tr>";
-  (l.detalle || []).forEach(d => {
-    html += "<tr><td>#" + d.sorteo_id + "</td><td>" + d.modalidad + "</td><td>" + d.horario + "</td><td>" + fmtFecha(d.fecha) + "</td><td>" + d.jugadas + "</td><td>$" + d.vendido + "</td><td>$" + d.comision + "</td></tr>";
-  });
-  html += "</table>";
-  caja.innerHTML = html;
-  caja.scrollIntoView({ behavior: "smooth" });
-}
-
-// ---------- ADMIN: JUGADAS ----------
-async function iniciarJugadas() {
-  if (SORT_ACTUAL) {
-    document.getElementById("jugadas-selector").style.display = "none";
-    document.getElementById("jugadas-estado-filtro").style.display = "block";
-  } else {
-    document.getElementById("jugadas-selector").style.display = "grid";
-    document.getElementById("jugadas-estado-filtro").style.display = "none";
-    await llenarSelectJugadasSorteos();
-  }
-  cargarJugadasAdmin();
-}
-
-async function llenarSelectJugadasSorteos() {
-  try {
-    const sorteos = await api("/admin/sorteos", "GET");
-    sorteos.forEach(s => { SORT_CACHE[s.id] = s; });
-    document.getElementById("jugadas-sorteo").innerHTML = "<option value=''>Elegi un sorteo para ver sus jugadas...</option>" +
-      sorteos.map(s => "<option value='" + s.id + "'>#" + s.id + " " + (s.titulo || s.modalidad) + " " + s.horario + " " + fmtFecha(s.fecha) + " (" + s.estado + ")</option>").join("");
-  } catch (e) { aviso(e.message, true); }
-}
-
-async function cargarJugadasAdmin() {
-  const enModo = Boolean(SORT_ACTUAL);
-  const sorteoId = enModo ? SORT_ACTUAL : document.getElementById("jugadas-sorteo").value;
-  const estado = enModo ? document.getElementById("jugadas-filtro-modo").value : document.getElementById("jugadas-filtro").value;
-  const caja = document.getElementById("lista-jugadas-admin");
-  if (!sorteoId) {
-    caja.innerHTML = "<p class='chico'>Seleccioná un sorteo para ver sus jugadas (o usa el boton Detalles en la pestana Sorteos).</p>";
-    return;
-  }
-  let ruta = "/admin/jugadas?sorteo_id=" + sorteoId;
-  if (estado) ruta += "&estado=" + estado;
-  try {
-    const js = await api(ruta, "GET");
-    if (!js.length) { caja.innerHTML = "<p class='chico'>Este sorteo no tiene jugadas con ese filtro.</p>"; return; }
-    let html = "<table><tr><th>#</th><th>Jugador</th><th>Vendedor</th><th>Numeros</th><th>Precio</th><th>Estado</th><th>Premio</th><th></th></tr>";
-    js.forEach(j => {
-      html += "<tr><td>" + j.id + "</td><td>" + (j.jugador_nombre || "-") + "</td><td>" + j.vendedor + "</td><td>" + j.numeros + "</td><td>$" + j.precio + "</td><td>" + j.estado + "</td><td>$" + (j.premio ?? "-") + "</td><td><button class='secundario' onclick='verJugada(" + j.id + ")'>Ver</button></td></tr>";
-    });
-    caja.innerHTML = html + "</table>";
-  } catch (e) { aviso(e.message, true); }
-}
-
-async function verJugada(id) {
-  try {
-    const j = await api("/admin/jugadas/" + id, "GET");
-    const s = j.sorteo || {};
-    document.getElementById("jugada-detalle").textContent =
-      "JUGADA #" + j.id +
-      "\nSorteo: #" + (s.id || "-") + " " + (s.modalidad || "") + " " + (s.horario || "") + " " + fmtFecha(s.fecha) + " (" + (s.estado || "") + ")" +
-      "\nVendedor: " + j.vendedor +
-      "\nRevendedor: " + (j.revendedor || "sin revendedor") +
-      "\nJugador: " + (j.jugador_nombre || "-") + (j.jugador_usuario ? " (usuario " + j.jugador_usuario + ")" : "") +
-      "\nNumeros: " + j.numeros +
-      "\nPrecio: $" + j.precio +
-      "\nEstado: " + j.estado +
-      "\nPremio: $" + (j.premio ?? 0) + (j.estado === "ganadora" ? (j.premio_pagado ? " (PAGADO)" : " (PENDIENTE DE PAGO)") : "") +
-      (j.estado === "ganadora" ? (j.premio_cobrado ? " - el jugador CONFIRMO QUE COBRO" : " - el jugador aun no confirmo el cobro") : "") +
-      "\nReparto: casa $" + (j.monto_casa ?? 0) + " | vendedor $" + (j.monto_vendedor ?? 0) + (j.comision_pagada ? " (comision PAGADA)" : " (comision PENDIENTE)") + " | revendedor $" + (j.monto_revendedor ?? 0) + " | pozo $" + (j.monto_pozo ?? 0) + " | cubrir $" + (j.monto_cubrir ?? 0) +
-      "\nCargada: " + ((j.creada_en || "").slice(0,19).replace("T"," "));
-  } catch (e) { aviso(e.message, true); }
-}
-
-// ---------- ADMIN: RESUMEN + LIQUIDACION ----------
-async function cargarResumen() {
-  const cajaLiq = document.getElementById("caja-liquidacion");
-  cajaLiq.innerHTML = "";
-  try {
-    if (SORT_ACTUAL) {
-      const r = await api("/admin/sorteos/" + SORT_ACTUAL + "/resumen", "GET");
-      const rotuloCob = r.es_premio_fijo ? "Premio cubierto" : "Pozo cubierto";
-      document.getElementById("caja-resumen").innerHTML =
-        "<table><tr><th>Sorteo</th><th>Estado</th><th>Jugadas</th><th>Vendido</th><th>Casa (neta)</th><th>Vendedores</th><th>Revend.</th><th>Pozo</th><th>" + rotuloCob + "</th><th>Premios</th><th>Ganadoras</th></tr>" +
-        "<tr><td>#" + r.sorteo_id + " " + r.modalidad + " " + r.horario + "</td><td>" + r.estado + "</td><td>" + r.jugadas_vendidas + "</td><td>$" + r.vendido + "</td><td>$" + r.casa + "</td><td>$" + r.vendedores + "</td><td>$" + r.revendedores + "</td><td>$" + r.pozo + "</td><td>$" + r.pozo_cubierto + " / $" + r.costo + (r.costo_cubierto ? " ✔" : " ✘") + "</td><td>$" + r.premios_pagados + "</td><td>" + (r.ganadoras.join(", ") || "-") + "</td></tr></table>" +
-        "<p class='chico'>Recaudado $" + r.recaudado + ". " + (r.es_premio_fijo ? "Casa bruta $" + r.casa_bruta + " menos premios $" + r.premios_pagados + " = ganancia neta $" + r.casa + ". " : "Pozo aportado (cobertura + extra): $" + r.pozo_aportado + ". ") + "Resultados: " + (r.resultados || "sin cargar") + "</p>";
-      if (r.estado === "liquidado") await cargarLiquidacion(SORT_ACTUAL);
-      return;
-    }
-    const r = await api("/admin/resumen-general", "GET");
-    document.getElementById("caja-resumen").innerHTML = "<table><tr><th>Jugadas</th><th>Vendido</th><th>Casa (neta)</th><th>Vendedores</th><th>Revendedores</th><th>Premios</th></tr><tr><td>" + r.jugadas_aprobadas + "</td><td>$" + r.vendido + "</td><td>$" + r.casa + "</td><td>$" + r.vendedores + "</td><td>$" + r.revendedores + "</td><td>$" + r.premios_pagados + "</td></tr></table>";
-  } catch (e) { aviso(e.message, true); }
-}
-
-async function cargarLiquidacion(sorteoId) {
-  try {
-    const d = await api("/admin/sorteos/" + sorteoId + "/liquidacion", "GET");
-    let html = "<h2>Detalle de liquidacion</h2>";
-    html += "<p><b>Resultados oficiales:</b> " + (d.resultados || "-") + "</p>";
-    if (d.premio_nombre) html += "<p><b>Premio:</b> " + d.premio_nombre + "</p>";
-    if (d.es_premio_fijo) {
-      html += "<p><b>Casa bruta:</b> $" + d.casa_bruta + " | <b>Premios pagados:</b> $" + d.pozo_pagado + " | <b>Ganadores:</b> " + d.cantidad_ganadoras + "</p>";
-    } else {
-      html += "<p><b>Pozo formado:</b> $" + d.pozo_formado + " | <b>Pozo pagado en premios:</b> $" + d.pozo_pagado + " | <b>Ganadores:</b> " + d.cantidad_ganadoras + "</p>";
-    }
-    html += "<p><b>Ganancia casa (admin, neta):</b> $" + d.casa + " | <b>Vendedores:</b> $" + d.vendedores + " | <b>Revendedores:</b> $" + d.revendedores + "</p>";
-    if (d.ganadoras.length) {
-      html += "<table><tr><th>Jugada</th><th>Ganador</th><th>Numeros ganadores</th><th>Premio</th><th>Premio pagado</th><th>Jugador cobro</th><th>Vendedor</th><th>Comision pagada</th></tr>";
-      d.ganadoras.forEach(g => {
-        html += "<tr><td>#" + g.jugada_id + "</td><td>" + g.jugador + "</td><td>" + g.numeros + "</td><td>$" + g.premio + "</td>" +
-          "<td>" + (g.premio_pagado ? "✔ PAGADO" : "✘ PENDIENTE") + " <button class='secundario' onclick='marcarPremio(" + g.jugada_id + "," + (!g.premio_pagado) + ")'>" + (g.premio_pagado ? "Desmarcar" : "Marcar pagado") + "</button></td>" +
-          "<td>" + (g.premio_cobrado ? "✔ CONFIRMO COBRO" : "✘ no confirmo") + "</td>" +
-          "<td>" + g.vendedor + "</td>" +
-          "<td>" + (g.comision_pagada ? "✔ PAGADA" : "✘ PENDIENTE") + " <button class='secundario' onclick='marcarComision(" + g.jugada_id + "," + (!g.comision_pagada) + ")'>" + (g.comision_pagada ? "Desmarcar" : "Marcar pagada") + "</button></td></tr>";
-      });
-      html += "</table>";
-    } else {
-      html += "<p class='chico'>Este sorteo no tuvo ganadores; el pozo queda retenido para el pozo vacante.</p>";
-    }
-    document.getElementById("caja-liquidacion").innerHTML = html;
-  } catch (e) { /* ignora */ }
-}
-
-async function marcarPremio(jugadaId, pagado) {
-  try { await api("/admin/jugadas/" + jugadaId + "/marcar-premio", "POST", { pagado: pagado }); cargarResumen(); }
-  catch (e) { aviso(e.message, true); }
-}
-
-async function marcarComision(jugadaId, pagado) {
-  try { await api("/admin/jugadas/" + jugadaId + "/marcar-comision", "POST", { pagado: pagado }); cargarResumen(); }
-  catch (e) { aviso(e.message, true); }
-}
-
-// ---------- ADMIN: BALANCE ----------
-async function cargarBalance() {
-  const periodo = document.getElementById("bal-periodo").value;
-  const fechaVal = document.getElementById("bal-fecha").value;
-  let ruta = "/admin/balance?periodo=" + periodo;
-  if (fechaVal) ruta += "&fecha=" + fechaVal;
-  try {
-    const d = await api(ruta, "GET");
-    let html = "<p><b>Periodo:</b> " + periodo + " | <b>Desde:</b> " + fmtFecha(d.desde) + " | <b>Hasta:</b> " + fmtFecha(d.hasta) + " | <b>Sorteos liquidados:</b> " + d.sorteos_liquidados + "</p>";
-    html += "<table><tr><th>Vendido</th><th>Casa (ganancia admin neta)</th><th>Vendedores</th><th>Revendedores</th><th>Pozo formado</th><th>Premios pagados</th></tr>" +
-      "<tr><td>$" + d.totales.vendido + "</td><td>$" + d.totales.casa + "</td><td>$" + d.totales.vendedores + "</td><td>$" + d.totales.revendedores + "</td><td>$" + d.totales.pozo_formado + "</td><td>$" + d.totales.premios + "</td></tr></table>";
-    if (d.por_sorteo.length) {
-      html += "<h3 style='color:#93c5fd;margin-top:12px'>Detalle por sorteo</h3>";
-      html += "<table><tr><th>#</th><th>Modalidad</th><th>Horario</th><th>Dia</th><th>Vendido</th><th>Casa</th><th>Vendedores</th><th>Pozo</th><th>Premios</th></tr>";
-      d.por_sorteo.forEach(s => {
-        html += "<tr><td>" + s.sorteo_id + "</td><td>" + s.modalidad + "</td><td>" + s.horario + "</td><td>" + fmtFecha(s.fecha) + "</td><td>$" + s.vendido + "</td><td>$" + s.casa + "</td><td>$" + s.vendedores + "</td><td>$" + s.pozo_formado + "</td><td>$" + s.premios + "</td></tr>";
-      });
-      html += "</table>";
-    } else {
-      html += "<p class='chico'>No hay sorteos liquidados en este periodo.</p>";
-    }
-    document.getElementById("caja-balance").innerHTML = html;
-  } catch (e) { aviso(e.message, true); }
-}
-
-// ---------- ADMIN: AUDITORIA ----------
-function coincideSorteo(log, id, idsJugadas) {
-  const d = log.detalle || "";
-  if (d.includes("sorteo=" + id)) return true;
-  if (d.includes("sorteo_id': " + id)) return true;
-  if (d.includes("id=" + id + " ")) return true;
-  for (const jid of idsJugadas) {
-    if (d.includes("jugada=" + jid)) return true;
-  }
-  return false;
-}
-
-async function cargarAuditoria() {
-  try {
-    let logs = await api("/admin/auditoria?limite=300", "GET");
-    if (SORT_ACTUAL) {
-      const js = await api("/admin/jugadas?sorteo_id=" + SORT_ACTUAL, "GET");
-      const ids = js.map(j => j.id);
-      logs = logs.filter(l => coincideSorteo(l, SORT_ACTUAL, ids));
-    }
-    let html = "<table><tr><th>Fecha</th><th>Usuario</th><th>Accion</th><th>Detalle</th></tr>";
-    logs.forEach(l => { html += "<tr><td>" + l.fecha.slice(0,19).replace("T"," ") + "</td><td>" + (l.nombre_usuario || "-") + "</td><td>" + l.accion + "</td><td>" + (l.detalle || "") + "</td></tr>"; });
-    document.getElementById("lista-auditoria").innerHTML = html + "</table>";
-  } catch (e) { aviso(e.message, true); }
-}
-
-// ---------- REGISTRO DE PESTANAS DEL ADMIN ----------
-window.ACCIONES = window.ACCIONES || {};
-ACCIONES.sorteos = iniciarSorteos;
-ACCIONES.buscador = cargarEstadoBuscador;
-ACCIONES.vendedores = cargarVendedores;
-ACCIONES.pagos = cargarPagos;
-ACCIONES.jugadas = iniciarJugadas;
-ACCIONES.resumen = cargarResumen;
-ACCIONES.balance = cargarBalance;
-ACCIONES.auditoria = cargarAuditoria;
+      else estado = "<span class='chico'>Pendiente de pago
