@@ -1,4 +1,4 @@
-from app.modulos_juegos.modalidades.clasico import ModalidadClasico
+from app.modulos_juegos.clasico.plugin import ModalidadClasico
 from app.modulos_juegos.modalidades.semanal import ModalidadSemanal
 from app.modulos_juegos.rifa.plugin import ModalidadRifa
 
