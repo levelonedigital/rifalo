@@ -4,6 +4,28 @@ from app.modelos.juegos import EstadoJugada, EstadoSorteo, Jugada, ReglasSistema
 from app.modelos.usuario import Usuario
 from app.modulos_juegos.modalidades import obtener
 
+# Delegacion de RIFA: su logica vive aislada en app/modulos_juegos/rifa/.
+from app.modulos_juegos.rifa.aprobar import aprobar_jugada_rifa
+from app.modulos_juegos.rifa.liquidar import liquidar_sorteo_rifa
+from app.modulos_juegos.rifa.validar import (
+    es_rifa_numero_unico,
+    numeros_ocupados_rifa,
+    validar_numeros_rifa,
+)
+
+__all__ = [
+    "obtener_reglas",
+    "base_pozo",
+    "porcentajes_sorteo",
+    "aprobar_jugada",
+    "liquidar_sorteo",
+    "nombres_participantes",
+    "crear_pozo_vacante",
+    "es_rifa_numero_unico",
+    "numeros_ocupados_rifa",
+    "validar_numeros_rifa",
+]
+
 
 def obtener_reglas(sesion: Session) -> ReglasSistema:
     reglas = sesion.get(ReglasSistema, 1)
@@ -31,13 +53,13 @@ def porcentajes_sorteo(sorteo: Sorteo, reglas: ReglasSistema):
 def aprobar_jugada(sesion: Session, jugada: Jugada, reglas: ReglasSistema) -> Jugada:
     """Aprueba y reparte el precio.
 
-    Regla del pozo: el sobrante (100 - casa - vendedores) de cada jugada va PRIMERO
-    cubriendo el pozo base (se acumula en pozo_cubierto). Recien cuando el acumulado
-    previo ya cubrio el base, el sobrante suma como pozo_extra. La casa cobra solo su
-    porcentaje en ambos tramos. En sorteos vacantes el base es 0, asi que todo el
-    sobrante suma directo como extra.
+    RIFA delega a su propio modulo (reparto con sobrante que cubre la meta).
+    CLASICO y SEMANAL mantienen su regla historica del pozo.
     """
     sorteo = sesion.get(Sorteo, jugada.sorteo_id)
+    if sorteo is not None and sorteo.modalidad == "rifa":
+        return aprobar_jugada_rifa(sesion, jugada, reglas)
+
     modalidad = obtener(sorteo.modalidad)
     vendedor = sesion.get(Usuario, jugada.vendedor_id)
     revendedor = sesion.get(Usuario, jugada.revendedor_id) if jugada.revendedor_id else None
@@ -63,10 +85,8 @@ def aprobar_jugada(sesion: Session, jugada: Jugada, reglas: ReglasSistema) -> Ju
     if sobrante > 0:
         cubierto_previo = sorteo.pozo_cubierto or 0.0
         if cubierto_previo >= base:
-            # Tramo 2: el base ya esta cubierto (o es 0 en vacantes), el sobrante suma como extra.
             aporte_extra = sobrante
         else:
-            # Tramo 1: el sobrante cubre el base; si sobra excedente, ese excedente ya es extra.
             faltante = base - cubierto_previo
             aporte_cubrir = round(min(sobrante, faltante), 2)
             aporte_extra = round(sobrante - aporte_cubrir, 2)
@@ -88,7 +108,13 @@ def aprobar_jugada(sesion: Session, jugada: Jugada, reglas: ReglasSistema) -> Ju
 
 
 def liquidar_sorteo(sorteo: Sorteo, sesion: Session, reglas: ReglasSistema) -> dict:
-    """Compara jugadas aprobadas contra resultados y asigna premios usando el plugin."""
+    """Compara jugadas aprobadas contra resultados y asigna premios usando el plugin.
+
+    RIFA delega a su propio modulo (premio fijo, excedente para la casa).
+    """
+    if sorteo.modalidad == "rifa":
+        return liquidar_sorteo_rifa(sorteo, sesion, reglas)
+
     modalidad = obtener(sorteo.modalidad)
     if modalidad is None:
         return {"error": f"Modalidad {sorteo.modalidad} no encontrada"}
@@ -132,15 +158,10 @@ def liquidar_sorteo(sorteo: Sorteo, sesion: Session, reglas: ReglasSistema) -> d
 
 
 ESTADOS_VENDIDAS = [EstadoJugada.APROBADA, EstadoJugada.GANADORA, EstadoJugada.PERDEDORA]
-ESTADOS_ACTIVAS_RIFA = [EstadoJugada.PENDIENTE, EstadoJugada.APROBADA]
 
 
 def nombres_participantes(sorteo_id: int, sesion: Session) -> str:
-    """Nombres de quienes jugaron el sorteo (jugadas vendidas), para el pozo vacante.
-
-    Se incluyen APROBADA, GANADORA y PERDEDORA porque el vacante se crea despues
-    de liquidar, cuando las jugadas ya no estan en estado APROBADA.
-    """
+    """Nombres de quienes jugaron el sorteo (jugadas vendidas), para el pozo vacante."""
     jugadas = (
         sesion.query(Jugada)
         .filter(Jugada.sorteo_id == sorteo_id, Jugada.estado.in_(ESTADOS_VENDIDAS))
@@ -153,9 +174,7 @@ def nombres_participantes(sorteo_id: int, sesion: Session) -> str:
 
 
 def crear_pozo_vacante(sesion: Session, origen: Sorteo, fecha, reglas: ReglasSistema) -> Sorteo:
-    """Crea el sorteo vacante: arranca con el pozo retenido del origen, SIN pozo base
-    (nada que recuperar): todo sobrante de las jugadas nuevas suma directo al pozo.
-    Los participantes deben volver a comprar jugadas."""
+    """Crea el sorteo vacante: arranca con el pozo retenido del origen, SIN pozo base."""
     hora = reglas.dict_horarios().get(origen.horario, "")
     titulo = f"Pozo vacante sorteo del {fecha.strftime('%d/%m/%Y')} a {hora}"
     nuevo = Sorteo(
@@ -173,38 +192,3 @@ def crear_pozo_vacante(sesion: Session, origen: Sorteo, fecha, reglas: ReglasSis
     )
     sesion.add(nuevo)
     return nuevo
-
-
-# ---------- RIFA: NUMEROS UNICOS (no se repiten entre jugadas) ----------
-
-def es_rifa_numero_unico(sorteo: Sorteo) -> bool:
-    """True si la modalidad es rifa de 1 numero por jugada (numeros no repetibles)."""
-    modalidad = obtener(sorteo.modalidad)
-    return bool(modalidad and modalidad.usa_premio_fijo and modalidad.cantidad_numeros == 1)
-
-
-def numeros_ocupados_rifa(sesion: Session, sorteo: Sorteo):
-    """Lista de numeros ya jugados (pendientes o aprobados) en una rifa de numero unico.
-    Devuelve None si el sorteo no es rifa de numero unico."""
-    if not es_rifa_numero_unico(sorteo):
-        return None
-    jugadas = (
-        sesion.query(Jugada)
-        .filter(Jugada.sorteo_id == sorteo.id, Jugada.estado.in_(ESTADOS_ACTIVAS_RIFA))
-        .all()
-    )
-    ocupados = set()
-    for j in jugadas:
-        for n in j.lista_numeros:
-            ocupados.add(n)
-    return sorted(ocupados)
-
-
-def validar_numeros_rifa(sesion: Session, sorteo: Sorteo, numeros: list[int]) -> None:
-    """Rechaza si algun numero ya esta jugado en esta rifa de numero unico."""
-    ocupados = numeros_ocupados_rifa(sesion, sorteo)
-    if ocupados is None:
-        return
-    for n in numeros:
-        if n in ocupados:
-            raise ValueError(f"El numero {n:02d} ya esta jugado en este sorteo; elegi otro")
