@@ -2,20 +2,7 @@ from sqlalchemy.orm import Session
 
 from app.modelos.juegos import EstadoJugada, EstadoSorteo, Jugada, ReglasSistema, Sorteo
 from app.modelos.usuario import Usuario
-from app.modulos_juegos.modalidades import obtener
-
-# Delegacion de RIFA: su logica vive aislada en app/modulos_juegos/rifa/.
-from app.modulos_juegos.rifa.aprobar import aprobar_jugada_rifa
-from app.modulos_juegos.rifa.liquidar import liquidar_sorteo_rifa
-from app.modulos_juegos.rifa.validar import (
-    es_rifa_numero_unico,
-    numeros_ocupados_rifa,
-    validar_numeros_rifa,
-)
-
-# Delegacion de CLASICO: su logica vive aislada en app/modulos_juegos/clasico/.
-from app.modulos_juegos.clasico.aprobar import aprobar_jugada_clasico
-from app.modulos_juegos.clasico.liquidar import liquidar_sorteo_clasico
+from app.modulos_juegos import descubrimiento
 
 __all__ = [
     "obtener_reglas",
@@ -55,113 +42,26 @@ def porcentajes_sorteo(sorteo: Sorteo, reglas: ReglasSistema):
 
 
 def aprobar_jugada(sesion: Session, jugada: Jugada, reglas: ReglasSistema) -> Jugada:
-    """Aprueba y reparte el precio.
+    """Aprueba y reparte el precio delegando en el modulo aprobar de la modalidad.
 
-    RIFA y CLASICO delegan a sus propios modulos. SEMANAL mantiene su regla historica
-    del pozo hasta que lo separemos.
+    El motor no sabe que modalidad es: pregunta al descubrimiento. Si la modalidad no
+    esta registrada o no trae aprobar.py, se rechaza (no se aprueba a ciegas).
     """
     sorteo = sesion.get(Sorteo, jugada.sorteo_id)
-    if sorteo is not None and sorteo.modalidad == "rifa":
-        return aprobar_jugada_rifa(sesion, jugada, reglas)
-    if sorteo is not None and sorteo.modalidad == "clasico":
-        return aprobar_jugada_clasico(sesion, jugada, reglas)
-
-    modalidad = obtener(sorteo.modalidad)
-    vendedor = sesion.get(Usuario, jugada.vendedor_id)
-    revendedor = sesion.get(Usuario, jugada.revendedor_id) if jugada.revendedor_id else None
-
-    casa_pct, linea_pct, pozo_pct = porcentajes_sorteo(sorteo, reglas)
-
-    vend_efectivo = linea_pct
-    if vendedor is not None and vendedor.comision_pct is not None:
-        vend_efectivo = min(vendedor.comision_pct, linea_pct)
-    rev_pct = 0.0
-    if revendedor is not None:
-        rev_pct = min(revendedor.comision_pct or 0.0, vend_efectivo)
-
-    precio = jugada.precio
-    base = base_pozo(sorteo)
-    sorteo.recaudado = (sorteo.recaudado or 0.0) + precio
-
-    sobrante = round(precio * pozo_pct / 100.0, 2) if (modalidad and modalidad.requiere_pozo) else 0.0
-
-    aporte_cubrir = 0.0
-    aporte_extra = 0.0
-    if sobrante > 0:
-        cubierto_previo = sorteo.pozo_cubierto or 0.0
-        if cubierto_previo >= base:
-            aporte_extra = sobrante
-        else:
-            faltante = base - cubierto_previo
-            aporte_cubrir = round(min(sobrante, faltante), 2)
-            aporte_extra = round(sobrante - aporte_cubrir, 2)
-
-    sorteo.pozo_cubierto = round((sorteo.pozo_cubierto or 0.0) + aporte_cubrir, 2)
-    sorteo.pozo_extra = round((sorteo.pozo_extra or 0.0) + aporte_extra, 2)
-
-    monto_rev = round(precio * rev_pct / 100.0, 2)
-    monto_vend = round(precio * vend_efectivo / 100.0, 2) - monto_rev
-    monto_casa = round(precio - monto_rev - monto_vend - aporte_extra - aporte_cubrir, 2)
-
-    jugada.estado = EstadoJugada.APROBADA
-    jugada.monto_casa = monto_casa
-    jugada.monto_vendedor = monto_vend
-    jugada.monto_revendedor = monto_rev
-    jugada.monto_pozo = aporte_extra
-    jugada.monto_cubrir = aporte_cubrir
-    return jugada
+    if sorteo is None:
+        raise ValueError("Sorteo no encontrado para la jugada")
+    fn = descubrimiento.obtener_aprobar(sorteo.modalidad)
+    if fn is None:
+        raise ValueError(f"La modalidad {sorteo.modalidad} no esta disponible para aprobar jugadas")
+    return fn(sesion, jugada, reglas)
 
 
 def liquidar_sorteo(sorteo: Sorteo, sesion: Session, reglas: ReglasSistema) -> dict:
-    """Compara jugadas aprobadas contra resultados y asigna premios usando el plugin.
-
-    RIFA y CLASICO delegan a sus propios modulos.
-    """
-    if sorteo.modalidad == "rifa":
-        return liquidar_sorteo_rifa(sorteo, sesion, reglas)
-    if sorteo.modalidad == "clasico":
-        return liquidar_sorteo_clasico(sorteo, sesion, reglas)
-
-    modalidad = obtener(sorteo.modalidad)
-    if modalidad is None:
-        return {"error": f"Modalidad {sorteo.modalidad} no encontrada"}
-
-    resultados = sorteo.lista_resultados
-    aprobadas = (
-        sesion.query(Jugada)
-        .filter(Jugada.sorteo_id == sorteo.id, Jugada.estado == EstadoJugada.APROBADA)
-        .all()
-    )
-    ganadoras = []
-    for j in aprobadas:
-        numeros = j.lista_numeros
-        if modalidad.gana(numeros, resultados):
-            ganadoras.append(j)
-        else:
-            j.estado = EstadoJugada.PERDEDORA
-            j.premio = 0.0
-
-    pozo_pagado = 0.0
-    if ganadoras:
-        premio_unitario = modalidad.calcular_premio(ganadoras, sorteo.pozo_actual, sorteo.premio_fijo)
-        for j in ganadoras:
-            j.estado = EstadoJugada.GANADORA
-            j.premio = premio_unitario
-        pozo_pagado = round(premio_unitario * len(ganadoras), 2)
-        if modalidad.requiere_pozo and not modalidad.usa_premio_fijo:
-            sorteo.pozo_inicial = 0.0
-            sorteo.pozo_extra = 0.0
-
-    sorteo.estado = EstadoSorteo.LIQUIDADO
-    return {
-        "sorteo_id": sorteo.id,
-        "modalidad": sorteo.modalidad,
-        "horario": sorteo.horario,
-        "jugadas_aprobadas": len(aprobadas),
-        "ganadoras": [j.id for j in ganadoras],
-        "pozo_pagado": round(pozo_pagado, 2),
-        "pozo_sin_ganador": round(sorteo.pozo_actual, 2) if not ganadoras else 0.0,
-    }
+    """Licuida delegando en el modulo liquidar de la modalidad descubierta."""
+    fn = descubrimiento.obtener_liquidar(sorteo.modalidad)
+    if fn is None:
+        return {"error": f"Modalidad {sorteo.modalidad} no encontrada o sin modulo de liquidacion"}
+    return fn(sorteo, sesion, reglas)
 
 
 ESTADOS_VENDIDAS = [EstadoJugada.APROBADA, EstadoJugada.GANADORA, EstadoJugada.PERDEDORA]
@@ -199,3 +99,32 @@ def crear_pozo_vacante(sesion: Session, origen: Sorteo, fecha, reglas: ReglasSis
     )
     sesion.add(nuevo)
     return nuevo
+
+
+# ---------- COMPAT: validacion de numeros unicos de rifa (resuelta dinamicamente) ----------
+# Los routers de rol llaman a estas funciones por nombre; se resuelven contra el modulo
+# validar de la modalidad rifa sin que el motor la importe estaticamente.
+
+def _modulo_validar_rifa():
+    return descubrimiento.obtener_modulo("rifa", "validar")
+
+
+def es_rifa_numero_unico(sorteo: Sorteo) -> bool:
+    m = _modulo_validar_rifa()
+    if m is None:
+        return False
+    return m.es_rifa_numero_unico(sorteo)
+
+
+def numeros_ocupados_rifa(sesion: Session, sorteo: Sorteo):
+    m = _modulo_validar_rifa()
+    if m is None:
+        return None
+    return m.numeros_ocupados_rifa(sesion, sorteo)
+
+
+def validar_numeros_rifa(sesion: Session, sorteo: Sorteo, numeros) -> None:
+    m = _modulo_validar_rifa()
+    if m is None:
+        return
+    return m.validar_numeros_rifa(sesion, sorteo, numeros)
