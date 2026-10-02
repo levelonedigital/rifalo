@@ -118,7 +118,6 @@ function leerFormSorteo() {
     busqueda_duracion_min: intOrNull("sorteo-busdur"),
   };
 
-  // Campos especificos de la modalidad activa.
   if (modalidad === "rifa") {
     const p = document.getElementById("rifa-premio").value;
     if (p) cuerpo.premio_fijo = parseFloat(p);
@@ -174,7 +173,6 @@ function empezarEdicion(id) {
   sorteo_edit_id = id;
   document.getElementById("sorteo-modalidad").value = s.modalidad;
   cambiarModalidadSorteo();
-  // Especificos segun modalidad.
   if (s.modalidad === "rifa") {
     document.getElementById("rifa-premio").value = s.premio_fijo ?? "";
     document.getElementById("rifa-premio-nombre").value = s.premio_nombre || "";
@@ -185,7 +183,6 @@ function empezarEdicion(id) {
   } else {
     document.getElementById("clasico-pozobase").value = s.pozo_base ?? "";
   }
-  // Comunes.
   document.getElementById("sorteo-horario").value = s.horario;
   document.getElementById("sorteo-fecha").value = s.fecha.slice(0,10);
   document.getElementById("sorteo-cierre").value = s.hora_cierre || "";
@@ -197,7 +194,6 @@ function empezarEdicion(id) {
   document.getElementById("sorteo-busini").value = s.busqueda_inicio_min ?? "";
   document.getElementById("sorteo-busint").value = s.busqueda_intervalo_min ?? "";
   document.getElementById("sorteo-busdur").value = s.busqueda_duracion_min ?? "";
-  // Imagen.
   imagen_data_pending = null;
   const urlInput = document.getElementById("sorteo-imagen");
   const actual = s.imagen_url || "";
@@ -524,4 +520,232 @@ async function cargarLiquidaciones() {
       let estado;
       if (l.pagado_admin && l.cobrado_vendedor) estado = "<span class='ok'>Pagado y cobrado ✔</span>";
       else if (l.pagado_admin) estado = "<span class='warn'>Pagado por vos; esperando confirmacion del vendedor</span>";
-      else estado = "<span class='chico'>Pendiente de pago
+      else estado = "<span class='chico'>Pendiente de pago</span>";
+      html += "<tr><td>" + l.id + "</td><td>" + l.vendedor + "</td><td>" + fmtFecha(l.desde) + "</td><td>" + fmtFecha(l.hasta) + "</td><td><b>$" + l.monto + "</b></td><td>" + estado + "</td><td>";
+      html += "<button class='secundario' onclick='verDetalleLiq(" + l.id + ")'>Ver detalle</button>";
+      if (!l.pagado_admin) html += "<button onclick='marcarLiqPagada(" + l.id + ")'>Marcar pagado</button>";
+      html += "</td></tr>";
+    });
+    caja.innerHTML = html + "</table>";
+  } catch (e) { aviso(e.message, true); }
+}
+
+async function generarLiquidacion() {
+  const vid = document.getElementById("pago-vendedor").value;
+  const desde = document.getElementById("pago-desde").value;
+  const hasta = document.getElementById("pago-hasta").value;
+  if (!vid) { aviso("Elegi un vendedor para liquidar", true); return; }
+  if (!desde || !hasta) { aviso("Pone la fecha DESDE y HASTA", true); return; }
+  try {
+    const d = await api("/admin/vendedores/" + vid + "/liquidaciones", "POST", { desde: desde, hasta: hasta });
+    aviso("Liquidacion #" + d.id + " generada por $" + d.monto + " para " + d.vendedor + ". Revisala con 'Ver detalle' y marcala pagada cuando pagues.");
+    cargarLiquidaciones();
+  } catch (e) { aviso(e.message, true); }
+}
+
+async function marcarLiqPagada(id) {
+  if (!confirm("Confirmas que ya le pagaste al vendedor la liquidacion #" + id + "?")) return;
+  try { await api("/admin/liquidaciones/" + id + "/marcar-pagado", "POST"); aviso("Liquidacion #" + id + " marcada como pagada"); cargarLiquidaciones(); }
+  catch (e) { aviso(e.message, true); }
+}
+
+function verDetalleLiq(id) {
+  const l = LIQ_CACHE[id];
+  if (!l) return;
+  const caja = document.getElementById("detalle-liquidacion");
+  if (!caja) return;
+  let html = "<h3>Liquidacion #" + l.id + " - " + l.vendedor + " (" + l.vendedor_usuario + ")</h3>";
+  html += "<p>Periodo: " + fmtFecha(l.desde) + " a " + fmtFecha(l.hasta) + " | <b>Total a cobrar: $" + l.monto + "</b></p>";
+  html += "<table><tr><th>Sorteo</th><th>Modalidad</th><th>Horario</th><th>Dia</th><th>Jugadas vendidas</th><th>Vendido</th><th>Comision</th></tr>";
+  (l.detalle || []).forEach(d => {
+    html += "<tr><td>#" + d.sorteo_id + "</td><td>" + d.modalidad + "</td><td>" + d.horario + "</td><td>" + fmtFecha(d.fecha) + "</td><td>" + d.jugadas + "</td><td>$" + d.vendido + "</td><td>$" + d.comision + "</td></tr>";
+  });
+  html += "</table>";
+  caja.innerHTML = html;
+  caja.scrollIntoView({ behavior: "smooth" });
+}
+
+// ---------- ADMIN: JUGADAS ----------
+async function iniciarJugadas() {
+  if (SORT_ACTUAL) {
+    document.getElementById("jugadas-selector").style.display = "none";
+    document.getElementById("jugadas-estado-filtro").style.display = "block";
+  } else {
+    document.getElementById("jugadas-selector").style.display = "grid";
+    document.getElementById("jugadas-estado-filtro").style.display = "none";
+    await llenarSelectJugadasSorteos();
+  }
+  cargarJugadasAdmin();
+}
+
+async function llenarSelectJugadasSorteos() {
+  try {
+    const sorteos = await api("/admin/sorteos", "GET");
+    sorteos.forEach(s => { SORT_CACHE[s.id] = s; });
+    document.getElementById("jugadas-sorteo").innerHTML = "<option value=''>Elegi un sorteo para ver sus jugadas...</option>" +
+      sorteos.map(s => "<option value='" + s.id + "'>#" + s.id + " " + (s.titulo || s.modalidad) + " " + s.horario + " " + fmtFecha(s.fecha) + " (" + s.estado + ")</option>").join("");
+  } catch (e) { aviso(e.message, true); }
+}
+
+async function cargarJugadasAdmin() {
+  const enModo = Boolean(SORT_ACTUAL);
+  const sorteoId = enModo ? SORT_ACTUAL : document.getElementById("jugadas-sorteo").value;
+  const estado = enModo ? document.getElementById("jugadas-filtro-modo").value : document.getElementById("jugadas-filtro").value;
+  const caja = document.getElementById("lista-jugadas-admin");
+  if (!sorteoId) {
+    caja.innerHTML = "<p class='chico'>Seleccioná un sorteo para ver sus jugadas (o usa el boton Detalles en la pestana Sorteos).</p>";
+    return;
+  }
+  let ruta = "/admin/jugadas?sorteo_id=" + sorteoId;
+  if (estado) ruta += "&estado=" + estado;
+  try {
+    const js = await api(ruta, "GET");
+    if (!js.length) { caja.innerHTML = "<p class='chico'>Este sorteo no tiene jugadas con ese filtro.</p>"; return; }
+    let html = "<table><tr><th>#</th><th>Jugador</th><th>Vendedor</th><th>Numeros</th><th>Precio</th><th>Estado</th><th>Premio</th><th></th></tr>";
+    js.forEach(j => {
+      html += "<tr><td>" + j.id + "</td><td>" + (j.jugador_nombre || "-") + "</td><td>" + j.vendedor + "</td><td>" + j.numeros + "</td><td>$" + j.precio + "</td><td>" + j.estado + "</td><td>$" + (j.premio ?? "-") + "</td><td><button class='secundario' onclick='verJugada(" + j.id + ")'>Ver</button></td></tr>";
+    });
+    caja.innerHTML = html + "</table>";
+  } catch (e) { aviso(e.message, true); }
+}
+
+async function verJugada(id) {
+  try {
+    const j = await api("/admin/jugadas/" + id, "GET");
+    const s = j.sorteo || {};
+    document.getElementById("jugada-detalle").textContent =
+      "JUGADA #" + j.id +
+      "\nSorteo: #" + (s.id || "-") + " " + (s.modalidad || "") + " " + (s.horario || "") + " " + fmtFecha(s.fecha) + " (" + (s.estado || "") + ")" +
+      "\nVendedor: " + j.vendedor +
+      "\nRevendedor: " + (j.revendedor || "sin revendedor") +
+      "\nJugador: " + (j.jugador_nombre || "-") + (j.jugador_usuario ? " (usuario " + j.jugador_usuario + ")" : "") +
+      "\nNumeros: " + j.numeros +
+      "\nPrecio: $" + j.precio +
+      "\nEstado: " + j.estado +
+      "\nPremio: $" + (j.premio ?? 0) + (j.estado === "ganadora" ? (j.premio_pagado ? " (PAGADO)" : " (PENDIENTE DE PAGO)") : "") +
+      (j.estado === "ganadora" ? (j.premio_cobrado ? " - el jugador CONFIRMO QUE COBRO" : " - el jugador aun no confirmo el cobro") : "") +
+      "\nReparto: casa $" + (j.monto_casa ?? 0) + " | vendedor $" + (j.monto_vendedor ?? 0) + (j.comision_pagada ? " (comision PAGADA)" : " (comision PENDIENTE)") + " | revendedor $" + (j.monto_revendedor ?? 0) + " | pozo $" + (j.monto_pozo ?? 0) + " | cubrir $" + (j.monto_cubrir ?? 0) +
+      "\nCargada: " + ((j.creada_en || "").slice(0,19).replace("T"," "));
+  } catch (e) { aviso(e.message, true); }
+}
+
+// ---------- ADMIN: RESUMEN + LIQUIDACION ----------
+async function cargarResumen() {
+  const cajaLiq = document.getElementById("caja-liquidacion");
+  cajaLiq.innerHTML = "";
+  try {
+    if (SORT_ACTUAL) {
+      const r = await api("/admin/sorteos/" + SORT_ACTUAL + "/resumen", "GET");
+      const rotuloCob = r.es_premio_fijo ? "Premio cubierto" : "Pozo cubierto";
+      document.getElementById("caja-resumen").innerHTML =
+        "<table><tr><th>Sorteo</th><th>Estado</th><th>Jugadas</th><th>Vendido</th><th>Casa (neta)</th><th>Vendedores</th><th>Revend.</th><th>Pozo</th><th>" + rotuloCob + "</th><th>Premios</th><th>Ganadoras</th></tr>" +
+        "<tr><td>#" + r.sorteo_id + " " + r.modalidad + " " + r.horario + "</td><td>" + r.estado + "</td><td>" + r.jugadas_vendidas + "</td><td>$" + r.vendido + "</td><td>$" + r.casa + "</td><td>$" + r.vendedores + "</td><td>$" + r.revendedores + "</td><td>$" + r.pozo + "</td><td>$" + r.pozo_cubierto + " / $" + r.costo + (r.costo_cubierto ? " ✔" : " ✘") + "</td><td>$" + r.premios_pagados + "</td><td>" + (r.ganadoras.join(", ") || "-") + "</td></tr></table>" +
+        "<p class='chico'>Recaudado $" + r.recaudado + ". " + (r.es_premio_fijo ? "Casa bruta $" + r.casa_bruta + " menos premios $" + r.premios_pagados + " = ganancia neta $" + r.casa + ". " : "Pozo aportado (cobertura + extra): $" + r.pozo_aportado + ". ") + "Resultados: " + (r.resultados || "sin cargar") + "</p>";
+      if (r.estado === "liquidado") await cargarLiquidacion(SORT_ACTUAL);
+      return;
+    }
+    const r = await api("/admin/resumen-general", "GET");
+    document.getElementById("caja-resumen").innerHTML = "<table><tr><th>Jugadas</th><th>Vendido</th><th>Casa (neta)</th><th>Vendedores</th><th>Revendedores</th><th>Premios</th></tr><tr><td>" + r.jugadas_aprobadas + "</td><td>$" + r.vendido + "</td><td>$" + r.casa + "</td><td>$" + r.vendedores + "</td><td>$" + r.revendedores + "</td><td>$" + r.premios_pagados + "</td></tr></table>";
+  } catch (e) { aviso(e.message, true); }
+}
+
+async function cargarLiquidacion(sorteoId) {
+  try {
+    const d = await api("/admin/sorteos/" + sorteoId + "/liquidacion", "GET");
+    let html = "<h2>Detalle de liquidacion</h2>";
+    html += "<p><b>Resultados oficiales:</b> " + (d.resultados || "-") + "</p>";
+    if (d.premio_nombre) html += "<p><b>Premio:</b> " + d.premio_nombre + "</p>";
+    if (d.es_premio_fijo) {
+      html += "<p><b>Casa bruta:</b> $" + d.casa_bruta + " | <b>Premios pagados:</b> $" + d.pozo_pagado + " | <b>Ganadores:</b> " + d.cantidad_ganadoras + "</p>";
+    } else {
+      html += "<p><b>Pozo formado:</b> $" + d.pozo_formado + " | <b>Pozo pagado en premios:</b> $" + d.pozo_pagado + " | <b>Ganadores:</b> " + d.cantidad_ganadoras + "</p>";
+    }
+    html += "<p><b>Ganancia casa (admin, neta):</b> $" + d.casa + " | <b>Vendedores:</b> $" + d.vendedores + " | <b>Revendedores:</b> $" + d.revendedores + "</p>";
+    if (d.ganadoras.length) {
+      html += "<table><tr><th>Jugada</th><th>Ganador</th><th>Numeros ganadores</th><th>Premio</th><th>Premio pagado</th><th>Jugador cobro</th><th>Vendedor</th><th>Comision pagada</th></tr>";
+      d.ganadoras.forEach(g => {
+        html += "<tr><td>#" + g.jugada_id + "</td><td>" + g.jugador + "</td><td>" + g.numeros + "</td><td>$" + g.premio + "</td>" +
+          "<td>" + (g.premio_pagado ? "✔ PAGADO" : "✘ PENDIENTE") + " <button class='secundario' onclick='marcarPremio(" + g.jugada_id + "," + (!g.premio_pagado) + ")'>" + (g.premio_pagado ? "Desmarcar" : "Marcar pagado") + "</button></td>" +
+          "<td>" + (g.premio_cobrado ? "✔ CONFIRMO COBRO" : "✘ no confirmo") + "</td>" +
+          "<td>" + g.vendedor + "</td>" +
+          "<td>" + (g.comision_pagada ? "✔ PAGADA" : "✘ PENDIENTE") + " <button class='secundario' onclick='marcarComision(" + g.jugada_id + "," + (!g.comision_pagada) + ")'>" + (g.comision_pagada ? "Desmarcar" : "Marcar pagada") + "</button></td></tr>";
+      });
+      html += "</table>";
+    } else {
+      html += "<p class='chico'>Este sorteo no tuvo ganadores; el pozo queda retenido para el pozo vacante.</p>";
+    }
+    document.getElementById("caja-liquidacion").innerHTML = html;
+  } catch (e) { /* ignora */ }
+}
+
+async function marcarPremio(jugadaId, pagado) {
+  try { await api("/admin/jugadas/" + jugadaId + "/marcar-premio", "POST", { pagado: pagado }); cargarResumen(); }
+  catch (e) { aviso(e.message, true); }
+}
+
+async function marcarComision(jugadaId, pagado) {
+  try { await api("/admin/jugadas/" + jugadaId + "/marcar-comision", "POST", { pagado: pagado }); cargarResumen(); }
+  catch (e) { aviso(e.message, true); }
+}
+
+// ---------- ADMIN: BALANCE ----------
+async function cargarBalance() {
+  const periodo = document.getElementById("bal-periodo").value;
+  const fechaVal = document.getElementById("bal-fecha").value;
+  let ruta = "/admin/balance?periodo=" + periodo;
+  if (fechaVal) ruta += "&fecha=" + fechaVal;
+  try {
+    const d = await api(ruta, "GET");
+    let html = "<p><b>Periodo:</b> " + periodo + " | <b>Desde:</b> " + fmtFecha(d.desde) + " | <b>Hasta:</b> " + fmtFecha(d.hasta) + " | <b>Sorteos liquidados:</b> " + d.sorteos_liquidados + "</p>";
+    html += "<table><tr><th>Vendido</th><th>Casa (ganancia admin neta)</th><th>Vendedores</th><th>Revendedores</th><th>Pozo formado</th><th>Premios pagados</th></tr>" +
+      "<tr><td>$" + d.totales.vendido + "</td><td>$" + d.totales.casa + "</td><td>$" + d.totales.vendedores + "</td><td>$" + d.totales.revendedores + "</td><td>$" + d.totales.pozo_formado + "</td><td>$" + d.totales.premios + "</td></tr></table>";
+    if (d.por_sorteo.length) {
+      html += "<h3 style='color:#93c5fd;margin-top:12px'>Detalle por sorteo</h3>";
+      html += "<table><tr><th>#</th><th>Modalidad</th><th>Horario</th><th>Dia</th><th>Vendido</th><th>Casa</th><th>Vendedores</th><th>Pozo</th><th>Premios</th></tr>";
+      d.por_sorteo.forEach(s => {
+        html += "<tr><td>" + s.sorteo_id + "</td><td>" + s.modalidad + "</td><td>" + s.horario + "</td><td>" + fmtFecha(s.fecha) + "</td><td>$" + s.vendido + "</td><td>$" + s.casa + "</td><td>$" + s.vendedores + "</td><td>$" + s.pozo_formado + "</td><td>$" + s.premios + "</td></tr>";
+      });
+      html += "</table>";
+    } else {
+      html += "<p class='chico'>No hay sorteos liquidados en este periodo.</p>";
+    }
+    document.getElementById("caja-balance").innerHTML = html;
+  } catch (e) { aviso(e.message, true); }
+}
+
+// ---------- ADMIN: AUDITORIA ----------
+function coincideSorteo(log, id, idsJugadas) {
+  const d = log.detalle || "";
+  if (d.includes("sorteo=" + id)) return true;
+  if (d.includes("sorteo_id': " + id)) return true;
+  if (d.includes("id=" + id + " ")) return true;
+  for (const jid of idsJugadas) {
+    if (d.includes("jugada=" + jid)) return true;
+  }
+  return false;
+}
+
+async function cargarAuditoria() {
+  try {
+    let logs = await api("/admin/auditoria?limite=300", "GET");
+    if (SORT_ACTUAL) {
+      const js = await api("/admin/jugadas?sorteo_id=" + SORT_ACTUAL, "GET");
+      const ids = js.map(j => j.id);
+      logs = logs.filter(l => coincideSorteo(l, SORT_ACTUAL, ids));
+    }
+    let html = "<table><tr><th>Fecha</th><th>Usuario</th><th>Accion</th><th>Detalle</th></tr>";
+    logs.forEach(l => { html += "<tr><td>" + l.fecha.slice(0,19).replace("T"," ") + "</td><td>" + (l.nombre_usuario || "-") + "</td><td>" + l.accion + "</td><td>" + (l.detalle || "") + "</td></tr>"; });
+    document.getElementById("lista-auditoria").innerHTML = html + "</table>";
+  } catch (e) { aviso(e.message, true); }
+}
+
+// ---------- REGISTRO DE PESTANAS DEL ADMIN ----------
+window.ACCIONES = window.ACCIONES || {};
+ACCIONES.sorteos = iniciarSorteos;
+ACCIONES.buscador = cargarEstadoBuscador;
+ACCIONES.vendedores = cargarVendedores;
+ACCIONES.pagos = cargarPagos;
+ACCIONES.jugadas = iniciarJugadas;
+ACCIONES.resumen = cargarResumen;
+ACCIONES.balance = cargarBalance;
+ACCIONES.auditoria = cargarAuditoria;
