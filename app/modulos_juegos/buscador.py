@@ -11,6 +11,7 @@ from app.core.config import Configuracion
 from app.core.database import SessionLocal
 from app.modulos_juegos.modalidades import obtener
 from app.modulos_juegos.motor import liquidar_sorteo, obtener_reglas
+from app.modulos_juegos.registro_ciclo import obtener_ciclo
 from app.modelos.juegos import Aviso, EstadoSorteo, Sorteo
 
 _intentos = {}
@@ -71,12 +72,7 @@ def _duracion_min(sorteo, reglas):
 
 
 def obtener_resultado_oficial(nombre_horario: str, fecha: datetime):
-    """Lee los 20 numeros del horario en la fecha dada desde la API oficial de la Caja.
-
-    Paso 1: /api/extracto/?fecha_sorteo=AAAA-MM-DD  -> lista los sorteos del dia.
-    Paso 2: /api/extracto-registro/?id=<id>          -> los 20 numeros de ese sorteo.
-    Devuelve la lista de 20 numeros (ultimos 2 digitos) ordenada por posicion, o None.
-    """
+    """Lee los 20 numeros del horario en la fecha dada desde la API oficial de la Caja."""
     tipo = TIPOS_QUINIELA.get(nombre_horario)
     if tipo is None:
         return None
@@ -109,11 +105,7 @@ def obtener_resultado_oficial(nombre_horario: str, fecha: datetime):
 
 
 def costo_a_cubrir(sorteo: Sorteo) -> float:
-    """Costo de referencia: minimo explicito, premio fijo (rifa) o pozo base.
-
-    En vacantes (solo_participantes sin pozo base) no hay costo que cubrir:
-    el pozo ya arranca con el monto retenido del sorteo anterior.
-    """
+    """Costo de referencia: minimo explicito, premio fijo (rifa) o pozo base."""
     if sorteo.minimo_cubrir is not None:
         return sorteo.minimo_cubrir
     if sorteo.modalidad == "rifa":
@@ -126,13 +118,6 @@ def costo_a_cubrir(sorteo: Sorteo) -> float:
 def pozo_cubierto_total(sorteo: Sorteo) -> float:
     """Acumulado de sobrantes destinados al pozo (cubrir base + extra)."""
     return (sorteo.pozo_cubierto or 0.0) + (sorteo.pozo_extra or 0.0)
-
-
-def _es_premio_fijo(sorteo: Sorteo) -> bool:
-    """True si la modalidad usa premio fijo (rifa). En ese caso no hay pozo que cubrir:
-    el premio lo paga la casa, asi que el chequeo de cobertura por sobrantes no aplica."""
-    m = obtener(sorteo.modalidad)
-    return bool(m and m.usa_premio_fijo)
 
 
 def estado_busquedas():
@@ -152,11 +137,11 @@ def estado_busquedas():
 
 
 def chequeo_costo(sesion, reglas, ahora: datetime):
-    """A 30 min del horario oficial, avisa al admin si el acumulado de sobrantes no cubre el costo.
+    """A 30 min del horario oficial, avisa al admin si el acumulado no cubre el costo.
 
-    Se saltea en modalidades con premio fijo (rifa): ahi no hay pozo que cubrir con sobrantes,
-    el premio se paga de la casa. La cobertura informativa de rifa se ve en la columna
-    "Premio cubierto" del listado de sorteos (router_admin)."""
+    Se saltea en modalidades que tienen ciclo propio (hoy rifa): esas manejan su
+    preventivo y su cancelacion en su propio modulo de ciclo.
+    """
     pendientes = (
         sesion.query(Sorteo)
         .filter(
@@ -166,7 +151,7 @@ def chequeo_costo(sesion, reglas, ahora: datetime):
         .all()
     )
     for sorteo in pendientes:
-        if _es_premio_fijo(sorteo):
+        if obtener_ciclo(sorteo.modalidad):
             continue
         hhmm = reglas.dict_horarios().get(sorteo.horario)
         if not hhmm:
@@ -189,7 +174,7 @@ def chequeo_costo(sesion, reglas, ahora: datetime):
 
 def _actualizar_semanal(sesion, sorteo_dia: Sorteo, reglas):
     """Alimenta al semanal abierto cuyo horario coincida y cuyo rango de dias incluya
-    el dia del sorteo diario. Cada semanal usa SU PROPIA configuracion de dias."""
+    el dia del sorteo diario."""
     dia = sorteo_dia.fecha.weekday()
     semanal = (
         sesion.query(Sorteo)
@@ -226,6 +211,8 @@ def ciclo():
         chequeo_costo(sesion, reglas, ahora)
 
         # 1) CIERRE AUTOMATICO en la hora_cierre (o horario oficial si no tiene cierre).
+        #    Las modalidades con ciclo propio (rifa) hacen su preventivo antes del cierre
+        #    y su cancelacion automatica al cierre.
         programados = (
             sesion.query(Sorteo)
             .filter(Sorteo.estado == EstadoSorteo.PROGRAMADO, Sorteo.modalidad != "semanal")
@@ -238,10 +225,29 @@ def ciclo():
             cierre = _momento_cierre(sorteo)
             if cierre is None:
                 cierre = _momento_horario(sorteo, hhmm)
+
+            ciclo_mod = obtener_ciclo(sorteo.modalidad)
+
+            # Preventivo (solo modalidades con ciclo propio): 60 min antes del cierre.
+            if ciclo_mod and hasattr(ciclo_mod, "chequeo_preventivo"):
+                ciclo_mod.chequeo_preventivo(sorteo, sesion, reglas, ahora, cierre)
+
             if ahora >= cierre:
-                sorteo.estado = EstadoSorteo.CERRADO
-                auditoria.registrar(sesion, "SORTEO_CERRADO_AUTO", detalle=f"sorteo={sorteo.id} cierre={sorteo.hora_cierre or sorteo.horario}")
-                sesion.commit()
+                if ciclo_mod and hasattr(ciclo_mod, "debe_cancelar_al_cierre") and ciclo_mod.debe_cancelar_al_cierre(sorteo, sesion, reglas):
+                    sorteo.estado = EstadoSorteo.REPROGRAMANDO
+                    msg = (
+                        ciclo_mod.mensaje_reprogramacion(sorteo)
+                        if hasattr(ciclo_mod, "mensaje_reprogramacion")
+                        else f"Sorteo #{sorteo.id}: no cumplio los requisitos; se reprograma."
+                    )
+                    aviso = Aviso(texto=msg, destino="todos")
+                    sesion.add(aviso)
+                    auditoria.registrar(sesion, "SORTEO_REPROGRAMADO_AUTO", detalle=f"sorteo={sorteo.id} no cubrio la meta al cierre")
+                    sesion.commit()
+                else:
+                    sorteo.estado = EstadoSorteo.CERRADO
+                    auditoria.registrar(sesion, "SORTEO_CERRADO_AUTO", detalle=f"sorteo={sorteo.id} cierre={sorteo.hora_cierre or sorteo.horario}")
+                    sesion.commit()
 
         # 2) BUSQUEDA AUTOMATICA con TRIPLE CHECK en sorteos cerrados sin resultado.
         pendientes = (
@@ -262,13 +268,11 @@ def ciclo():
             inicio = _inicio_min(sorteo, reglas)
             intervalo = _intervalo_min(sorteo, reglas)
             duracion = _duracion_min(sorteo, reglas)
-            # Empieza a buscar recien pasado el inicio configurado para ESTE sorteo.
             if ahora < momento + timedelta(minutes=inicio):
                 continue
 
             estado = _intentos.setdefault(sorteo.id, {"primero": ahora, "lecturas": [], "ultimo_ts": None})
 
-            # Respeta el intervalo de reintento propio de este sorteo.
             ultimo_ts = estado.get("ultimo_ts")
             if ultimo_ts is not None and (ahora - ultimo_ts) < timedelta(minutes=intervalo):
                 continue
