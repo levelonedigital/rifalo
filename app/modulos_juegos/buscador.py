@@ -9,9 +9,8 @@ import requests
 from app.core import auditoria
 from app.core.config import Configuracion
 from app.core.database import SessionLocal
-from app.modulos_juegos.modalidades import obtener
+from app.modulos_juegos import descubrimiento
 from app.modulos_juegos.motor import liquidar_sorteo, obtener_reglas
-from app.modulos_juegos.registro_ciclo import obtener_ciclo
 from app.modelos.juegos import Aviso, EstadoSorteo, Sorteo
 
 _intentos = {}
@@ -139,8 +138,8 @@ def estado_busquedas():
 def chequeo_costo(sesion, reglas, ahora: datetime):
     """A 30 min del horario oficial, avisa al admin si el acumulado no cubre el costo.
 
-    Se saltea en modalidades que tienen ciclo propio (hoy rifa): esas manejan su
-    preventivo y su cancelacion en su propio modulo de ciclo.
+    Se saltea en modalidades que tienen ciclo propio (hoy rifa y clasico): esas manejan
+    su preventivo y su cancelacion en su propio modulo de ciclo.
     """
     pendientes = (
         sesion.query(Sorteo)
@@ -151,7 +150,7 @@ def chequeo_costo(sesion, reglas, ahora: datetime):
         .all()
     )
     for sorteo in pendientes:
-        if obtener_ciclo(sorteo.modalidad):
+        if descubrimiento.obtener_modulo(sorteo.modalidad, "ciclo"):
             continue
         hhmm = reglas.dict_horarios().get(sorteo.horario)
         if not hhmm:
@@ -211,8 +210,8 @@ def ciclo():
         chequeo_costo(sesion, reglas, ahora)
 
         # 1) CIERRE AUTOMATICO en la hora_cierre (o horario oficial si no tiene cierre).
-        #    Las modalidades con ciclo propio (rifa) hacen su preventivo antes del cierre
-        #    y su cancelacion automatica al cierre.
+        #    Las modalidades con ciclo propio hacen su preventivo antes del cierre y su
+        #    cancelacion automatica al cierre.
         programados = (
             sesion.query(Sorteo)
             .filter(Sorteo.estado == EstadoSorteo.PROGRAMADO, Sorteo.modalidad != "semanal")
@@ -226,7 +225,7 @@ def ciclo():
             if cierre is None:
                 cierre = _momento_horario(sorteo, hhmm)
 
-            ciclo_mod = obtener_ciclo(sorteo.modalidad)
+            ciclo_mod = descubrimiento.obtener_modulo(sorteo.modalidad, "ciclo")
 
             # Preventivo (solo modalidades con ciclo propio): 60 min antes del cierre.
             if ciclo_mod and hasattr(ciclo_mod, "chequeo_preventivo"):
