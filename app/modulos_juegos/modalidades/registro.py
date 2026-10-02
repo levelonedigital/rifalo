@@ -1,6 +1,6 @@
 from app.modulos_juegos.modalidades.clasico import ModalidadClasico
-from app.modulos_juegos.modalidades.rifa import ModalidadRifa
 from app.modulos_juegos.modalidades.semanal import ModalidadSemanal
+from app.modulos_juegos.rifa.plugin import ModalidadRifa
 
 REGISTRO = {
     ModalidadClasico.clave: ModalidadClasico(),
@@ -25,6 +25,7 @@ def listar():
             "permite_repetidos": m.permite_repetidos,
             "requiere_pozo": m.requiere_pozo,
             "usa_premio_fijo": m.usa_premio_fijo,
+            "oculta": getattr(m, "oculta", False),
         }
         for m in REGISTRO.values()
     ]
