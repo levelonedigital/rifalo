@@ -1,25 +1,19 @@
 """Ciclo propio de CLASICO: preventivo antes del cierre y cancelacion automatica al cierre.
 
-La meta de clasico es el pozo inicial (o minimo_cubrir si el admin lo pisa).
-El acumulado es la suma de sobrantes (pozo_cubierto + pozo_extra).
-Independiente de rifa y de semanal.
+Independiente de rifa y de semanal. Lee su meta y su acumulado de cobertura.py.
 """
 from datetime import timedelta
 
 from app.modelos.juegos import Aviso
 
-
-def meta_cobertura_clasico(sorteo) -> float:
-    if sorteo.minimo_cubrir is not None:
-        return sorteo.minimo_cubrir
-    return sorteo.pozo_inicial or 0.0
-
-
-def acumulado_cobertura_clasico(sorteo) -> float:
-    return (sorteo.pozo_cubierto or 0.0) + (sorteo.pozo_extra or 0.0)
+from app.modulos_juegos.clasico.cobertura import (
+    acumulado_cobertura_clasico,
+    meta_cobertura_clasico,
+)
 
 
 def chequeo_preventivo(sorteo, sesion, reglas, ahora, momento_cierre) -> bool:
+    """60 min antes del cierre, avisa SOLO al admin si va por debajo de la meta."""
     if sorteo.aviso_costo_enviado:
         return False
     if ahora < momento_cierre - timedelta(minutes=60):
@@ -44,6 +38,7 @@ def chequeo_preventivo(sorteo, sesion, reglas, ahora, momento_cierre) -> bool:
 
 
 def debe_cancelar_al_cierre(sorteo, sesion, reglas) -> bool:
+    """Al cerrar, si el acumulado no llego a la meta, el clasico se reprograma."""
     return acumulado_cobertura_clasico(sorteo) < meta_cobertura_clasico(sorteo)
 
 
