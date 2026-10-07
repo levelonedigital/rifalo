@@ -89,7 +89,6 @@ async function jCargarJugada() {
 }
 
 // ---------- JUGADOR: RESULTADOS Y COBRO ----------
-// --------------------------------- JUGADOR: RESULTADOS Y COBRO ----------
 
 async function cargarResultadosJugador() {
     const caja = document.getElementById("lista-resultados-jugador");
@@ -138,15 +137,6 @@ async function confirmarCobroJugador(jugadaId) {
         aviso("Gracias, confirmaste el cobro de tu premio.");
         cargarResultadosJugador();
     } catch (e) { aviso(e.message, true); }
-}
-
-async function confirmarCobroJugador(jugadaId) {
-  if (!confirm("Confirma que ya cobraste este premio?")) return;
-  try {
-    await api("/jugador/jugadas/" + jugadaId + "/confirmar-cobro", "POST");
-    aviso("Gracias, confirmaste el cobro de tu premio.");
-    cargarResultadosJugador();
-  } catch (e) { aviso(e.message, true); }
 }
 
 // ---------- REGISTRO DE PESTANAS DEL JUGADOR ----------
