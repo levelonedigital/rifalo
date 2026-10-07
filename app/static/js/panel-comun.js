@@ -585,3 +585,31 @@ if (_cod) {
 }
 
 if (token) { mostrarPanel(); }
+
+// ---------- DISPLAY DE RESULTADOS EN 2 COLUMNAS (1º a 10º / 11º a 20º) ----------
+function etiquetaPremio(indice, numero) {
+  if (numero === undefined || numero === null) return "";
+  const puesto = indice + 1;
+  const numTxt = String(numero).padStart(4, "0");
+  return "<b>" + puesto + "º premio:</b> <span class='nums'>" + numTxt + "</span>";
+}
+
+function resultadosColumnaHTML(resultados) {
+  if (!resultados || !resultados.length) return "";
+  const filas = Math.ceil(resultados.length / 2);
+  let html = "<table style='border-collapse:collapse;margin:8px 0;'>";
+  for (let i = 0; i < filas; i++) {
+    const izquierda = i;
+    const derecha = i + filas;
+    html += "<tr>";
+    html += "<td style='padding:3px 16px 3px 0;white-space:nowrap'>" + etiquetaPremio(izquierda, resultados[izquierda]) + "</td>";
+    if (derecha < resultados.length) {
+      html += "<td style='padding:3px 0;white-space:nowrap'>" + etiquetaPremio(derecha, resultados[derecha]) + "</td>";
+    } else {
+      html += "<td></td>";
+    }
+    html += "</tr>";
+  }
+  html += "</table>";
+  return html;
+}
