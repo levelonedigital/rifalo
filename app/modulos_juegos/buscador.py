@@ -1,4 +1,3 @@
-import re
 import threading
 import time
 import unicodedata
@@ -15,7 +14,6 @@ from app.modelos.juegos import Aviso, EstadoSorteo, Sorteo
 
 _intentos = {}
 
-# Mapeo de horarios del sistema a los "tipo" de la API oficial de la Caja.
 TIPOS_QUINIELA = {
     "matutina": 1,
     "vespertina": 2,
@@ -52,12 +50,6 @@ def _momento_cierre(sorteo: Sorteo):
     return datetime(f.year, f.month, f.day, hora, minuto, 0, tzinfo=_zona())
 
 
-def _normalizar(texto: str) -> str:
-    return "".join(
-        c for c in unicodedata.normalize("NFD", texto.upper()) if unicodedata.category(c) != "Mn"
-    )
-
-
 def _inicio_min(sorteo, reglas):
     return sorteo.busqueda_inicio_min if sorteo.busqueda_inicio_min is not None else (reglas.busqueda_inicio_min or 35)
 
@@ -71,7 +63,6 @@ def _duracion_min(sorteo, reglas):
 
 
 def obtener_resultado_oficial(nombre_horario: str, fecha: datetime):
-    """Lee los 20 numeros del horario en la fecha dada desde la API oficial de la Caja."""
     tipo = TIPOS_QUINIELA.get(nombre_horario)
     if tipo is None:
         return None
@@ -88,7 +79,6 @@ def obtener_resultado_oficial(nombre_horario: str, fecha: datetime):
                 break
         if id_extracto is None:
             return None
-
         r2 = requests.get(_URL_API + "extracto-registro/", params={"id": id_extracto}, timeout=10, headers=cabeceras)
         r2.raise_for_status()
         registros = r2.json()
@@ -104,7 +94,6 @@ def obtener_resultado_oficial(nombre_horario: str, fecha: datetime):
 
 
 def costo_a_cubrir(sorteo: Sorteo) -> float:
-    """Costo de referencia: minimo explicito, premio fijo (rifa) o pozo base."""
     if sorteo.minimo_cubrir is not None:
         return sorteo.minimo_cubrir
     if sorteo.modalidad == "rifa":
@@ -115,7 +104,6 @@ def costo_a_cubrir(sorteo: Sorteo) -> float:
 
 
 def pozo_cubierto_total(sorteo: Sorteo) -> float:
-    """Acumulado de sobrantes destinados al pozo (cubrir base + extra)."""
     return (sorteo.pozo_cubierto or 0.0) + (sorteo.pozo_extra or 0.0)
 
 
@@ -135,12 +123,30 @@ def estado_busquedas():
     return resultado
 
 
-def chequeo_costo(sesion, reglas, ahora: datetime):
-    """A 30 min del horario oficial, avisa al admin si el acumulado no cubre el costo.
+def _cierra_por_horario(sorteo: Sorteo) -> bool:
+    """True si la modalidad del sorteo cierra por horario (rifa, clasico). Semanal no."""
+    plugin = descubrimiento.obtener_plugin(sorteo.modalidad)
+    if plugin is None:
+        return False
+    return bool(getattr(plugin, "cierra_por_horario", True))
 
-    Se saltea en modalidades que tienen ciclo propio (hoy rifa y clasico): esas manejan
-    su preventivo y su cancelacion en su propio modulo de ciclo.
-    """
+
+def _hooks_post_diario(sesion, sorteo_dia, reglas):
+    """Al liquidar un sorteo diario, delega a las modalidades que definen
+    alimentar_desde_diario (semanal). El buscador no conoce ninguna modalidad."""
+    for hook in descubrimiento.hooks_post_diario():
+        try:
+            hook(sesion, sorteo_dia, reglas)
+        except Exception:
+            pass
+
+
+def _actualizar_semanal(sesion, sorteo_dia: Sorteo, reglas):
+    """Compat: router_admin llama a esta funcion; delega a los hooks de modalidades."""
+    _hooks_post_diario(sesion, sorteo_dia, reglas)
+
+
+def chequeo_costo(sesion, reglas, ahora: datetime):
     pendientes = (
         sesion.query(Sorteo)
         .filter(
@@ -151,6 +157,8 @@ def chequeo_costo(sesion, reglas, ahora: datetime):
     )
     for sorteo in pendientes:
         if descubrimiento.obtener_modulo(sorteo.modalidad, "ciclo"):
+            continue
+        if not _cierra_por_horario(sorteo):
             continue
         hhmm = reglas.dict_horarios().get(sorteo.horario)
         if not hhmm:
@@ -171,36 +179,6 @@ def chequeo_costo(sesion, reglas, ahora: datetime):
                 sesion.commit()
 
 
-def _actualizar_semanal(sesion, sorteo_dia: Sorteo, reglas):
-    """Alimenta al semanal abierto cuyo horario coincida y cuyo rango de dias incluya
-    el dia del sorteo diario."""
-    dia = sorteo_dia.fecha.weekday()
-    semanal = (
-        sesion.query(Sorteo)
-        .filter(
-            Sorteo.modalidad == "semanal",
-            Sorteo.estado != EstadoSorteo.LIQUIDADO,
-            Sorteo.horario == sorteo_dia.horario,
-        )
-        .order_by(Sorteo.id.desc())
-        .first()
-    )
-    if semanal is None:
-        return
-    ini = semanal.semanal_dia_inicio if semanal.semanal_dia_inicio is not None else (reglas.semanal_dia_inicio or 0)
-    fin = semanal.semanal_dia_fin if semanal.semanal_dia_fin is not None else (reglas.semanal_dia_fin or 4)
-    if not (ini <= dia <= fin):
-        return
-    acumulados = set(semanal.lista_resultados)
-    acumulados.update(sorteo_dia.lista_resultados)
-    semanal.resultados = ",".join(f"{n:02d}" for n in sorted(acumulados))
-    sesion.commit()
-    if dia >= fin:
-        resumen = liquidar_sorteo(semanal, sesion, reglas)
-        auditoria.registrar(sesion, "SEMANAL_LIQUIDADO", detalle=str(resumen))
-        sesion.commit()
-
-
 def ciclo():
     sesion = SessionLocal()
     try:
@@ -209,15 +187,15 @@ def ciclo():
         ahora = datetime.now(_zona())
         chequeo_costo(sesion, reglas, ahora)
 
-        # 1) CIERRE AUTOMATICO en la hora_cierre (o horario oficial si no tiene cierre).
-        #    Las modalidades con ciclo propio hacen su preventivo antes del cierre y su
-        #    cancelacion automatica al cierre.
+        # 1) CIERRE AUTOMATICO (solo modalidades que cierran por horario).
         programados = (
             sesion.query(Sorteo)
-            .filter(Sorteo.estado == EstadoSorteo.PROGRAMADO, Sorteo.modalidad != "semanal")
+            .filter(Sorteo.estado == EstadoSorteo.PROGRAMADO)
             .all()
         )
         for sorteo in programados:
+            if not _cierra_por_horario(sorteo):
+                continue
             hhmm = horarios.get(sorteo.horario)
             if not hhmm:
                 continue
@@ -227,7 +205,6 @@ def ciclo():
 
             ciclo_mod = descubrimiento.obtener_modulo(sorteo.modalidad, "ciclo")
 
-            # Preventivo (solo modalidades con ciclo propio): 60 min antes del cierre.
             if ciclo_mod and hasattr(ciclo_mod, "chequeo_preventivo"):
                 ciclo_mod.chequeo_preventivo(sorteo, sesion, reglas, ahora, cierre)
 
@@ -248,18 +225,19 @@ def ciclo():
                     auditoria.registrar(sesion, "SORTEO_CERRADO_AUTO", detalle=f"sorteo={sorteo.id} cierre={sorteo.hora_cierre or sorteo.horario}")
                     sesion.commit()
 
-        # 2) BUSQUEDA AUTOMATICA con TRIPLE CHECK en sorteos cerrados sin resultado.
+        # 2) BUSQUEDA AUTOMATICA con TRIPLE CHECK (solo modalidades que cierran por horario).
         pendientes = (
             sesion.query(Sorteo)
             .filter(
                 Sorteo.estado == EstadoSorteo.CERRADO,
                 Sorteo.resultados.is_(None),
                 Sorteo.busqueda_agotada.is_(False),
-                Sorteo.modalidad != "semanal",
             )
             .all()
         )
         for sorteo in pendientes:
+            if not _cierra_por_horario(sorteo):
+                continue
             hhmm = horarios.get(sorteo.horario)
             if not hhmm:
                 continue
@@ -298,7 +276,7 @@ def ciclo():
                         resumen = liquidar_sorteo(sorteo, sesion, reglas)
                         auditoria.registrar(sesion, "SORTEO_LIQUIDADO", detalle=str(resumen))
                         sesion.commit()
-                        _actualizar_semanal(sesion, sorteo, reglas)
+                        _hooks_post_diario(sesion, sorteo, reglas)
                         _intentos.pop(sorteo.id, None)
                     else:
                         estado["lecturas"] = [numeros]
