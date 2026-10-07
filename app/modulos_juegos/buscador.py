@@ -63,6 +63,7 @@ def _duracion_min(sorteo, reglas):
 
 
 def obtener_resultado_oficial(nombre_horario: str, fecha: datetime):
+    """Lee los 20 numeros COMPLETOS (4 cifras) del horario, en orden de premio."""
     tipo = TIPOS_QUINIELA.get(nombre_horario)
     if tipo is None:
         return None
@@ -85,7 +86,8 @@ def obtener_resultado_oficial(nombre_horario: str, fecha: datetime):
         if not registros or len(registros) < 20:
             return None
         registros = sorted(registros, key=lambda x: x.get("posicion", 0))
-        nums = [int(x.get("numero", 0)) % 100 for x in registros[:20]]
+        # 4 cifras completas, sin truncar
+        nums = [int(x.get("numero", 0)) for x in registros[:20]]
         if len(nums) < 20:
             return None
         return nums
@@ -124,7 +126,6 @@ def estado_busquedas():
 
 
 def _cierra_por_horario(sorteo: Sorteo) -> bool:
-    """True si la modalidad del sorteo cierra por horario (rifa, clasico). Semanal no."""
     plugin = descubrimiento.obtener_plugin(sorteo.modalidad)
     if plugin is None:
         return False
@@ -132,8 +133,6 @@ def _cierra_por_horario(sorteo: Sorteo) -> bool:
 
 
 def _hooks_post_diario(sesion, sorteo_dia, reglas):
-    """Al liquidar un sorteo diario, delega a las modalidades que definen
-    alimentar_desde_diario (semanal). El buscador no conoce ninguna modalidad."""
     for hook in descubrimiento.hooks_post_diario():
         try:
             hook(sesion, sorteo_dia, reglas)
@@ -142,7 +141,6 @@ def _hooks_post_diario(sesion, sorteo_dia, reglas):
 
 
 def _actualizar_semanal(sesion, sorteo_dia: Sorteo, reglas):
-    """Compat: router_admin llama a esta funcion; delega a los hooks de modalidades."""
     _hooks_post_diario(sesion, sorteo_dia, reglas)
 
 
@@ -187,7 +185,6 @@ def ciclo():
         ahora = datetime.now(_zona())
         chequeo_costo(sesion, reglas, ahora)
 
-        # 1) CIERRE AUTOMATICO (solo modalidades que cierran por horario).
         programados = (
             sesion.query(Sorteo)
             .filter(Sorteo.estado == EstadoSorteo.PROGRAMADO)
@@ -225,7 +222,6 @@ def ciclo():
                     auditoria.registrar(sesion, "SORTEO_CERRADO_AUTO", detalle=f"sorteo={sorteo.id} cierre={sorteo.hora_cierre or sorteo.horario}")
                     sesion.commit()
 
-        # 2) BUSQUEDA AUTOMATICA con TRIPLE CHECK (solo modalidades que cierran por horario).
         pendientes = (
             sesion.query(Sorteo)
             .filter(
@@ -258,7 +254,8 @@ def ciclo():
             estado["ultimo_ts"] = ahora
 
             if numeros:
-                nums_str = ",".join(f"{n:02d}" for n in numeros)
+                # Formato 4 cifras
+                nums_str = ",".join(f"{n:04d}" for n in numeros)
                 auditoria.registrar(
                     sesion,
                     "BUSQUEDA_LECTURA",
@@ -270,7 +267,7 @@ def ciclo():
                 if len(estado["lecturas"]) >= 3:
                     ultimas_tres = estado["lecturas"][-3:]
                     if ultimas_tres[0] == ultimas_tres[1] == ultimas_tres[2]:
-                        sorteo.resultados = ",".join(f"{n:02d}" for n in numeros)
+                        sorteo.resultados = ",".join(f"{n:04d}" for n in numeros)
                         auditoria.registrar(sesion, "RESULTADO_AUTOMATICO", detalle=f"sorteo={sorteo.id} nums={sorteo.resultados} (confirmado en 3 lecturas)")
                         sesion.commit()
                         resumen = liquidar_sorteo(sorteo, sesion, reglas)
