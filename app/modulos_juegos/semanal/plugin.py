@@ -13,8 +13,8 @@ class ModalidadSemanal(ModalidadBase):
     resumen_reglas = (
         "Se eligen 10 numeros de 2 cifras por jugada. En una misma jugada no puede repetirse un numero; "
         "distintos jugadores si pueden elegir la misma combinacion. "
-        "Gana si los 10 estan entre los numeros acumulados de los sorteos del horario semanal "
-        "en los 5 dias de la ventana. "
+        "Gana si los 10 coinciden con los ultimos 2 digitos de los premios acumulados de los sorteos "
+        "del horario semanal en los 5 dias de la ventana. "
         "Si hay mas de 1 ganador el pozo se reparte en partes iguales entre los ganadores."
     )
     cantidad_numeros = 10
@@ -26,7 +26,11 @@ class ModalidadSemanal(ModalidadBase):
     cierra_por_horario = False
 
     def gana(self, numeros_jugada, resultados) -> bool:
-        return bool(resultados) and set(numeros_jugada).issubset(resultados)
+        """Gana si los numeros estan entre los ultimos 2 digitos de los acumulados."""
+        if not resultados:
+            return False
+        ultimos_dos = {n % 100 for n in resultados}
+        return set(numeros_jugada).issubset(ultimos_dos)
 
     def calcular_premio(self, jugadas_ganadoras, pozo_actual, premio_fijo) -> float:
         if not jugadas_ganadoras:
