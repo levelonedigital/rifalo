@@ -8,11 +8,12 @@ ciclo.py, validar.py. Los que no esten son opcionales.
 AGREGAR UNA MODALIDAD NUEVA = crear su carpeta con sus archivos. No se modifica nada
 de lo existente: el escaneo la descubre sola al proximo arranque.
 
+Hook opcional: si algun modulo de la carpeta define la funcion alimentar_desde_diario,
+se registra como hook post-liquidacion de sorteos diarios (lo usa semanal).
+
 Politica de errores (precaucion):
- - Si una modalidad BASE (las que ya deben funcionar: rifa, clasico) falla al cargarse,
-   el arranque se FRENA con error claro: no seguimos con algo roto.
- - Si una modalidad NUEVA falla, se la EXCLUYE y se registra el motivo en errores_carga()
-   (para mostrarlo como aviso); todo lo demas sigue funcionando.
+ - Si una modalidad BASE (rifa, clasico) falla al cargarse, el arranque se FRENA.
+ - Si una modalidad NUEVA falla, se la EXCLUYE y se registra el motivo; el resto sigue.
 """
 import importlib
 import logging
@@ -20,14 +21,13 @@ from pathlib import Path
 
 log = logging.getLogger("rifalo.modalidades")
 
-# Modalidades que YA deben funcionar. Si una de estas falla, frenamos el arranque.
-# Esta lista NO crece al agregar modalidades nuevas (es solo de seguridad).
 _BASE = {"rifa", "clasico"}
 
-_PLUGINS = {}     # clave -> instancia del plugin
-_MODULOS = {}     # (clave, nombre_modulo) -> modulo
-_FUNCIONES = {}   # (clave, "aprobar"|"liquidar") -> funcion
-_ERRORES = {}     # clave -> motivo de exclusion
+_PLUGINS = {}
+_MODULOS = {}
+_FUNCIONES = {}
+_HOOKS_DIARIO = {}
+_ERRORES = {}
 
 
 def _ruta_base() -> Path:
@@ -35,7 +35,6 @@ def _ruta_base() -> Path:
 
 
 def _buscar_clase_plugin(mod):
-    """Devuelve la clase del plugin por duck-typing (sin importar base, evita ciclos)."""
     for nombre in vars(mod):
         obj = getattr(mod, nombre)
         if (
@@ -49,7 +48,8 @@ def _buscar_clase_plugin(mod):
 
 
 def _detectar_funcion(mod, prefijos):
-    """Devuelve la primera funcion del modulo que empiece con alguno de los prefijos."""
+    if mod is None:
+        return None
     for nombre in dir(mod):
         if nombre.startswith("_"):
             continue
@@ -60,9 +60,17 @@ def _detectar_funcion(mod, prefijos):
     return None
 
 
+def _detectar_hook_diario(modulos):
+    for m in modulos:
+        fn = getattr(m, "alimentar_desde_diario", None)
+        if callable(fn):
+            return fn
+    return None
+
+
 def _cargar_todo():
-    global _PLUGINS, _MODULOS, _FUNCIONES, _ERRORES
-    _PLUGINS, _MODULOS, _FUNCIONES, _ERRORES = {}, {}, {}, {}
+    global _PLUGINS, _MODULOS, _FUNCIONES, _HOOKS_DIARIO, _ERRORES
+    _PLUGINS, _MODULOS, _FUNCIONES, _HOOKS_DIARIO, _ERRORES = {}, {}, {}, {}, {}
     base = _ruta_base()
 
     for entrada in sorted(base.iterdir()):
@@ -87,19 +95,31 @@ def _cargar_todo():
                     m = importlib.import_module(f"app.modulos_juegos.{carpeta}.{nombre_mod}")
                     _MODULOS[(clave, nombre_mod)] = m
                 except ModuleNotFoundError:
-                    pass  # modulo opcional
-            fn_aprobar = _detectar_funcion(_MODULOS.get((clave, "aprobar")), ("aprobar_jugada", "aprobar")) if (clave, "aprobar") in _MODULOS else None
-            fn_liquidar = _detectar_funcion(_MODULOS.get((clave, "liquidar")), ("liquidar_sorteo", "liquidar")) if (clave, "liquidar") in _MODULOS else None
+                    pass
+
+            mods_cargados = [
+                _MODULOS[(clave, n)]
+                for n in ("aprobar", "liquidar", "cobertura", "ciclo", "validar")
+                if (clave, n) in _MODULOS
+            ]
+            fn_aprobar = _detectar_funcion(
+                _MODULOS.get((clave, "aprobar")), ("aprobar_jugada", "aprobar")
+            )
+            fn_liquidar = _detectar_funcion(
+                _MODULOS.get((clave, "liquidar")), ("liquidar_sorteo", "liquidar")
+            )
             if fn_aprobar:
                 _FUNCIONES[(clave, "aprobar")] = fn_aprobar
             if fn_liquidar:
                 _FUNCIONES[(clave, "liquidar")] = fn_liquidar
+            hook = _detectar_hook_diario(mods_cargados)
+            if hook:
+                _HOOKS_DIARIO[clave] = hook
             log.info("Modalidad descubierta: %s", clave)
         except Exception as e:
             motivo = f"{carpeta}: {e}"
             log.error("Fallo al cargar modalidad %s: %s", carpeta, e)
             if carpeta in _BASE:
-                # Una modalidad base rota: frenamos el arranque para no seguir con algo caido.
                 raise RuntimeError(f"Modalidad base {carpeta} fallo al cargarse: {e}") from e
             _ERRORES[carpeta] = motivo
             _PLUGINS.pop(carpeta, None)
@@ -125,6 +145,11 @@ def obtener_liquidar(clave: str):
     return _FUNCIONES.get((clave, "liquidar"))
 
 
+def hooks_post_diario():
+    """Funciones alimentar_desde_diario de todas las modalidades que la definan."""
+    return list(_HOOKS_DIARIO.values())
+
+
 def listar_modalidades():
     salida = []
     for m in _PLUGINS.values():
@@ -144,7 +169,6 @@ def listar_modalidades():
 
 
 def errores_carga() -> dict:
-    """Modalidades excluidas por error de carga (para mostrar como aviso)."""
     return dict(_ERRORES)
 
 
