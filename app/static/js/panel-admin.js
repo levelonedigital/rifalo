@@ -1,5 +1,6 @@
 let LIQ_CACHE = {};
 let imagen_data_pending = null; // null = no cambiar; dataUri = subir; "" = quitar
+let reprog_id = null;
 
 // ---------- MODALIDADES Y BLOQUES POR MODALIDAD ----------
 async function cargarModalidades() {
@@ -321,14 +322,55 @@ async function cargarSorteos() {
   } catch (e) { aviso(e.message, true); }
 }
 
-async function prepararReprog(id) {
-  const texto = prompt("Nuevo dia del sorteo (DD-MM-AAAA o AAAA-MM-DD), ej: 23-09-2026:");
-  if (!texto) return;
-  const fecha = aIsoFecha(texto);
-  if (!fecha) { aviso("Fecha invalida, usa DD-MM-AAAA o AAAA-MM-DD", true); return; }
+// ---------- REPROGRAMACION (fecha + horario) ----------
+function asegurarBarraReprog() {
+  let bar = document.getElementById("reprog-bar");
+  if (!bar) {
+    bar = document.createElement("div");
+    bar.id = "reprog-bar";
+    bar.style.cssText = "display:none;margin:10px 0;padding:12px;border:1px solid #334155;border-radius:8px;background:#0f172a;";
+    const lista = document.getElementById("lista-sorteos");
+    if (lista && lista.parentNode) lista.parentNode.insertBefore(bar, lista);
+  }
+  return bar;
+}
+
+function prepararReprog(id) {
+  const s = SORT_CACHE[id];
+  if (!s) return;
+  reprog_id = id;
+  const bar = asegurarBarraReprog();
+  const selOrigen = document.getElementById("sorteo-horario");
+  const opciones = selOrigen ? selOrigen.innerHTML : "";
+  bar.style.display = "block";
+  bar.innerHTML =
+    "<b>Reprogramando sorteo #" + id + " (" + (s.titulo || s.modalidad) + ").</b> Elegí nuevo dia y horario." +
+    "<div class='grilla' style='margin:8px 0'>" +
+    "<div><label>Nuevo dia</label><input type='date' id='reprog-fecha'></div>" +
+    "<div><label>Nuevo horario</label><select id='reprog-horario'>" + opciones + "</select></div>" +
+    "</div>" +
+    "<button onclick='guardarReprog()'>Guardar reprogramacion</button>" +
+    "<button class='peligro' onclick='cancelarReprog()'>Cancelar</button>";
+  document.getElementById("reprog-fecha").value = s.fecha.slice(0, 10);
+  document.getElementById("reprog-horario").value = s.horario;
+  bar.scrollIntoView({ behavior: "smooth" });
+}
+
+function cancelarReprog() {
+  reprog_id = null;
+  const bar = document.getElementById("reprog-bar");
+  if (bar) bar.style.display = "none";
+}
+
+async function guardarReprog() {
+  const fecha = document.getElementById("reprog-fecha").value;
+  const horario = document.getElementById("reprog-horario").value;
+  if (!fecha) { aviso("Poné el nuevo dia", true); return; }
+  if (!reprog_id) return;
   try {
-    await api("/admin/sorteos/" + id + "/reprogramar", "POST", { fecha: fecha });
-    aviso("Sorteo #" + id + " reprogramado: se aviso a los jugadores con el nuevo dia");
+    await api("/admin/sorteos/" + reprog_id + "/reprogramar", "POST", { fecha: fecha, horario: horario });
+    aviso("Sorteo #" + reprog_id + " reprogramado: nuevo dia " + fmtFecha(fecha) + " horario " + horario + ". Se aviso a los jugadores.");
+    cancelarReprog();
     cargarSorteos();
     cargarAvisos();
   } catch (e) { aviso(e.message, true); }
@@ -593,7 +635,7 @@ function iconoCobro(j) {
   if (j.estado !== "ganadora") return "";
   if (j.premio_pagado && j.premio_cobrado) return " <span title='Entregado y cobrado' style='color:#22c55e;font-weight:bold'>✔✔</span>";
   if (j.premio_pagado) return " <span title='Entregado, falta confirmar cobro del jugador' style='color:#f59e0b;font-weight:bold'>✔⌛</span>";
-  return " <span title='Pendiente de entrega' style='color:#ef4444;font-weight:bold'>⌛⌛</span>";
+  return " <span title='Pendiente de entrega' style='color:#ef4444;font-weight:bold'>⌛</span>";
 }
 
 async function cargarJugadasAdmin() {
