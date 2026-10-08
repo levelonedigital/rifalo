@@ -391,7 +391,7 @@ async function cargarEstadoBuscador() {
         html += "<div class='buscador-box'>";
         html += "<b>Sorteo #" + sorteoId + "</b> - " + estado.cantidad_lecturas + " lecturas<br>";
         if (estado.ultima_lectura && estado.ultima_lectura.length > 0) {
-          html += "<span class='nums'>Última lectura: " + estado.ultima_lectura.map(n => String(n).padStart(2,'0')).join(", ") + "</span><br>";
+          html += "<span class='nums'>Última lectura: " + estado.ultima_lectura.map(n => String(n).padStart(4,'0')).join(", ") + "</span><br>";
         }
         if (estado.coinciden_ultimas_tres) {
           html += "<span class='ok'>✔ Las últimas 3 lecturas coinciden - confirmando resultado</span>";
@@ -588,6 +588,14 @@ async function llenarSelectJugadasSorteos() {
   } catch (e) { aviso(e.message, true); }
 }
 
+// Icono rapido de estado de cobro para jugadas ganadoras
+function iconoCobro(j) {
+  if (j.estado !== "ganadora") return "";
+  if (j.premio_pagado && j.premio_cobrado) return " <span title='Entregado y cobrado' style='color:#22c55e;font-weight:bold'>✔✔</span>";
+  if (j.premio_pagado) return " <span title='Entregado, falta confirmar cobro del jugador' style='color:#f59e0b;font-weight:bold'>✔⌛</span>";
+  return " <span title='Pendiente de entrega' style='color:#ef4444;font-weight:bold'>⌛⌛</span>";
+}
+
 async function cargarJugadasAdmin() {
   const enModo = Boolean(SORT_ACTUAL);
   const sorteoId = enModo ? SORT_ACTUAL : document.getElementById("jugadas-sorteo").value;
@@ -602,11 +610,12 @@ async function cargarJugadasAdmin() {
   try {
     const js = await api(ruta, "GET");
     if (!js.length) { caja.innerHTML = "<p class='chico'>Este sorteo no tiene jugadas con ese filtro.</p>"; return; }
-    let html = "<table><tr><th>#</th><th>Jugador</th><th>Vendedor</th><th>Numeros</th><th>Precio</th><th>Estado</th><th>Premio</th><th></th></tr>";
+    let html = "<table><tr><th>#</th><th>Jugador</th><th>Vendedor</th><th>Numeros</th><th>Precio</th><th>Estado</th><th>Premio</th><th>Cobro</th><th></th></tr>";
     js.forEach(j => {
-      html += "<tr><td>" + j.id + "</td><td>" + (j.jugador_nombre || "-") + "</td><td>" + j.vendedor + "</td><td>" + j.numeros + "</td><td>$" + j.precio + "</td><td>" + j.estado + "</td><td>$" + (j.premio ?? "-") + "</td><td><button class='secundario' onclick='verJugada(" + j.id + ")'>Ver</button></td></tr>";
+      html += "<tr><td>" + j.id + "</td><td>" + (j.jugador_nombre || "-") + "</td><td>" + j.vendedor + "</td><td>" + j.numeros + "</td><td>$" + j.precio + "</td><td>" + j.estado + "</td><td>$" + (j.premio ?? "-") + "</td><td>" + iconoCobro(j) + "</td><td><button class='secundario' onclick='verJugada(" + j.id + ")'>Ver</button></td></tr>";
     });
     caja.innerHTML = html + "</table>";
+    html += "<p class='chico' style='margin-top:8px'>Leyenda de cobro (solo jugadas ganadoras): <b style='color:#22c55e'>✔✔</b> entregado y cobrado · <b style='color:#f59e0b'>✔⌛</b> entregado, falta que el jugador confirme · <b style='color:#ef4444'>⌛⌛</b> pendiente de entrega.</p>";
   } catch (e) { aviso(e.message, true); }
 }
 
@@ -614,6 +623,13 @@ async function verJugada(id) {
   try {
     const j = await api("/admin/jugadas/" + id, "GET");
     const s = j.sorteo || {};
+    let lineaPremio = "";
+    if (j.estado === "ganadora") {
+      lineaPremio = "\nPremio: $" + (j.premio ?? 0) + (j.premio_pagado ? " (ENTREGADO)" : " (PENDIENTE DE ENTREGA)");
+      lineaPremio += j.premio_cobrado ? " - el jugador CONFIRMO QUE COBRO ✔" : " - el jugador aun no confirmo el cobro";
+    } else {
+      lineaPremio = "\nPremio: $" + (j.premio ?? 0);
+    }
     document.getElementById("jugada-detalle").textContent =
       "JUGADA #" + j.id +
       "\nSorteo: #" + (s.id || "-") + " " + (s.modalidad || "") + " " + (s.horario || "") + " " + fmtFecha(s.fecha) + " (" + (s.estado || "") + ")" +
@@ -623,8 +639,7 @@ async function verJugada(id) {
       "\nNumeros: " + j.numeros +
       "\nPrecio: $" + j.precio +
       "\nEstado: " + j.estado +
-      "\nPremio: $" + (j.premio ?? 0) + (j.estado === "ganadora" ? (j.premio_pagado ? " (PAGADO)" : " (PENDIENTE DE PAGO)") : "") +
-      (j.estado === "ganadora" ? (j.premio_cobrado ? " - el jugador CONFIRMO QUE COBRO" : " - el jugador aun no confirmo el cobro") : "") +
+      lineaPremio +
       "\nReparto: casa $" + (j.monto_casa ?? 0) + " | vendedor $" + (j.monto_vendedor ?? 0) + (j.comision_pagada ? " (comision PAGADA)" : " (comision PENDIENTE)") + " | revendedor $" + (j.monto_revendedor ?? 0) + " | pozo $" + (j.monto_pozo ?? 0) + " | cubrir $" + (j.monto_cubrir ?? 0) +
       "\nCargada: " + ((j.creada_en || "").slice(0,19).replace("T"," "));
   } catch (e) { aviso(e.message, true); }
@@ -654,7 +669,8 @@ async function cargarLiquidacion(sorteoId) {
   try {
     const d = await api("/admin/sorteos/" + sorteoId + "/liquidacion", "GET");
     let html = "<h2>Detalle de liquidacion</h2>";
-    html += "<p><b>Resultados oficiales:</b> " + (d.resultados || "-") + "</p>";
+    html += "<p><b>Resultados oficiales:</b></p>";
+    html += resultadosColumnaHTML(d.resultados);
     if (d.premio_nombre) html += "<p><b>Premio:</b> " + d.premio_nombre + "</p>";
     if (d.es_premio_fijo) {
       html += "<p><b>Casa bruta:</b> $" + d.casa_bruta + " | <b>Premios pagados:</b> $" + d.pozo_pagado + " | <b>Ganadores:</b> " + d.cantidad_ganadoras + "</p>";
@@ -663,13 +679,15 @@ async function cargarLiquidacion(sorteoId) {
     }
     html += "<p><b>Ganancia casa (admin, neta):</b> $" + d.casa + " | <b>Vendedores:</b> $" + d.vendedores + " | <b>Revendedores:</b> $" + d.revendedores + "</p>";
     if (d.ganadoras.length) {
-      html += "<table><tr><th>Jugada</th><th>Ganador</th><th>Numeros ganadores</th><th>Premio</th><th>Premio pagado</th><th>Jugador cobro</th><th>Vendedor</th><th>Comision pagada</th></tr>";
+      html += "<table><tr><th>Jugada</th><th>Ganador</th><th>Numeros ganadores</th><th>Premio</th><th>Entregado al jugador</th><th>Jugador confirmo</th><th>Vendedor</th><th>Comision pagada</th></tr>";
       d.ganadoras.forEach(g => {
         html += "<tr><td>#" + g.jugada_id + "</td><td>" + g.jugador + "</td><td>" + g.numeros + "</td><td>$" + g.premio + "</td>" +
-          "<td>" + (g.premio_pagado ? "✔ PAGADO" : "✘ PENDIENTE") + " <button class='secundario' onclick='marcarPremio(" + g.jugada_id + "," + (!g.premio_pagado) + ")'>" + (g.premio_pagado ? "Desmarcar" : "Marcar pagado") + "</button></td>" +
-          "<td>" + (g.premio_cobrado ? "✔ CONFIRMO COBRO" : "✘ no confirmo") + "</td>" +
+          "<td>" + (g.premio_pagado ? "<b style='color:#22c55e'>✔ ENTREGADO</b>" : "<b style='color:#ef4444'>✘ PENDIENTE</b>") +
+          " <button class='secundario' onclick='marcarPremio(" + g.jugada_id + "," + (!g.premio_pagado) + ")'>" + (g.premio_pagado ? "Desmarcar" : "Marcar entregado") + "</button></td>" +
+          "<td>" + (g.premio_cobrado ? "<b style='color:#22c55e'>✔ CONFIRMO COBRO</b>" : "<span class='chico'>no confirmo</span>") + "</td>" +
           "<td>" + g.vendedor + "</td>" +
-          "<td>" + (g.comision_pagada ? "✔ PAGADA" : "✘ PENDIENTE") + " <button class='secundario' onclick='marcarComision(" + g.jugada_id + "," + (!g.comision_pagada) + ")'>" + (g.comision_pagada ? "Desmarcar" : "Marcar pagada") + "</button></td></tr>";
+          "<td>" + (g.comision_pagada ? "<b style='color:#22c55e'>✔ PAGADA</b>" : "<b style='color:#ef4444'>✘ PENDIENTE</b>") +
+          " <button class='secundario' onclick='marcarComision(" + g.jugada_id + "," + (!g.comision_pagada) + ")'>" + (g.comision_pagada ? "Desmarcar" : "Marcar pagada") + "</button></td></tr>";
       });
       html += "</table>";
     } else {
