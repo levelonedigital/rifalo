@@ -22,9 +22,9 @@ admin_dep = Depends(requerir_rol(RolUsuario.ADMIN_PRINCIPAL, RolUsuario.ADMIN))
 
 ESTADOS_VENDIDOS = [EstadoJugada.APROBADA, EstadoJugada.GANADORA, EstadoJugada.PERDEDORA]
 NUMEROS_OCULTOS = "••• (numeros ocultos)"
+
 HORA_RE = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
 MAX_IMAGEN_CHARS = 600000
-
 
 def validar_hora_cierre(valor):
     if valor is None:
@@ -33,17 +33,14 @@ def validar_hora_cierre(valor):
         raise HTTPException(status_code=400, detail="Horario de cierre invalido: usa HH:MM (ej: 20:00)")
     return valor
 
-
 def validar_imagen(imagen_data):
     if imagen_data and len(imagen_data) > MAX_IMAGEN_CHARS:
-        raise HTTPException(status_code=400, detail="La imagen pesa demasiado. Usá una foto mas chica (el sistema la comprime, pero evitá archivos de varios MB).")
+        raise HTTPException(status_code=400, detail="La imagen pesa demasiado. Usa una foto mas chica (el sistema la comprime, pero evita archivos de varios MB).")
     return imagen_data
-
 
 def detalle_por_defecto(modalidad) -> str:
     base = modalidad.resumen_reglas if modalidad else ""
     return base + " Si no se cumplen las condiciones, el sorteo puede pasar a otro horario; se respetan las jugadas."
-
 
 def _montos_vendidas(sesion, sorteo_id):
     jugadas = sesion.query(Jugada).filter(Jugada.sorteo_id == sorteo_id).all()
@@ -51,16 +48,7 @@ def _montos_vendidas(sesion, sorteo_id):
     ganadoras = [j for j in jugadas if j.estado == EstadoJugada.GANADORA]
     return jugadas, vendidas, ganadoras
 
-
 def _ganancia_admin(sorteo, sesion, vendidas, ganadoras):
-    """Ganancia neta del admin.
-
-    En modalidades de premio fijo (rifa), el premio se paga del acumulado de sobrantes;
-    lo que sobra de ese acumulado despues de pagar premios queda para la casa. Entonces
-    la ganancia neta es casa_bruta + max(0, acumulado - premios).
-    En clasico/semanal el premio sale del pozo (no de la casa), asi que la casa bruta
-    es la ganancia neta.
-    """
     modalidad = obtener(sorteo.modalidad)
     es_pf = bool(modalidad and modalidad.usa_premio_fijo)
     casa_bruta = round(sum(j.monto_casa or 0 for j in vendidas), 2)
@@ -72,7 +60,6 @@ def _ganancia_admin(sorteo, sesion, vendidas, ganadoras):
     else:
         casa = casa_bruta
     return casa, casa_bruta, premios, es_pf
-
 
 def _liq_out(liq: LiquidacionVendedor, sesion: Session):
     vendedor = sesion.get(Usuario, liq.vendedor_id)
@@ -95,7 +82,6 @@ def _liq_out(liq: LiquidacionVendedor, sesion: Session):
         "cobrado_en": liq.cobrado_en.isoformat() if liq.cobrado_en else None,
         "creada_en": liq.creada_en.isoformat() if liq.creada_en else None,
     }
-
 
 # ---------- ESTADO DEL BUSCADOR ----------
 
@@ -125,7 +111,6 @@ def estado_buscador(sesion: Session = Depends(obtener_sesion), admin: Usuario = 
             for s in sorteos_pendientes
         ],
     }
-
 
 class SorteoCrear(BaseModel):
     modalidad: str
@@ -174,19 +159,15 @@ class SorteoEditar(BaseModel):
 class ResultadoCargar(BaseModel):
     numeros: list[int]
 
-
 class Reprogramar(BaseModel):
     fecha: datetime
-
 
 class MarcarPago(BaseModel):
     pagado: bool = True
 
-
 class LiquidacionCrear(BaseModel):
     desde: date
     hasta: date
-
 
 class VendedorCrear(BaseModel):
     usuario: str
@@ -197,7 +178,6 @@ class VendedorCrear(BaseModel):
     telefono: str | None = None
     datos_transferencia: str | None = None
 
-
 class VendedorEditar(BaseModel):
     nombre: str | None = None
     telefono: str | None = None
@@ -207,17 +187,14 @@ class VendedorEditar(BaseModel):
     password: str | None = None
     activo: bool | None = None
 
-
 class PozoVacanteCrear(BaseModel):
     fecha: datetime
-
 
 # ---------- MODALIDADES ----------
 
 @router.get("/modalidades")
 def listar_modalidades():
     return listar()
-
 
 # ---------- SORTEOS ----------
 
@@ -277,7 +254,6 @@ def crear_sorteo(datos: SorteoCrear, sesion: Session = Depends(obtener_sesion), 
     sesion.commit()
     return {"id": sorteo.id, "modalidad": sorteo.modalidad, "horario": sorteo.horario, "pozo_inicial": pozo, "titulo": sorteo.titulo}
 
-
 @router.post("/sorteos/{sorteo_id}/activar")
 def activar_sorteo(sorteo_id: int, sesion: Session = Depends(obtener_sesion), admin: Usuario = Depends(requerir_permiso("configurar_sorteos"))):
     sorteo = sesion.get(Sorteo, sorteo_id)
@@ -291,7 +267,6 @@ def activar_sorteo(sorteo_id: int, sesion: Session = Depends(obtener_sesion), ad
     sesion.commit()
     return {"ok": True, "estado": sorteo.estado.value}
 
-
 @router.post("/sorteos/{sorteo_id}/desactivar")
 def desactivar_sorteo(sorteo_id: int, sesion: Session = Depends(obtener_sesion), admin: Usuario = Depends(requerir_permiso("configurar_sorteos"))):
     sorteo = sesion.get(Sorteo, sorteo_id)
@@ -304,7 +279,6 @@ def desactivar_sorteo(sorteo_id: int, sesion: Session = Depends(obtener_sesion),
     auditoria.registrar(sesion, "SORTEO_DESACTIVADO", detalle=f"sorteo={sorteo.id}", usuario=admin)
     sesion.commit()
     return {"ok": True, "estado": sorteo.estado.value}
-
 
 @router.put("/sorteos/{sorteo_id}")
 def editar_sorteo(sorteo_id: int, datos: SorteoEditar, sesion: Session = Depends(obtener_sesion), admin: Usuario = Depends(requerir_permiso("configurar_sorteos"))):
@@ -330,7 +304,6 @@ def editar_sorteo(sorteo_id: int, datos: SorteoEditar, sesion: Session = Depends
     sesion.commit()
     return {"ok": True, "id": sorteo.id}
 
-
 @router.delete("/sorteos/{sorteo_id}")
 def borrar_sorteo(sorteo_id: int, sesion: Session = Depends(obtener_sesion), admin: Usuario = Depends(requerir_permiso("configurar_sorteos"))):
     sorteo = sesion.get(Sorteo, sorteo_id)
@@ -346,7 +319,6 @@ def borrar_sorteo(sorteo_id: int, sesion: Session = Depends(obtener_sesion), adm
     auditoria.registrar(sesion, "SORTEO_BORRADO", detalle=f"sorteo={sorteo_id}", usuario=admin)
     sesion.commit()
     return {"ok": True}
-
 
 @router.get("/sorteos")
 def listar_sorteos(sesion: Session = Depends(obtener_sesion), admin: Usuario = Depends(requerir_permiso("configurar_sorteos"))):
@@ -399,7 +371,6 @@ def listar_sorteos(sesion: Session = Depends(obtener_sesion), admin: Usuario = D
         )
     return salida
 
-
 @router.get("/sorteos/{sorteo_id}/resumen")
 def resumen_sorteo(sorteo_id: int, sesion: Session = Depends(obtener_sesion), admin: Usuario = admin_dep):
     sorteo = sesion.get(Sorteo, sorteo_id)
@@ -434,16 +405,13 @@ def resumen_sorteo(sorteo_id: int, sesion: Session = Depends(obtener_sesion), ad
         "ganadoras": [j.id for j in ganadoras],
     }
 
-
 @router.get("/sorteos/{sorteo_id}/liquidacion")
 def detalle_liquidacion(sorteo_id: int, sesion: Session = Depends(obtener_sesion), admin: Usuario = admin_dep):
-    """Detalle completo de la liquidacion: ganadores, numeros, reparto y estados de pago."""
     sorteo = sesion.get(Sorteo, sorteo_id)
     if sorteo is None:
         raise HTTPException(status_code=404, detail="Sorteo no encontrado")
     jugadas, vendidas, ganadoras = _montos_vendidas(sesion, sorteo_id)
     casa, casa_bruta, pozo_pagado, es_pf = _ganancia_admin(sorteo, sesion, vendidas, ganadoras)
-
     detalle_ganadoras = []
     for j in ganadoras:
         vendedor = sesion.get(Usuario, j.vendedor_id) if j.vendedor_id else None
@@ -461,7 +429,6 @@ def detalle_liquidacion(sorteo_id: int, sesion: Session = Depends(obtener_sesion
                 "comision_pagada": bool(j.comision_pagada),
             }
         )
-
     return {
         "sorteo_id": sorteo.id,
         "modalidad": sorteo.modalidad,
@@ -482,7 +449,6 @@ def detalle_liquidacion(sorteo_id: int, sesion: Session = Depends(obtener_sesion
         "ganadoras": detalle_ganadoras,
     }
 
-
 @router.post("/sorteos/{sorteo_id}/cerrar")
 def cerrar_sorteo(sorteo_id: int, sesion: Session = Depends(obtener_sesion), admin: Usuario = Depends(requerir_permiso("configurar_sorteos"))):
     sorteo = sesion.get(Sorteo, sorteo_id)
@@ -495,7 +461,6 @@ def cerrar_sorteo(sorteo_id: int, sesion: Session = Depends(obtener_sesion), adm
     auditoria.registrar(sesion, "SORTEO_CERRADO", detalle=f"sorteo={sorteo.id}", usuario=admin)
     sesion.commit()
     return {"ok": True}
-
 
 @router.post("/sorteos/{sorteo_id}/cancelar-horario")
 def cancelar_horario(sorteo_id: int, sesion: Session = Depends(obtener_sesion), admin: Usuario = Depends(requerir_permiso("configurar_sorteos"))):
@@ -517,7 +482,6 @@ def cancelar_horario(sorteo_id: int, sesion: Session = Depends(obtener_sesion), 
     auditoria.registrar(sesion, "SORTEO_HORARIO_CANCELADO", detalle=f"sorteo={sorteo.id}", usuario=admin)
     sesion.commit()
     return {"ok": True, "estado": sorteo.estado.value}
-
 
 @router.post("/sorteos/{sorteo_id}/reprogramar")
 def reprogramar(sorteo_id: int, datos: Reprogramar, sesion: Session = Depends(obtener_sesion), admin: Usuario = Depends(requerir_permiso("configurar_sorteos"))):
@@ -544,7 +508,6 @@ def reprogramar(sorteo_id: int, datos: Reprogramar, sesion: Session = Depends(ob
     sesion.commit()
     return {"ok": True, "estado": sorteo.estado.value, "fecha": sorteo.fecha.isoformat()}
 
-
 @router.post("/sorteos/{sorteo_id}/resultado")
 def cargar_resultado(sorteo_id: int, datos: ResultadoCargar, sesion: Session = Depends(obtener_sesion), admin: Usuario = Depends(requerir_permiso("cargar_resultados"))):
     sorteo = sesion.get(Sorteo, sorteo_id)
@@ -553,12 +516,12 @@ def cargar_resultado(sorteo_id: int, datos: ResultadoCargar, sesion: Session = D
     if sorteo.estado == EstadoSorteo.LIQUIDADO:
         raise HTTPException(status_code=400, detail="El sorteo ya esta liquidado")
     if sorteo.estado == EstadoSorteo.PROGRAMADO:
-        raise HTTPException(status_code=400, detail="Primero cerrá el sorteo")
+        raise HTTPException(status_code=400, detail="Primero cerra el sorteo")
     if sorteo.modalidad == "semanal":
         raise HTTPException(status_code=400, detail="El semanal se liquida solo con los sorteos diarios")
-    if len(datos.numeros) != 20 or any(n < 0 or n > 99 for n in datos.numeros):
-        raise HTTPException(status_code=400, detail="Deben ser 20 numeros entre 0 y 99 (se permiten repetidos)")
-    sorteo.resultados = ",".join(f"{n:02d}" for n in datos.numeros)
+    if len(datos.numeros) != 20 or any(n < 0 or n > 9999 for n in datos.numeros):
+        raise HTTPException(status_code=400, detail="Deben ser 20 numeros entre 0 y 9999 (4 digitos, se permiten repetidos)")
+    sorteo.resultados = ",".join(f"{n:04d}" for n in datos.numeros)
     sorteo.busqueda_agotada = False
     reglas = motor.obtener_reglas(sesion)
     resumen = motor.liquidar_sorteo(sorteo, sesion, reglas)
@@ -567,7 +530,6 @@ def cargar_resultado(sorteo_id: int, datos: ResultadoCargar, sesion: Session = D
     sesion.commit()
     _actualizar_semanal(sesion, sorteo, reglas)
     return resumen
-
 
 @router.post("/sorteos/{sorteo_id}/pozo-vacante")
 def pozo_vacante(sorteo_id: int, datos: PozoVacanteCrear, sesion: Session = Depends(obtener_sesion), admin: Usuario = Depends(requerir_permiso("configurar_sorteos"))):
@@ -589,7 +551,6 @@ def pozo_vacante(sorteo_id: int, datos: PozoVacanteCrear, sesion: Session = Depe
     auditoria.registrar(sesion, "POZO_VACANTE_CREADO", detalle=f"origen={sorteo.id} nuevo={nuevo.id} (en preparacion)", usuario=admin)
     sesion.commit()
     return {"id": nuevo.id, "pozo_inicial": nuevo.pozo_inicial, "participantes": nuevo.participantes}
-
 
 # ---------- JUGADAS ----------
 
@@ -622,7 +583,6 @@ def ver_jugadas(
             }
         )
     return salida
-
 
 @router.get("/jugadas/{jugada_id}")
 def ver_jugada(jugada_id: int, sesion: Session = Depends(obtener_sesion), admin: Usuario = admin_dep):
@@ -660,7 +620,6 @@ def ver_jugada(jugada_id: int, sesion: Session = Depends(obtener_sesion), admin:
         "creada_en": j.creada_en.isoformat() if j.creada_en else None,
     }
 
-
 @router.post("/jugadas/{jugada_id}/marcar-premio")
 def marcar_premio_pagado(jugada_id: int, datos: MarcarPago, sesion: Session = Depends(obtener_sesion), admin: Usuario = admin_dep):
     j = sesion.get(Jugada, jugada_id)
@@ -674,7 +633,6 @@ def marcar_premio_pagado(jugada_id: int, datos: MarcarPago, sesion: Session = De
     sesion.commit()
     return {"ok": True, "premio_pagado": bool(j.premio_pagado)}
 
-
 @router.post("/jugadas/{jugada_id}/marcar-comision")
 def marcar_comision_pagada(jugada_id: int, datos: MarcarPago, sesion: Session = Depends(obtener_sesion), admin: Usuario = admin_dep):
     j = sesion.get(Jugada, jugada_id)
@@ -685,7 +643,6 @@ def marcar_comision_pagada(jugada_id: int, datos: MarcarPago, sesion: Session = 
     auditoria.registrar(sesion, "COMISION_MARCADA", detalle=f"jugada={j.id} pagada={datos.pagado}", usuario=admin)
     sesion.commit()
     return {"ok": True, "comision_pagada": bool(j.comision_pagada)}
-
 
 # ---------- VENDEDORES ----------
 
@@ -712,7 +669,6 @@ def crear_vendedor(datos: VendedorCrear, sesion: Session = Depends(obtener_sesio
     sesion.commit()
     return {"id": vendedor.id, "usuario": vendedor.usuario, "codigo": vendedor.codigo}
 
-
 @router.get("/vendedores")
 def listar_vendedores(sesion: Session = Depends(obtener_sesion), admin: Usuario = admin_dep):
     vendedores = sesion.query(Usuario).filter(Usuario.rol == RolUsuario.VENDEDOR).order_by(Usuario.nombre).all()
@@ -721,9 +677,8 @@ def listar_vendedores(sesion: Session = Depends(obtener_sesion), admin: Usuario 
         for v in vendedores
     ]
 
-
 @router.put("/vendedores/{vendedor_id}")
-def editar_vendedor(vendedor_id: int, datos: VendedorEditar, sesion: Session = Depends(obtener_sesion), admin: Usuario = Depends(requerir_rol(RolUsuario.ADMIN_PRINCIPAL))):
+def editar_vendedor(vendedor_id: int, datos: VendedorEditar, sesion: Session = Depends(obtener_sesion), admin: Usuario = Depends(requerir_rol(RolUsuario.ADMIN_PRINCIPAL)):
     vendedor = sesion.get(Usuario, vendedor_id)
     if vendedor is None or vendedor.rol != RolUsuario.VENDEDOR:
         raise HTTPException(status_code=404, detail="Vendedor no encontrado")
@@ -735,7 +690,6 @@ def editar_vendedor(vendedor_id: int, datos: VendedorEditar, sesion: Session = D
     auditoria.registrar(sesion, "VENDEDOR_EDITADO", detalle=vendedor.usuario, usuario=admin)
     sesion.commit()
     return {"id": vendedor.id, "usuario": vendedor.usuario, "comision_pct": vendedor.comision_pct, "activo": vendedor.activo}
-
 
 # ---------- LIQUIDACIONES DE VENDEDORES (gestion del admin) ----------
 
@@ -812,7 +766,6 @@ def generar_liquidacion(vendedor_id: int, datos: LiquidacionCrear, sesion: Sessi
     sesion.commit()
     return _liq_out(liq, sesion)
 
-
 @router.get("/liquidaciones")
 def listar_liquidaciones(vendedor_id: int | None = None, sesion: Session = Depends(obtener_sesion), admin: Usuario = admin_dep):
     consulta = sesion.query(LiquidacionVendedor)
@@ -820,7 +773,6 @@ def listar_liquidaciones(vendedor_id: int | None = None, sesion: Session = Depen
         consulta = consulta.filter(LiquidacionVendedor.vendedor_id == vendedor_id)
     liqs = consulta.order_by(LiquidacionVendedor.id.desc()).all()
     return [_liq_out(l, sesion) for l in liqs]
-
 
 @router.post("/liquidaciones/{liq_id}/marcar-pagado")
 def marcar_liquidacion_pagada(liq_id: int, sesion: Session = Depends(obtener_sesion), admin: Usuario = admin_dep):
@@ -834,7 +786,6 @@ def marcar_liquidacion_pagada(liq_id: int, sesion: Session = Depends(obtener_ses
     sesion.commit()
     return _liq_out(liq, sesion)
 
-
 # ---------- JUGADORES TOTALES ----------
 
 @router.get("/jugadores-total")
@@ -842,7 +793,6 @@ def jugadores_total(sesion: Session = Depends(obtener_sesion), admin: Usuario = 
     total = sesion.query(Usuario).filter(Usuario.rol == RolUsuario.JUGADOR).count()
     activos = sesion.query(Usuario).filter(Usuario.rol == RolUsuario.JUGADOR, Usuario.activo.is_(True)).count()
     return {"total": total, "activos": activos}
-
 
 # ---------- BALANCE ----------
 
@@ -861,7 +811,6 @@ def _rango_periodo(periodo: str, ref: date):
         fin = ref + timedelta(days=1)
     return inicio, fin
 
-
 @router.get("/balance")
 def balance(
     periodo: str = "dia",
@@ -877,14 +826,12 @@ def balance(
     z = _zona()
     dt_inicio = datetime.combine(inicio, datetime.min.time(), tzinfo=z)
     dt_fin = datetime.combine(fin, datetime.min.time(), tzinfo=z)
-
     sorteos = (
         sesion.query(Sorteo)
         .filter(Sorteo.estado == EstadoSorteo.LIQUIDADO, Sorteo.fecha >= dt_inicio, Sorteo.fecha < dt_fin)
         .order_by(Sorteo.fecha)
         .all()
     )
-
     por_sorteo = []
     tot = {"vendido": 0.0, "casa": 0.0, "vendedores": 0.0, "revendedores": 0.0, "pozo_formado": 0.0, "premios": 0.0}
     for s in sorteos:
@@ -905,7 +852,6 @@ def balance(
         por_sorteo.append(fila)
         for k in tot:
             tot[k] += fila[k]
-
     return {
         "periodo": periodo,
         "desde": inicio.isoformat(),
@@ -915,19 +861,14 @@ def balance(
         "por_sorteo": por_sorteo,
     }
 
-
 # ---------- RESUMEN GENERAL ----------
 
 @router.get("/resumen-general")
 def resumen_general(sesion: Session = Depends(obtener_sesion), admin: Usuario = admin_dep):
-    """Resumen global: agrupa por sorteo para que la ganancia de rifa (casa + excedente)
-    se calcule con el acumulado correcto de cada sorteo."""
     jugadas = sesion.query(Jugada).filter(Jugada.estado.in_(ESTADOS_VENDIDOS)).all()
-
     por_sorteo = {}
     for j in jugadas:
         por_sorteo.setdefault(j.sorteo_id, []).append(j)
-
     casa_total = 0.0
     premios_total = 0.0
     vendido_total = 0.0
@@ -944,7 +885,6 @@ def resumen_general(sesion: Session = Depends(obtener_sesion), admin: Usuario = 
         vendido_total += sum(j.precio or 0 for j in js)
         vend_total += sum(j.monto_vendedor or 0 for j in js)
         rev_total += sum(j.monto_revendedor or 0 for j in js)
-
     return {
         "jugadas_aprobadas": len(jugadas),
         "vendido": round(vendido_total, 2),
