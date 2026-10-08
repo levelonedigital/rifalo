@@ -50,6 +50,7 @@ async function cargarJSorteos() {
 }
 
 function elegirSorteoJugador(id) {
+  // Solo muestra el cartel del pozo y expande la fila. NO toca el select de carga.
   JUGADOR_SORTEO_ELEGIDO = id;
   document.querySelectorAll("[id^='pozo-fila-']").forEach(f => { f.style.display = "none"; });
   const fila = document.getElementById("pozo-fila-" + id);
@@ -63,15 +64,16 @@ function elegirSorteoJugador(id) {
     cartel.style.display = "block";
     cartel.innerHTML = cartelSorteoHtml(s);
   }
-  const sel = document.getElementById("j-sorteo");
-  if (sel && s) {
-    sel.value = String(id);
-    pintarReglasSelect("j-sorteo", "j-reglas", "j-imagen");
-  }
 }
 
 function jugarSorteo(id) {
+  // Solo el boton "Jugar" selecciona el sorteo en el select y pasa a la pestaña de carga.
   JUGADOR_SORTEO_ELEGIDO = id;
+  const sel = document.getElementById("j-sorteo");
+  if (sel) {
+    sel.value = String(id);
+    pintarReglasSelect("j-sorteo", "j-reglas", "j-imagen");
+  }
   irTab("jcargar");
 }
 
