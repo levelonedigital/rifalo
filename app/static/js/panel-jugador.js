@@ -147,6 +147,7 @@ ACCIONES.jsorteos = cargarJSorteos;
 ACCIONES.jcargar = async () => {
   limpiarMsgJugada();
   await llenarSelectSorteos("/jugador/sorteos", "j-sorteo");
+  // Despues de que llenarSelectSorteos restauro el valor previo, forzamos al sorteo elegido
   if (JUGADOR_SORTEO_ELEGIDO && SORTEOS_ABIERTOS_CACHE["j-sorteo"] && SORTEOS_ABIERTOS_CACHE["j-sorteo"][JUGADOR_SORTEO_ELEGIDO]) {
     document.getElementById("j-sorteo").value = String(JUGADOR_SORTEO_ELEGIDO);
     pintarReglasSelect("j-sorteo", "j-reglas", "j-imagen");
