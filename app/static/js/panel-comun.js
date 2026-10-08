@@ -470,7 +470,7 @@ function pintarReglasSelect(idSelect, idCaja, idImagen) {
     else { img.style.display = "none"; }
   }
   if (idSelect === "j-sorteo") {
-    JUGADOR_SORTEO_ELEGIDO = id ? parseInt(id) : null;
+    // NOTA: ya NO actualizamos JUGADOR_SORTEO_ELEGIDO aca. Solo pintamos el pozo.
     pintarPozo("pozo-jugador", s || null);
   }
   if (idSelect === "v-sorteo") filtrarJugadoresSorteo("v", s);
