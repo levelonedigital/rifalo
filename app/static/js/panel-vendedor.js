@@ -229,15 +229,23 @@ async function cargarResultadosVendedor() {
     rs.forEach(r => {
       html += "<div class='buscador-box'>";
       html += "<b>Sorteo #" + r.sorteo_id + "</b> - " + (r.titulo || r.modalidad) + " " + r.horario + " - " + fmtFecha(r.fecha) + "<br>";
-      html += "<span class='nums'>Numeros: " + r.resultados.map(n => String(n).padStart(2, "0")).join(", ") + "</span><br>";
+      html += resultadosColumnaHTML(r.resultados);
       html += "<span class='chico'>Cantidad de ganadores: " + r.cantidad_ganadores + "</span><br>";
       if (r.mis_ganadores && r.mis_ganadores.length) {
         r.mis_ganadores.forEach(g => {
           const premioTxt = r.premio_nombre ? ("GANO: " + r.premio_nombre) : ("GANO $" + g.premio);
           html += "<div class='cobro-box'><b>Tu jugador " + g.jugador_nombre + " " + premioTxt + "</b> (jugada #" + g.jugada_id + ").<br>";
-          html += (g.premio_pagado ? "Marcado como entregado por vos. " : "<b>Pendiente de entrega.</b> ");
-          html += (g.premio_cobrado ? "<b>El jugador confirmo que cobro ✔</b>" : "El jugador aun no confirmo el cobro.");
-          html += "<br><span class='chico'>Comunicate con tu jugador asi le entregas su premio.</span></div>";
+          if (g.premio_pagado) {
+            html += "<b style='color:#22c55e'>Entregado por vos ✔</b> <button class='secundario' onclick='marcarPremioVendedor(" + g.jugada_id + ", false)'>Desmarcar entrega</button><br>";
+          } else {
+            html += "<b style='color:#f59e0b'>Pendiente de entrega.</b> <button onclick='marcarPremioVendedor(" + g.jugada_id + ", true)'>Marcar como entregado</button><br>";
+          }
+          if (g.premio_cobrado) {
+            html += "<b style='color:#22c55e'>Tu jugador confirmo que cobro ✔</b>";
+          } else {
+            html += "<span class='chico'>Tu jugador aun no confirmo el cobro.</span>";
+          }
+          html += "</div>";
         });
       } else if (r.tuve_jugadores) {
         html += "<div class='chico'>No tenes jugadores ganadores en este sorteo.</div>";
@@ -247,6 +255,16 @@ async function cargarResultadosVendedor() {
       html += "</div>";
     });
     caja.innerHTML = html;
+  } catch (e) { aviso(e.message, true); }
+}
+
+async function marcarPremioVendedor(jugadaId, pagado) {
+  const msg = pagado ? "Confirmas que entregaste el premio al jugador?" : "Vas a desmarcar la entrega. El jugador volvera a ver 'pendiente'. Continuar?";
+  if (!confirm(msg)) return;
+  try {
+    await api("/vendedor/jugadas/" + jugadaId + "/marcar-premio", "POST", { pagado: pagado });
+    aviso(pagado ? "Marcaste el premio como entregado." : "Desmarcaste la entrega.");
+    cargarResultadosVendedor();
   } catch (e) { aviso(e.message, true); }
 }
 
@@ -261,7 +279,7 @@ async function cargarCobrosVendedor() {
     ls.forEach(l => {
       let estado;
       if (l.pagado_admin && l.cobrado_vendedor) estado = "<span class='ok'>Pagado y confirmado ✔</span>";
-      else if (l.pagado_admin) estado = "<span class='warn'>El admin marco el pago. Confirmá que cobraste.</span>";
+      else if (l.pagado_admin) estado = "<span class='warn'>El admin marco el pago. Confirma que cobraste.</span>";
       else estado = "<span class='chico'>Pendiente de pago por el admin.</span>";
       html += "<div class='buscador-box'>";
       html += "<b>Liquidacion #" + l.id + "</b> · Periodo " + fmtFecha(l.desde) + " a " + fmtFecha(l.hasta) + "<br>";
@@ -277,7 +295,7 @@ async function cargarCobrosVendedor() {
         html += "</table></details>";
       }
       if (l.pagado_admin && !l.cobrado_vendedor) {
-        html += "<button onclick='confirmarCobroVendedor(" + l.id + ")'>Confirmar que cobré</button>";
+        html += "<button onclick='confirmarCobroVendedor(" + l.id + ")'>Confirmar que cobre</button>";
       }
       html += "</div>";
     });
@@ -302,3 +320,5 @@ ACCIONES.vpendientes = cargarVPendientes;
 ACCIONES.vjugadas = cargarVJugadas;
 ACCIONES.vrevendedores = cargarVRevendedores;
 ACCIONES.vjugadores = cargarVJugadores;
+ACCIONES.resultados = cargarResultados;
+ACCIONES.cobros = cargarCobros;
