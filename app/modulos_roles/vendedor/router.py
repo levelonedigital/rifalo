@@ -67,6 +67,10 @@ class JugadorEditar(BaseModel):
     activo: bool | None = None
 
 
+class MarcarPago(BaseModel):
+    pagado: bool = True
+
+
 def _comision_propia(vendedor: Usuario, reglas) -> float:
     return vendedor.comision_pct if vendedor.comision_pct is not None else reglas.vendedor_pct
 
@@ -198,7 +202,6 @@ def editar_revendedor(revendedor_id: int, datos: RevendedorEditar, sesion: Sessi
 
 @router.delete("/revendedores/{revendedor_id}")
 def eliminar_revendedor(revendedor_id: int, sesion: Session = Depends(obtener_sesion), vendedor: Usuario = vendedor_dep):
-    """Borra un revendedor solo si no tiene jugadores ni jugadas asociadas."""
     rev = sesion.get(Usuario, revendedor_id)
     if rev is None or rev.padre_id != vendedor.id or rev.rol != RolUsuario.REVENDEDOR:
         raise HTTPException(status_code=404, detail="Revendedor no encontrado en tu linea")
@@ -309,7 +312,6 @@ def sorteos_abiertos(sesion: Session = Depends(obtener_sesion), vendedor: Usuari
 
 @router.get("/sorteos/{sorteo_id}/ocupados")
 def numeros_ocupados(sorteo_id: int, sesion: Session = Depends(obtener_sesion), vendedor: Usuario = vendedor_dep):
-    """Numeros ya jugados en una rifa de numero unico (para la grilla). None si no aplica."""
     sorteo = sesion.get(Sorteo, sorteo_id)
     if sorteo is None:
         raise HTTPException(status_code=404, detail="Sorteo no encontrado")
@@ -385,6 +387,19 @@ def rechazar(jugada_id: int, sesion: Session = Depends(obtener_sesion), vendedor
     return {"id": jugada.id, "estado": jugada.estado.value}
 
 
+@router.post("/jugadas/{jugada_id}/marcar-premio")
+def marcar_premio(jugada_id: int, datos: MarcarPago, sesion: Session = Depends(obtener_sesion), vendedor: Usuario = vendedor_dep):
+    """El vendedor marca que entrego (o desmarca) el premio a su jugador ganador."""
+    jugada = _mio(sesion, jugada_id, vendedor)
+    if jugada.estado != EstadoJugada.GANADORA:
+        raise HTTPException(status_code=400, detail="Solo se puede marcar el premio de jugadas ganadoras")
+    jugada.premio_pagado = datos.pagado
+    sesion.commit()
+    auditoria.registrar(sesion, "PREMIO_MARCADO_VENDEDOR", detalle=f"jugada={jugada.id} pagado={datos.pagado}", usuario=vendedor)
+    sesion.commit()
+    return {"ok": True, "premio_pagado": bool(jugada.premio_pagado)}
+
+
 @router.get("/jugadas")
 def historial(sesion: Session = Depends(obtener_sesion), vendedor: Usuario = vendedor_dep):
     jugadas = (
@@ -415,7 +430,6 @@ def resumen(sesion: Session = Depends(obtener_sesion), vendedor: Usuario = vende
 
 @router.get("/resultados")
 def resultados(sesion: Session = Depends(obtener_sesion), vendedor: Usuario = vendedor_dep):
-    """Ultimos 5 sorteos liquidados con sus resultados y los jugadores ganadores de tu linea."""
     sorteos = (
         sesion.query(Sorteo)
         .filter(Sorteo.estado == EstadoSorteo.LIQUIDADO)
@@ -460,7 +474,6 @@ def resultados(sesion: Session = Depends(obtener_sesion), vendedor: Usuario = ve
 
 @router.get("/cobros")
 def mis_cobros(sesion: Session = Depends(obtener_sesion), vendedor: Usuario = vendedor_dep):
-    """Lista las liquidaciones de comisiones de este vendedor (incluidas las ya pagadas)."""
     liqs = (
         sesion.query(LiquidacionVendedor)
         .filter(LiquidacionVendedor.vendedor_id == vendedor.id)
@@ -476,7 +489,7 @@ def confirmar_cobro(liq_id: int, sesion: Session = Depends(obtener_sesion), vend
     if liq is None or liq.vendedor_id != vendedor.id:
         raise HTTPException(status_code=404, detail="Liquidacion no encontrada")
     if not liq.pagado_admin:
-        raise HTTPException(status_code=400, detail="El administrador todavia no marco el pago; esperá a que te lo confirme")
+        raise HTTPException(status_code=400, detail="El administrador todavia no marco el pago; espera a que te lo confirme")
     liq.cobrado_vendedor = True
     liq.cobrado_en = datetime.now(_zona())
     sesion.commit()
