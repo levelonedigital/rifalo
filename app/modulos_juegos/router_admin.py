@@ -161,6 +161,7 @@ class ResultadoCargar(BaseModel):
 
 class Reprogramar(BaseModel):
     fecha: datetime
+    horario: str | None = None
 
 class MarcarPago(BaseModel):
     pagado: bool = True
@@ -492,21 +493,26 @@ def reprogramar(sorteo_id: int, datos: Reprogramar, sesion: Session = Depends(ob
         raise HTTPException(status_code=400, detail="El sorteo no esta en estado reprogramando")
     if datos.fecha.weekday() == 6:
         raise HTTPException(status_code=400, detail="Los domingos no hay sorteos")
+    reglas = motor.obtener_reglas(sesion)
+    horario = datos.horario if datos.horario else sorteo.horario
+    if horario not in reglas.dict_horarios():
+        raise HTTPException(status_code=400, detail="Horario inexistente en las reglas")
     sorteo.fecha = datos.fecha
+    sorteo.horario = horario
     sorteo.estado = EstadoSorteo.PROGRAMADO
     sorteo.aviso_costo_enviado = False
     aviso = Aviso(
         texto=(
-            f"Sorteo #{sorteo.id} ({sorteo.modalidad} {sorteo.horario}) reprogramado: "
-            f"nuevo dia {datos.fecha.strftime('%d/%m/%Y')}."
+            f"Sorteo #{sorteo.id} ({sorteo.modalidad} {horario}) reprogramado: "
+            f"nuevo dia {datos.fecha.strftime('%d/%m/%Y')} horario {horario}."
         ),
         destino="todos",
     )
     sesion.add(aviso)
     sesion.commit()
-    auditoria.registrar(sesion, "SORTEO_REPROGRAMADO", detalle=f"sorteo={sorteo.id} nueva_fecha={datos.fecha.isoformat()}", usuario=admin)
+    auditoria.registrar(sesion, "SORTEO_REPROGRAMADO", detalle=f"sorteo={sorteo.id} nueva_fecha={datos.fecha.isoformat()} horario={horario}", usuario=admin)
     sesion.commit()
-    return {"ok": True, "estado": sorteo.estado.value, "fecha": sorteo.fecha.isoformat()}
+    return {"ok": True, "estado": sorteo.estado.value, "fecha": sorteo.fecha.isoformat(), "horario": sorteo.horario}
 
 @router.post("/sorteos/{sorteo_id}/resultado")
 def cargar_resultado(sorteo_id: int, datos: ResultadoCargar, sesion: Session = Depends(obtener_sesion), admin: Usuario = Depends(requerir_permiso("cargar_resultados"))):
