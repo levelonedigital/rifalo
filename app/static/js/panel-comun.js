@@ -232,12 +232,17 @@ async function refrescarGrillaRifa(idSelect, s) {
   const pref = idSelect.replace("-sorteo", "");
   const div = asegurarDivGrilla(pref);
   if (!div) return;
-  const esRifaUnico = s && s.modalidad === "rifa" && s.cantidad_numeros === 1;
+  // Leer siempre el sorteo ACTUAL del cache segun el valor del select (evita stale)
+  const sel = document.getElementById(idSelect);
+  const idActual = sel ? sel.value : null;
+  const actual = (SORTEOS_ABIERTOS_CACHE[idSelect] && idActual) ? SORTEOS_ABIERTOS_CACHE[idSelect][idActual] : null;
+  const objetivo = actual || s;
+  const esRifaUnico = objetivo && objetivo.modalidad === "rifa" && objetivo.cantidad_numeros === 1;
   if (!esRifaUnico) { div.style.display = "none"; div.innerHTML = ""; return; }
   const base = rutaOcupados();
   if (!base) { div.style.display = "none"; return; }
   try {
-    const d = await api(base + s.id + "/ocupados", "GET");
+    const d = await api(base + objetivo.id + "/ocupados", "GET");
     const ocupados = new Set(d.ocupados || []);
     const esJugador = rol === "jugador";
     if (esJugador) inyectarCssGrillaJugador();
@@ -454,6 +459,9 @@ async function llenarSelectSorteos(ruta, idSelect) {
       "<option value='" + s.id + "'>#" + s.id + " " + nombreSorteo(s) + " " + s.horario + " " + fmtFecha(s.fecha) + " - $" + s.precio_jugada + " - " + etiquetaPozo(s) + " - " + s.estado + " - cierre " + (s.hora_cierre || "sin limite") + (s.solo_participantes ? " (VACANTE)" : "") + (s.reprogramando ? " (REPROGRAMANDO)" : "") + "</option>"
     ).join("") || "<option value=''>No hay sorteos abiertos</option>";
     if (previo) document.getElementById(idSelect).value = previo;
+    document.getElementById(idSelect).onchange = () => {
+      pintarReglasSelect(idSelect, idSelect.replace("-sorteo", "-reglas"), idSelect.replace("-sorteo", "-imagen"));
+    };
     const idImg = idSelect.replace("-sorteo", "-imagen");
     pintarReglasSelect(idSelect, idSelect.replace("-sorteo", "-reglas"), idImg);
   } catch (e) { aviso(e.message, true); }
