@@ -24,7 +24,7 @@ window.ACCIONES = window.ACCIONES || {};
 const TABS_POR_ROL = {
   admin_principal: [["sorteos","Sorteos"],["buscador","Buscador"],["vendedores","Vendedores"],["pagos","Pagos a vendedores"],["jugadas","Jugadas"],["resumen","Resumen"],["balance","Balance"],["auditoria","Auditoria"]],
   admin: [["sorteos","Sorteos"],["buscador","Buscador"],["pagos","Pagos a vendedores"],["jugadas","Jugadas"],["resumen","Resumen"],["balance","Balance"],["auditoria","Auditoria"]],
-  vendedor: [["vresumen","Mi resumen"],["vcargar","Cargar jugada"],["vpendientes","Aprobar"],["vjugadas","Mis jugadas"],["vrevendedores","Mis revendedores"],["vjugadores","Mis jugadores"],["resultados","Resultados"],["cobros","Mis cobros"]],
+  vendedor: [["vresumen","Mi resumen"],["vcupos","Vender jugadas"],["vcargar","Cargar jugada"],["vpendientes","Aprobar"],["vjugadas","Mis jugadas"],["vrevendedores","Mis revendedores"],["vjugadores","Mis jugadores"],["resultados","Resultados"],["cobros","Mis cobros"]],
   revendedor: [["rsorteos","Sorteos"],["rcargar","Cargar jugada"],["rjugadas","Mis jugadas"],["rresumen","Mi resumen"],["rjugadores","Mis jugadores"],["resultados","Resultados"]],
   jugador: [["jsorteos","Sorteos"],["jcargar","Mi jugada"],["resultados","Resultados"]],
 };
