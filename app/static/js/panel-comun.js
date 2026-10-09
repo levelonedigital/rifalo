@@ -230,15 +230,30 @@ function inyectarCssGrillaJugador() {
 
 async function refrescarGrillaRifa(idSelect, s) {
   const pref = idSelect.replace("-sorteo", "");
-  const div = asegurarDivGrilla(pref);
-  if (!div) return;
-  // Leer siempre el sorteo ACTUAL del cache segun el valor del select (evita stale)
   const sel = document.getElementById(idSelect);
   const idActual = sel ? sel.value : null;
   const actual = (SORTEOS_ABIERTOS_CACHE[idSelect] && idActual) ? SORTEOS_ABIERTOS_CACHE[idSelect][idActual] : null;
   const objetivo = actual || s;
   const esRifaUnico = objetivo && objetivo.modalidad === "rifa" && objetivo.cantidad_numeros === 1;
-  if (!esRifaUnico) { div.style.display = "none"; div.innerHTML = ""; return; }
+  
+  // DEBUG: loguear qué sorteo estamos procesando
+  console.log("refrescarGrillaRifa:", { idSelect, idActual, modalidad: objetivo?.modalidad, esRifaUnico });
+  
+  const divExistente = document.getElementById(pref + "-grilla");
+  
+  if (!esRifaUnico) {
+    // Si NO es rifa, destruir el div completamente
+    if (divExistente) {
+      console.log("Destruyendo grilla porque no es rifa");
+      divExistente.remove();
+    }
+    return;
+  }
+  
+  // Si ES rifa, asegurar que el div existe
+  const div = asegurarDivGrilla(pref);
+  if (!div) return;
+  
   const base = rutaOcupados();
   if (!base) { div.style.display = "none"; return; }
   try {
