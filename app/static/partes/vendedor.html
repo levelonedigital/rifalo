@@ -1,13 +1,28 @@
-    <!-- VENDEDOR: RESUMEN -->
+<!-- VENDEDOR: RESUMEN -->
     <div id="seccion-vresumen" class="tarjeta" style="display:none">
       <h2>Mi resumen</h2>
       <button class="secundario" onclick="cargarVResumen()">Actualizar</button>
       <div id="caja-vresumen"></div>
     </div>
 
-    <!-- VENDEDOR: CARGAR JUGADA -->
+    <!-- VENDEDOR: VENDER JUGADAS (CUPOS) -->
+    <div id="seccion-vcupos" class="tarjeta" style="display:none">
+      <h2>Vender jugadas (cupos)</h2>
+      <p class="chico">El jugador te paga fuera del sistema y vos le habilitás jugadas. Cada cupo se aprueba en el acto: el precio suma al pozo y a tu comisión al instante. El jugador después elige sus números desde su panel.</p>
+      <label>Sorteo</label><select id="v-cupo-sorteo" onchange="pintarReglasSelect('v-cupo-sorteo','v-cupo-reglas','v-cupo-imagen'); llenarSelectJugadorCupo(); updateCupoResumen()"></select>
+      <img id="v-cupo-imagen" style="display:none; max-width:220px; border-radius:6px; margin:6px 0">
+      <div id="v-cupo-reglas" class="reglas-box"></div>
+      <label>Jugador de tu linea</label><select id="v-cupo-jugador"></select>
+      <label>Cantidad de jugadas</label><input id="v-cupo-cantidad" type="number" min="1" max="50" value="1" oninput="updateCupoResumen()">
+      <div id="v-cupo-resumen" class="reglas-box"></div>
+      <button onclick="venderCupos()">Vender cupos</button>
+      <div id="v-cupo-msg" class="mensaje ok" style="display:none"></div>
+    </div>
+
+    <!-- VENDEDOR: CARGAR JUGADA (VENTA DIRECTA) -->
     <div id="seccion-vcargar" class="tarjeta" style="display:none">
-      <h2>Cargar jugada</h2>
+      <h2>Cargar jugada (venta directa)</h2>
+      <p class="chico">Cargás los números que te dio el jugador y la jugada queda APROBADA en el acto (ya cobraste fuera del sistema).</p>
       <label>Sorteo</label><select id="v-sorteo" onchange="pintarReglasSelect('v-sorteo','v-reglas','v-imagen')"></select>
       <img id="v-imagen" style="display:none; max-width:220px; border-radius:6px; margin:6px 0">
       <div id="v-reglas" class="reglas-box"></div>
@@ -18,13 +33,13 @@
       <label>Nombre del jugador (solo si no esta registrado)</label>
       <input id="v-jugador">
       <label>Numeros (separados por coma)</label><input id="v-numeros">
-      <button onclick="vCargarJugada()">Cargar</button>
+      <button onclick="vCargarJugada()">Cargar y aprobar</button>
     </div>
 
-    <!-- VENDEDOR: PENDIENTES -->
+    <!-- VENDEDOR: PENDIENTES (legacy) -->
     <div id="seccion-vpendientes" class="tarjeta" style="display:none">
       <h2>Jugadas pendientes de mi aprobacion</h2>
-      <p class="chico">Los numeros quedan ocultos: aprobás la jugada por su numero de jugada y precio.</p>
+      <p class="chico">Solo quedan aca las jugadas viejas cargadas antes del sistema de cupos. Los numeros quedan ocultos: aprobás por numero de jugada y precio.</p>
       <button class="secundario" onclick="cargarVPendientes()">Actualizar</button>
       <div id="lista-vpendientes"></div>
     </div>
