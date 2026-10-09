@@ -8,7 +8,7 @@ from app.core.database import obtener_sesion
 from app.core.dependencias import requerir_rol
 from app.modulos_juegos import motor
 from app.modulos_juegos.buscador import _zona
-from app.modulos_juegos.jugadas_core import crear_jugada
+from app.modulos_juegos.jugadas_core import validar_numeros
 from app.modulos_juegos.modalidades import obtener
 from app.modelos.juegos import EstadoJugada, EstadoSorteo, Jugada, Sorteo
 from app.modelos.usuario import RolUsuario, Usuario
@@ -98,7 +98,12 @@ def sorteos_abiertos(sesion: Session = Depends(obtener_sesion), jugador: Usuario
         d["puedo_jugar"] = _puedo_jugar(s, jugador, reglas)
         mis = (
             sesion.query(Jugada)
-            .filter(Jugada.sorteo_id == s.id, Jugada.jugador_id == jugador.id, Jugada.estado.in_(ESTADOS_ACTIVAS))
+            .filter(
+                Jugada.sorteo_id == s.id,
+                Jugada.jugador_id == jugador.id,
+                Jugada.estado.in_(ESTADOS_ACTIVAS),
+                Jugada.numeros != "",
+            )
             .order_by(Jugada.creada_en)
             .all()
         )
@@ -116,6 +121,17 @@ def sorteos_abiertos(sesion: Session = Depends(obtener_sesion), jugador: Usuario
                 "aplica": av["aplica"],
             })
         d["mis_jugadas_info"] = info
+        cupos = (
+            sesion.query(Jugada)
+            .filter(
+                Jugada.sorteo_id == s.id,
+                Jugada.jugador_id == jugador.id,
+                Jugada.estado == EstadoJugada.APROBADA,
+                Jugada.numeros == "",
+            )
+            .count()
+        )
+        d["cupos_disponibles"] = cupos
         salida.append(d)
     return salida
 
@@ -140,7 +156,7 @@ def resultados(sesion: Session = Depends(obtener_sesion), jugador: Usuario = jug
     salida = []
     for s in sorteos:
         ganadoras = sesion.query(Jugada).filter(Jugada.sorteo_id == s.id, Jugada.estado == EstadoJugada.GANADORA).all()
-        mis = sesion.query(Jugada).filter(Jugada.sorteo_id == s.id, Jugada.jugador_id == jugador.id).all()
+        mis = sesion.query(Jugada).filter(Jugada.sorteo_id == s.id, Jugada.jugador_id == jugador.id, Jugada.numeros != "").all()
         salida.append({
             "sorteo_id": s.id,
             "titulo": s.titulo,
@@ -179,34 +195,46 @@ def confirmar_cobro(jugada_id: int, sesion: Session = Depends(obtener_sesion), j
 
 @router.post("/jugadas")
 def cargar_jugada(datos: JugadaCrear, sesion: Session = Depends(obtener_sesion), jugador: Usuario = jug_dep):
-    vendedor = sesion.get(Usuario, jugador.padre_id) if jugador.padre_id else None
-    if vendedor is None or not vendedor.activo:
-        raise HTTPException(status_code=403, detail="Tu vendedor no esta activo")
+    """Completa un CUPO disponible del jugador con sus numeros.
+
+    El jugador ya no crea jugadas pendientes: consume una de sus jugadas aprobadas sin
+    numeros (cupos que le vendio el vendedor/revendedor). Si no tiene cupos, debe comprar.
+    """
     sorteo = sesion.get(Sorteo, datos.sorteo_id)
     if sorteo is None:
         raise HTTPException(status_code=404, detail="Sorteo no encontrado")
     reglas = motor.obtener_reglas(sesion)
     if not _puedo_jugar(sorteo, jugador, reglas):
         raise HTTPException(status_code=400, detail="Este sorteo no esta habilitado para jugar ahora")
+    cupo = (
+        sesion.query(Jugada)
+        .filter(
+            Jugada.sorteo_id == sorteo.id,
+            Jugada.jugador_id == jugador.id,
+            Jugada.estado == EstadoJugada.APROBADA,
+            Jugada.numeros == "",
+        )
+        .order_by(Jugada.id)
+        .first()
+    )
+    if cupo is None:
+        raise HTTPException(status_code=400, detail="No tenes jugadas disponibles para este sorteo. Comprale cupos a tu vendedor.")
+    error = validar_numeros(sorteo, datos.numeros)
+    if error:
+        raise HTTPException(status_code=400, detail=error)
     try:
         motor.validar_numeros_rifa(sesion, sorteo, datos.numeros)
-        jugada = crear_jugada(
-            sesion,
-            sorteo,
-            datos.numeros,
-            vendedor,
-            revendedor_id=jugador.revendedor_padre_id,
-            jugador_id=jugador.id,
-            jugador_nombre=jugador.nombre,
-        )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    aviso_iguales = motor.info_premio_compartido(sesion, sorteo, jugada.numeros, incluir_pendiente=True)
+    cupo.numeros = ",".join(f"{n:02d}" for n in datos.numeros)
+    sesion.commit()
+    auditoria_ok = True
+    aviso_iguales = motor.info_premio_compartido(sesion, sorteo, cupo.numeros, incluir_pendiente=False)
     return {
-        "id": jugada.id,
-        "numeros": jugada.numeros,
-        "precio": jugada.precio,
-        "estado": jugada.estado.value,
+        "id": cupo.id,
+        "numeros": cupo.numeros,
+        "precio": cupo.precio,
+        "estado": cupo.estado.value,
         "aviso_iguales": aviso_iguales,
     }
 
@@ -215,7 +243,7 @@ def cargar_jugada(datos: JugadaCrear, sesion: Session = Depends(obtener_sesion),
 def mis_jugadas(sesion: Session = Depends(obtener_sesion), jugador: Usuario = jug_dep):
     jugadas = (
         sesion.query(Jugada)
-        .filter(Jugada.jugador_id == jugador.id)
+        .filter(Jugada.jugador_id == jugador.id, Jugada.numeros != "")
         .order_by(Jugada.creada_en.desc())
         .limit(300)
         .all()
