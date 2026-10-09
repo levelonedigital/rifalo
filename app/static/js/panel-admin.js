@@ -344,15 +344,20 @@ function prepararReprog(id) {
   const opciones = selOrigen ? selOrigen.innerHTML : "";
   bar.style.display = "block";
   bar.innerHTML =
-    "<b>Reprogramando sorteo #" + id + " (" + (s.titulo || s.modalidad) + ").</b> Elegí nuevo dia y horario." +
+    "<b>Reprogramando sorteo #" + id + " (" + (s.titulo || s.modalidad) + ").</b> Elegí nuevo dia, horario y cierre." +
     "<div class='grilla' style='margin:8px 0'>" +
     "<div><label>Nuevo dia</label><input type='date' id='reprog-fecha'></div>" +
     "<div><label>Nuevo horario</label><select id='reprog-horario'>" + opciones + "</select></div>" +
+    "<div><label>Cierre para anotarse (HH:MM)</label><input type='time' id='reprog-cierre'></div>" +
     "</div>" +
+    "<span class='chico'>Si dejás el cierre vacio, el sorteo queda sin limite de anotacion.</span>" +
+    "<div style='margin-top:8px'>" +
     "<button onclick='guardarReprog()'>Guardar reprogramacion</button>" +
-    "<button class='peligro' onclick='cancelarReprog()'>Cancelar</button>";
+    "<button class='peligro' onclick='cancelarReprog()'>Cancelar</button>" +
+    "</div>";
   document.getElementById("reprog-fecha").value = s.fecha.slice(0, 10);
   document.getElementById("reprog-horario").value = s.horario;
+  document.getElementById("reprog-cierre").value = s.hora_cierre || "";
   bar.scrollIntoView({ behavior: "smooth" });
 }
 
@@ -365,11 +370,12 @@ function cancelarReprog() {
 async function guardarReprog() {
   const fecha = document.getElementById("reprog-fecha").value;
   const horario = document.getElementById("reprog-horario").value;
+  const cierre = document.getElementById("reprog-cierre").value;
   if (!fecha) { aviso("Poné el nuevo dia", true); return; }
   if (!reprog_id) return;
   try {
-    await api("/admin/sorteos/" + reprog_id + "/reprogramar", "POST", { fecha: fecha, horario: horario });
-    aviso("Sorteo #" + reprog_id + " reprogramado: nuevo dia " + fmtFecha(fecha) + " horario " + horario + ". Se aviso a los jugadores.");
+    await api("/admin/sorteos/" + reprog_id + "/reprogramar", "POST", { fecha: fecha, horario: horario, hora_cierre: (cierre || null) });
+    aviso("Sorteo #" + reprog_id + " reprogramado: nuevo dia " + fmtFecha(fecha) + " horario " + horario + (cierre ? " cierre " + cierre : " sin limite") + ". Se aviso a los jugadores.");
     cancelarReprog();
     cargarSorteos();
     cargarAvisos();
