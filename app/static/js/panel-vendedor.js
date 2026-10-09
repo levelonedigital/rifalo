@@ -14,8 +14,62 @@ async function vCargarJugada() {
   };
   if (selJugador) cuerpo.jugador_id = parseInt(selJugador);
   else cuerpo.jugador_nombre = document.getElementById("v-jugador").value || null;
-  try { const d = await api("/vendedor/jugadas", "POST", cuerpo); aviso("Jugada #" + d.id + " cargada"); document.getElementById("v-numeros").value = ""; }
+  try {
+    const d = await api("/vendedor/jugadas", "POST", cuerpo);
+    let txt = "Jugada #" + d.id + " cargada y APROBADA (venta directa).";
+    if (d.aviso_iguales && d.aviso_iguales.aplica && d.aviso_iguales.coincidencias > 0) {
+      txt += " Atencion: hay " + d.aviso_iguales.coincidencias + " jugada(s) igual(es) en el sorteo; si gana, el pozo se divide y el premio estimado es $" + d.aviso_iguales.premio_estimado + ".";
+    }
+    aviso(txt);
+    document.getElementById("v-numeros").value = "";
+  }
   catch (e) { aviso(e.message, true); }
+}
+
+// ---------- VENDEDOR: VENTA DE CUPOS ----------
+function llenarSelectJugadorCupo() {
+  const sel = document.getElementById("v-cupo-jugador");
+  if (!sel) return;
+  const todos = JUGADORES_CACHE["v"] || [];
+  const idSel = document.getElementById("v-cupo-sorteo").value;
+  const s = SORTEOS_ABIERTOS_CACHE["v-cupo-sorteo"] && SORTEOS_ABIERTOS_CACHE["v-cupo-sorteo"][idSel];
+  let lista = todos.filter(j => j.activo);
+  if (s && s.solo_participantes && s.participantes && s.participantes.length) {
+    lista = lista.filter(j => s.participantes.includes(j.nombre));
+  }
+  sel.innerHTML = "<option value=''>Elegi jugador...</option>" + lista.map(j => "<option value='" + j.id + "'>" + j.nombre + " (" + j.usuario + ")</option>").join("");
+}
+
+function updateCupoResumen() {
+  const caja = document.getElementById("v-cupo-resumen");
+  if (!caja) return;
+  const idSel = document.getElementById("v-cupo-sorteo").value;
+  const s = SORTEOS_ABIERTOS_CACHE["v-cupo-sorteo"] && SORTEOS_ABIERTOS_CACHE["v-cupo-sorteo"][idSel];
+  const cant = parseInt(document.getElementById("v-cupo-cantidad").value || "0", 10);
+  if (!s || !cant || cant < 1) { caja.textContent = ""; return; }
+  const total = Math.round((s.precio_jugada || 0) * cant * 100) / 100;
+  caja.innerHTML = "<b>Total a cobrarle al jugador: $" + total + "</b> (" + cant + " x $" + s.precio_jugada + "). Al confirmar, ese monto se reparte y suma al pozo en el acto.";
+}
+
+async function venderCupos() {
+  const sorteoId = document.getElementById("v-cupo-sorteo").value;
+  const jugadorId = document.getElementById("v-cupo-jugador").value;
+  const cant = parseInt(document.getElementById("v-cupo-cantidad").value || "0", 10);
+  const msgBox = document.getElementById("v-cupo-msg");
+  if (!sorteoId || !jugadorId || !cant || cant < 1) { aviso("Completa sorteo, jugador y cantidad", true); return; }
+  const s = SORTEOS_ABIERTOS_CACHE["v-cupo-sorteo"][sorteoId];
+  const j = (JUGADORES_CACHE["v"] || []).find(x => String(x.id) === String(jugadorId));
+  const total = Math.round((s.precio_jugada || 0) * cant * 100) / 100;
+  if (!confirm("Vas a vender " + cant + " jugada(s) del sorteo #" + sorteoId + " a " + (j ? j.nombre : jugadorId) + " por $" + total + ". El jugador debe haberte pagado ese monto fuera del sistema. Continuar?")) return;
+  if (!confirm("CONFIRMACION FINAL: esta venta no se puede editar ni cancelar despues. El monto suma al pozo y a tu comision ahora mismo. Confirmas?")) return;
+  try {
+    const d = await api("/vendedor/cupos", "POST", { sorteo_id: parseInt(sorteoId), jugador_id: parseInt(jugadorId), cantidad: cant });
+    if (msgBox) { msgBox.style.display = "block"; msgBox.className = "mensaje ok"; msgBox.textContent = "Vendiste " + d.cantidad + " jugada(s) por $" + d.monto_total + ". El jugador ya las ve disponibles en su panel."; }
+    document.getElementById("v-cupo-cantidad").value = 1;
+    updateCupoResumen();
+  } catch (e) {
+    if (msgBox) { msgBox.style.display = "block"; msgBox.className = "mensaje error"; msgBox.textContent = e.message; }
+  }
 }
 
 async function cargarVPendientes() {
@@ -315,6 +369,12 @@ async function confirmarCobroVendedor(id) {
 // ---------- REGISTRO DE PESTANAS DEL VENDEDOR ----------
 window.ACCIONES = window.ACCIONES || {};
 ACCIONES.vresumen = cargarVResumen;
+ACCIONES.vcupos = async () => {
+  await llenarSelectSorteos("/vendedor/sorteos", "v-cupo-sorteo");
+  await cargarSelectJugadores("v");
+  llenarSelectJugadorCupo();
+  updateCupoResumen();
+};
 ACCIONES.vcargar = () => { llenarSelectSorteos("/vendedor/sorteos", "v-sorteo"); cargarSelectJugadores("v"); };
 ACCIONES.vpendientes = cargarVPendientes;
 ACCIONES.vjugadas = cargarVJugadas;
