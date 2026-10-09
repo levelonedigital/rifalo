@@ -17,6 +17,37 @@ function mostrarMsgJugada(texto, err) {
 
 function limpiarMsgJugada() { mostrarMsgJugada("", false); }
 
+// ---------- AVISO: JUGADAS IGUALES / PREMIO ESTIMADO ----------
+function avisoIgualesHTML(info) {
+  if (!info || !info.aplica || !(info.coincidencias > 0)) return "";
+  const otras = info.coincidencias;
+  const total = otras + 1;
+  return "<div style='margin:6px 0;padding:8px 10px;border-radius:8px;background:#7c2d12;border:1px solid #f59e0b;color:#fef3c7;font-size:12px'>" +
+    "<b>Atención:</b> hay " + otras + " jugada" + (otras === 1 ? "" : "s") + " igual" + (otras === 1 ? "" : "es") + " a esta en el mismo sorteo. " +
+    "Si esta combinación gana, el pozo se divide entre " + total + " y tu premio hasta el momento sería <b>$" + info.premio_estimado + "</b>. " +
+    "<span class='chico'>(pozo al momento $" + info.pozo_estimado + "; puede crecer con nuevas jugadas)</span></div>";
+}
+
+function mostrarAvisoIguales(info) {
+  let div = document.getElementById("j-aviso-iguales");
+  if (!div) {
+    div = document.createElement("div");
+    div.id = "j-aviso-iguales";
+    const msg = document.getElementById("j-msg");
+    if (msg) msg.insertAdjacentElement("afterend", div);
+    else {
+      const sec = document.getElementById("seccion-jcargar");
+      if (sec) sec.appendChild(div);
+    }
+  }
+  div.innerHTML = avisoIgualesHTML(info);
+}
+
+function limpiarAvisoIguales() {
+  const div = document.getElementById("j-aviso-iguales");
+  if (div) div.innerHTML = "";
+}
+
 // ---------- JUGADOR: SORTEOS ----------
 async function cargarJSorteos() {
   try {
@@ -31,13 +62,18 @@ async function cargarJSorteos() {
     }
     let html = "<table><tr><th>#</th><th>Sorteo</th><th>Horario</th><th>Dia</th><th>Cierre</th><th>Estado</th><th>Precio</th><th>Pozo / Premio</th><th></th></tr>";
     ss.forEach(s => {
-      // Banner de imagen: centrado, sin fondo, arriba del detalle del sorteo.
       const filaImagen = s.imagen_url
         ? "<tr><td colspan='9' style='padding:10px 4px 2px;text-align:center'>" +
             "<img src='" + s.imagen_url + "' style='display:block;margin:0 auto;max-width:560px;width:100%;height:auto;max-height:320px;object-fit:contain;border-radius:14px;box-shadow:0 6px 18px rgba(0,0,0,.25)'>" +
           "</td></tr>"
         : "";
-      const jugando = (s.mis_jugadas && s.mis_jugadas.length) ? "<div class='chico' style='color:#FFC107'>Jugando: " + s.mis_jugadas.map((n, i) => ((i + 1) + ": " + n)).join(" - ") + "</div>" : "";
+      let jugando = "";
+      if (s.mis_jugadas_info && s.mis_jugadas_info.length) {
+        jugando = "<div class='chico' style='color:#FFC107'>Jugando: " + s.mis_jugadas_info.map((j, i) => ((i + 1) + ": " + j.numeros)).join(" - ") + "</div>";
+        s.mis_jugadas_info.forEach(j => { jugando += avisoIgualesHTML(j); });
+      } else if (s.mis_jugadas && s.mis_jugadas.length) {
+        jugando = "<div class='chico' style='color:#FFC107'>Jugando: " + s.mis_jugadas.map((n, i) => ((i + 1) + ": " + n)).join(" - ") + "</div>";
+      }
       const botonPozo = "<button class='secundario' onclick='elegirSorteoJugador(" + s.id + ")'>Ver pozo/Premio</button>";
       const botonJugar = s.puedo_jugar ? "<button onclick='jugarSorteo(" + s.id + ")'>Jugar</button>" : "<span class='chico'>no habilitado</span>";
       const celdaPozo = tienePremioNombre(s) ? "<b style='color:#22c55e'>" + s.premio_nombre + "</b>" : "<b style='color:#FFC107'>$" + s.pozo + "</b>";
@@ -50,7 +86,6 @@ async function cargarJSorteos() {
 }
 
 function elegirSorteoJugador(id) {
-  // Solo muestra el cartel del pozo y expande la fila. NO toca el select de carga.
   JUGADOR_SORTEO_ELEGIDO = id;
   document.querySelectorAll("[id^='pozo-fila-']").forEach(f => { f.style.display = "none"; });
   const fila = document.getElementById("pozo-fila-" + id);
@@ -67,7 +102,6 @@ function elegirSorteoJugador(id) {
 }
 
 function jugarSorteo(id) {
-  // Solo el boton "Jugar" selecciona el sorteo en el select y pasa a la pestaña de carga.
   JUGADOR_SORTEO_ELEGIDO = id;
   const sel = document.getElementById("j-sorteo");
   if (sel) {
@@ -85,9 +119,10 @@ async function jCargarJugada() {
   try {
     const d = await api("/jugador/jugadas", "POST", cuerpo);
     mostrarMsgJugada("Jugada #" + d.id + " cargada, espera aprobación de tu vendedor.", false);
+    mostrarAvisoIguales(d.aviso_iguales);
     document.getElementById("j-numeros").value = "";
   }
-  catch (e) { mostrarMsgJugada(e.message, true); }
+  catch (e) { mostrarMsgJugada(e.message, true); limpiarAvisoIguales(); }
 }
 
 // ---------- JUGADOR: RESULTADOS Y COBRO ----------
@@ -146,8 +181,8 @@ window.ACCIONES = window.ACCIONES || {};
 ACCIONES.jsorteos = cargarJSorteos;
 ACCIONES.jcargar = async () => {
   limpiarMsgJugada();
+  limpiarAvisoIguales();
   await llenarSelectSorteos("/jugador/sorteos", "j-sorteo");
-  // Despues de que llenarSelectSorteos restauro el valor previo, forzamos al sorteo elegido
   if (JUGADOR_SORTEO_ELEGIDO && SORTEOS_ABIERTOS_CACHE["j-sorteo"] && SORTEOS_ABIERTOS_CACHE["j-sorteo"][JUGADOR_SORTEO_ELEGIDO]) {
     document.getElementById("j-sorteo").value = String(JUGADOR_SORTEO_ELEGIDO);
     pintarReglasSelect("j-sorteo", "j-reglas", "j-imagen");
