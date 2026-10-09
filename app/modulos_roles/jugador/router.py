@@ -103,13 +103,25 @@ def sorteos_abiertos(sesion: Session = Depends(obtener_sesion), jugador: Usuario
             .all()
         )
         d["mis_jugadas"] = [j.numeros for j in mis]
+        info = []
+        for j in mis:
+            es_pendiente = j.estado == EstadoJugada.PENDIENTE
+            av = motor.info_premio_compartido(sesion, s, j.numeros, incluir_pendiente=es_pendiente)
+            info.append({
+                "numeros": j.numeros,
+                "estado": j.estado.value,
+                "coincidencias": av["coincidencias"],
+                "premio_estimado": av["premio_estimado"],
+                "pozo_estimado": av["pozo_estimado"],
+                "aplica": av["aplica"],
+            })
+        d["mis_jugadas_info"] = info
         salida.append(d)
     return salida
 
 
 @router.get("/sorteos/{sorteo_id}/ocupados")
 def numeros_ocupados(sorteo_id: int, sesion: Session = Depends(obtener_sesion), jugador: Usuario = jug_dep):
-    """Numeros ya jugados en una rifa de numero unico (para la grilla). None si no aplica."""
     sorteo = sesion.get(Sorteo, sorteo_id)
     if sorteo is None:
         raise HTTPException(status_code=404, detail="Sorteo no encontrado")
@@ -118,7 +130,6 @@ def numeros_ocupados(sorteo_id: int, sesion: Session = Depends(obtener_sesion), 
 
 @router.get("/resultados")
 def resultados(sesion: Session = Depends(obtener_sesion), jugador: Usuario = jug_dep):
-    """Ultimos 5 sorteos liquidados con sus resultados y las jugadas del jugador."""
     sorteos = (
         sesion.query(Sorteo)
         .filter(Sorteo.estado == EstadoSorteo.LIQUIDADO)
@@ -190,11 +201,13 @@ def cargar_jugada(datos: JugadaCrear, sesion: Session = Depends(obtener_sesion),
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    aviso_iguales = motor.info_premio_compartido(sesion, sorteo, jugada.numeros, incluir_pendiente=True)
     return {
         "id": jugada.id,
         "numeros": jugada.numeros,
         "precio": jugada.precio,
         "estado": jugada.estado.value,
+        "aviso_iguales": aviso_iguales,
     }
 
 
@@ -207,15 +220,21 @@ def mis_jugadas(sesion: Session = Depends(obtener_sesion), jugador: Usuario = ju
         .limit(300)
         .all()
     )
-    return [
-        {
+    salida = []
+    for j in jugadas:
+        sorteo = sesion.get(Sorteo, j.sorteo_id)
+        es_pendiente = j.estado == EstadoJugada.PENDIENTE
+        av = motor.info_premio_compartido(sesion, sorteo, j.numeros, incluir_pendiente=es_pendiente) if sorteo else {"aplica": False, "coincidencias": 0, "premio_estimado": None, "pozo_estimado": None}
+        salida.append({
             "id": j.id,
             "sorteo_id": j.sorteo_id,
             "numeros": j.numeros,
             "precio": j.precio,
             "estado": j.estado.value,
             "premio": j.premio,
-            "coincidencias": _coincidencias(sesion, j.sorteo_id, j.numeros),
-        }
-        for j in jugadas
-    ]
+            "coincidencias": av["coincidencias"],
+            "premio_estimado": av["premio_estimado"],
+            "pozo_estimado": av["pozo_estimado"],
+            "aplica": av["aplica"],
+        })
+    return salida
