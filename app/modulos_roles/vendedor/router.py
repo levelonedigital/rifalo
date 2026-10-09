@@ -326,23 +326,30 @@ def numeros_ocupados(sorteo_id: int, sesion: Session = Depends(obtener_sesion), 
 
 @router.post("/jugadas")
 def cargar_jugada(datos: JugadaCrear, sesion: Session = Depends(obtener_sesion), vendedor: Usuario = vendedor_dep):
+    """Venta directa: crea la jugada con numeros y la aprueba en el acto."""
     sorteo = sesion.get(Sorteo, datos.sorteo_id)
     if sorteo is None:
         raise HTTPException(status_code=404, detail="Sorteo no encontrado")
     jugador_id = None
     nombre = datos.jugador_nombre
+    revendedor_id = None
     if datos.jugador_id is not None:
         pj = sesion.get(Usuario, datos.jugador_id)
         if pj is None or pj.padre_id != vendedor.id or pj.rol != RolUsuario.JUGADOR:
             raise HTTPException(status_code=400, detail="Jugador invalido para tu linea")
         jugador_id = pj.id
         nombre = pj.nombre
+        revendedor_id = pj.revendedor_padre_id
     try:
         motor.validar_numeros_rifa(sesion, sorteo, datos.numeros)
-        jugada = crear_jugada(sesion, sorteo, datos.numeros, vendedor, jugador_id=jugador_id, jugador_nombre=nombre)
+        jugada = crear_jugada(sesion, sorteo, datos.numeros, vendedor, revendedor_id=revendedor_id, jugador_id=jugador_id, jugador_nombre=nombre)
+        reglas = obtener_reglas(sesion)
+        aprobar_jugada(sesion, jugada, reglas)
+        sesion.commit()
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    return {"id": jugada.id, "numeros": jugada.numeros, "precio": jugada.precio, "estado": jugada.estado.value}
+    aviso_iguales = motor.info_premio_compartido(sesion, sorteo, jugada.numeros, incluir_pendiente=False)
+    return {"id": jugada.id, "numeros": jugada.numeros, "precio": jugada.precio, "estado": jugada.estado.value, "aviso_iguales": aviso_iguales}
 
 
 # ---------- VENTA DE CUPOS (autorizaciones de jugada) ----------
