@@ -15,6 +15,7 @@ __all__ = [
     "es_rifa_numero_unico",
     "numeros_ocupados_rifa",
     "validar_numeros_rifa",
+    "info_premio_compartido",
 ]
 
 
@@ -29,12 +30,10 @@ def obtener_reglas(sesion: Session) -> ReglasSistema:
 
 
 def base_pozo(sorteo: Sorteo) -> float:
-    """Pozo base del sorteo (override o 0 si no hay)."""
     return sorteo.pozo_base or 0.0
 
 
 def porcentajes_sorteo(sorteo: Sorteo, reglas: ReglasSistema):
-    """Devuelve (casa_pct, vendedor_linea_pct, pozo_pct) efectivos de este sorteo."""
     casa = sorteo.casa_pct if sorteo.casa_pct is not None else 30.0
     linea = sorteo.vendedor_pct if sorteo.vendedor_pct is not None else reglas.vendedor_pct
     pozo = max(0.0, 100.0 - casa - linea)
@@ -42,11 +41,6 @@ def porcentajes_sorteo(sorteo: Sorteo, reglas: ReglasSistema):
 
 
 def aprobar_jugada(sesion: Session, jugada: Jugada, reglas: ReglasSistema) -> Jugada:
-    """Aprueba y reparte el precio delegando en el modulo aprobar de la modalidad.
-
-    El motor no sabe que modalidad es: pregunta al descubrimiento. Si la modalidad no
-    esta registrada o no trae aprobar.py, se rechaza (no se aprueba a ciegas).
-    """
     sorteo = sesion.get(Sorteo, jugada.sorteo_id)
     if sorteo is None:
         raise ValueError("Sorteo no encontrado para la jugada")
@@ -57,7 +51,6 @@ def aprobar_jugada(sesion: Session, jugada: Jugada, reglas: ReglasSistema) -> Ju
 
 
 def liquidar_sorteo(sorteo: Sorteo, sesion: Session, reglas: ReglasSistema) -> dict:
-    """Licuida delegando en el modulo liquidar de la modalidad descubierta."""
     fn = descubrimiento.obtener_liquidar(sorteo.modalidad)
     if fn is None:
         return {"error": f"Modalidad {sorteo.modalidad} no encontrada o sin modulo de liquidacion"}
@@ -68,7 +61,6 @@ ESTADOS_VENDIDAS = [EstadoJugada.APROBADA, EstadoJugada.GANADORA, EstadoJugada.P
 
 
 def nombres_participantes(sorteo_id: int, sesion: Session) -> str:
-    """Nombres de quienes jugaron el sorteo (jugadas vendidas), para el pozo vacante."""
     jugadas = (
         sesion.query(Jugada)
         .filter(Jugada.sorteo_id == sorteo_id, Jugada.estado.in_(ESTADOS_VENDIDAS))
@@ -81,7 +73,6 @@ def nombres_participantes(sorteo_id: int, sesion: Session) -> str:
 
 
 def crear_pozo_vacante(sesion: Session, origen: Sorteo, fecha, reglas: ReglasSistema) -> Sorteo:
-    """Crea el sorteo vacante: arranca con el pozo retenido del origen, SIN pozo base."""
     hora = reglas.dict_horarios().get(origen.horario, "")
     titulo = f"Pozo vacante sorteo del {fecha.strftime('%d/%m/%Y')} a {hora}"
     nuevo = Sorteo(
@@ -101,9 +92,7 @@ def crear_pozo_vacante(sesion: Session, origen: Sorteo, fecha, reglas: ReglasSis
     return nuevo
 
 
-# ---------- COMPAT: validacion de numeros unicos de rifa (resuelta dinamicamente) ----------
-# Los routers de rol llaman a estas funciones por nombre; se resuelven contra el modulo
-# validar de la modalidad rifa sin que el motor la importe estaticamente.
+# ---------- COMPAT: validacion de numeros unicos de rifa ----------
 
 def _modulo_validar_rifa():
     return descubrimiento.obtener_modulo("rifa", "validar")
@@ -128,3 +117,51 @@ def validar_numeros_rifa(sesion: Session, sorteo: Sorteo, numeros) -> None:
     if m is None:
         return
     return m.validar_numeros_rifa(sesion, sorteo, numeros)
+
+
+# ---------- AVISO: jugadas iguales y premio estimado (clasico / semanal) ----------
+
+def info_premio_compartido(sesion: Session, sorteo: Sorteo, clave_numeros: str, incluir_pendiente: bool = False) -> dict:
+    """Para modalidades de pozo repartido (clasico/semanal): cuenta cuantas OTRAS jugadas
+    vendidas tienen la misma combinacion y estima el premio si esta combinacion ganara,
+    con el pozo al momento. En rifa (premio fijo) no aplica: devuelve aplica=False.
+
+    incluir_pendiente=True: la jugada propia todavia es PENDIENTE (no sumo al pozo),
+      entonces sumo su aporte estimado al pozo y la cuento como un ganador mas.
+    incluir_pendiente=False: la jugada propia ya esta VENDIDA (ya sumo al pozo),
+      entonces el pozo actual ya la incluye y los ganadores son todas las vendidas iguales.
+    """
+    from app.modulos_juegos.modalidades import obtener as obtener_modalidad
+    modalidad = obtener_modalidad(sorteo.modalidad)
+    if modalidad is None or getattr(modalidad, "usa_premio_fijo", False):
+        return {"aplica": False, "coincidencias": 0, "premio_estimado": None, "pozo_estimado": None}
+
+    vendidas_iguales = (
+        sesion.query(Jugada)
+        .filter(
+            Jugada.sorteo_id == sorteo.id,
+            Jugada.numeros == clave_numeros,
+            Jugada.estado.in_(ESTADOS_VENDIDAS),
+        )
+        .count()
+    )
+    reglas = obtener_reglas(sesion)
+    _, _, pozo_pct = porcentajes_sorteo(sorteo, reglas)
+    aporte_pozo = round((sorteo.precio_jugada or 0.0) * pozo_pct / 100.0, 2)
+
+    if incluir_pendiente:
+        pozo_estimado = round((sorteo.pozo_actual or 0.0) + aporte_pozo, 2)
+        ganadores = vendidas_iguales + 1
+        coincidencias_otras = vendidas_iguales
+    else:
+        pozo_estimado = round(sorteo.pozo_actual or 0.0, 2)
+        ganadores = max(vendidas_iguales, 1)
+        coincidencias_otras = max(vendidas_iguales - 1, 0)
+
+    premio_estimado = round(pozo_estimado / ganadores, 2) if ganadores > 0 else None
+    return {
+        "aplica": True,
+        "coincidencias": coincidencias_otras,
+        "premio_estimado": premio_estimado,
+        "pozo_estimado": pozo_estimado,
+    }
