@@ -10,7 +10,7 @@ from app.core.dependencias import requerir_rol
 from app.core.security import hash_password
 from app.modulos_juegos import motor
 from app.modulos_juegos.buscador import _zona
-from app.modulos_juegos.jugadas_core import crear_jugada
+from app.modulos_juegos.jugadas_core import crear_cupo, crear_jugada
 from app.modulos_juegos.modalidades import obtener
 from app.modulos_juegos.motor import aprobar_jugada, obtener_reglas
 from app.modelos.juegos import EstadoJugada, EstadoSorteo, Jugada, LiquidacionVendedor, Sorteo
@@ -69,6 +69,12 @@ class JugadorEditar(BaseModel):
 
 class MarcarPago(BaseModel):
     pagado: bool = True
+
+
+class CuposVender(BaseModel):
+    sorteo_id: int
+    jugador_id: int
+    cantidad: int = Field(ge=1, le=50)
 
 
 def _comision_propia(vendedor: Usuario, reglas) -> float:
@@ -339,6 +345,50 @@ def cargar_jugada(datos: JugadaCrear, sesion: Session = Depends(obtener_sesion),
     return {"id": jugada.id, "numeros": jugada.numeros, "precio": jugada.precio, "estado": jugada.estado.value}
 
 
+# ---------- VENTA DE CUPOS (autorizaciones de jugada) ----------
+
+@router.post("/cupos")
+def vender_cupos(datos: CuposVender, sesion: Session = Depends(obtener_sesion), vendedor: Usuario = vendedor_dep):
+    """Vende N cupos (jugadas aprobadas sin numeros) a un jugador de su linea.
+
+    El cobro es fuera del sistema. Al crear cada cupo se aprueba en el acto: el precio
+    se reparte y suma al pozo inmediatamente. Doble confirmacion en el frontend.
+    """
+    sorteo = sesion.get(Sorteo, datos.sorteo_id)
+    if sorteo is None:
+        raise HTTPException(status_code=404, detail="Sorteo no encontrado")
+    jugador = sesion.get(Usuario, datos.jugador_id)
+    if jugador is None or jugador.padre_id != vendedor.id or jugador.rol != RolUsuario.JUGADOR:
+        raise HTTPException(status_code=400, detail="Jugador invalido para tu linea")
+    reglas = obtener_reglas(sesion)
+    creadas = []
+    try:
+        for _ in range(datos.cantidad):
+            cupo = crear_cupo(
+                sesion,
+                sorteo,
+                vendedor,
+                revendedor_id=jugador.revendedor_padre_id,
+                jugador_id=jugador.id,
+                jugador_nombre=jugador.nombre,
+            )
+            aprobar_jugada(sesion, cupo, reglas)
+            creadas.append(cupo.id)
+        sesion.commit()
+        auditoria.registrar(
+            sesion,
+            "CUPOS_VENDIDOS",
+            detalle=f"sorteo={sorteo.id} jugador={jugador.usuario} cantidad={datos.cantidad}",
+            usuario=vendedor,
+        )
+        sesion.commit()
+    except ValueError as e:
+        sesion.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
+    monto_total = round((sorteo.precio_jugada or 0.0) * len(creadas), 2)
+    return {"ids": creadas, "cantidad": len(creadas), "monto_total": monto_total}
+
+
 @router.get("/jugadas/pendientes")
 def pendientes(sesion: Session = Depends(obtener_sesion), vendedor: Usuario = vendedor_dep):
     jugadas = (
@@ -389,7 +439,6 @@ def rechazar(jugada_id: int, sesion: Session = Depends(obtener_sesion), vendedor
 
 @router.post("/jugadas/{jugada_id}/marcar-premio")
 def marcar_premio(jugada_id: int, datos: MarcarPago, sesion: Session = Depends(obtener_sesion), vendedor: Usuario = vendedor_dep):
-    """El vendedor marca que entrego (o desmarca) el premio a su jugador ganador."""
     jugada = _mio(sesion, jugada_id, vendedor)
     if jugada.estado != EstadoJugada.GANADORA:
         raise HTTPException(status_code=400, detail="Solo se puede marcar el premio de jugadas ganadoras")
