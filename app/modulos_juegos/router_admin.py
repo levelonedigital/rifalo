@@ -162,6 +162,7 @@ class ResultadoCargar(BaseModel):
 class Reprogramar(BaseModel):
     fecha: datetime
     horario: str | None = None
+    hora_cierre: str | None = None
 
 class MarcarPago(BaseModel):
     pagado: bool = True
@@ -497,8 +498,11 @@ def reprogramar(sorteo_id: int, datos: Reprogramar, sesion: Session = Depends(ob
     horario = datos.horario if datos.horario else sorteo.horario
     if horario not in reglas.dict_horarios():
         raise HTTPException(status_code=400, detail="Horario inexistente en las reglas")
+    hc = datos.hora_cierre.strip() if datos.hora_cierre else None
+    hora_cierre = validar_hora_cierre(hc) if hc else None
     sorteo.fecha = datos.fecha
     sorteo.horario = horario
+    sorteo.hora_cierre = hora_cierre
     sorteo.estado = EstadoSorteo.PROGRAMADO
     sorteo.aviso_costo_enviado = False
     aviso = Aviso(
@@ -510,9 +514,9 @@ def reprogramar(sorteo_id: int, datos: Reprogramar, sesion: Session = Depends(ob
     )
     sesion.add(aviso)
     sesion.commit()
-    auditoria.registrar(sesion, "SORTEO_REPROGRAMADO", detalle=f"sorteo={sorteo.id} nueva_fecha={datos.fecha.isoformat()} horario={horario}", usuario=admin)
+    auditoria.registrar(sesion, "SORTEO_REPROGRAMADO", detalle=f"sorteo={sorteo.id} nueva_fecha={datos.fecha.isoformat()} horario={horario} cierre={hora_cierre}", usuario=admin)
     sesion.commit()
-    return {"ok": True, "estado": sorteo.estado.value, "fecha": sorteo.fecha.isoformat(), "horario": sorteo.horario}
+    return {"ok": True, "estado": sorteo.estado.value, "fecha": sorteo.fecha.isoformat(), "horario": sorteo.horario, "hora_cierre": sorteo.hora_cierre}
 
 @router.post("/sorteos/{sorteo_id}/resultado")
 def cargar_resultado(sorteo_id: int, datos: ResultadoCargar, sesion: Session = Depends(obtener_sesion), admin: Usuario = Depends(requerir_permiso("cargar_resultados"))):
