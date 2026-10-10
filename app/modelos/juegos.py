@@ -187,3 +187,18 @@ class CupoVendedor(Base):
     vendedor_id = Column(Integer, ForeignKey("usuarios.id"), nullable=False)
     cupo_total = Column(Integer, default=0)
     cupo_usado = Column(Integer, default=0)
+
+class PagoVendedor(Base):
+    """Registro de pago del vendedor al administrador por jugadas vendidas de un sorteo.
+
+    El admin confirma que el vendedor le pago X jugadas de ese sorteo. Queda como
+    historial de rendicion (pagos parciales por sorteo).
+    """
+    __tablename__ = "pagos_vendedor"
+
+    id = Column(Integer, primary_key=True, index=True)
+    sorteo_id = Column(Integer, ForeignKey("sorteos.id"), nullable=False)
+    vendedor_id = Column(Integer, ForeignKey("usuarios.id"), nullable=False)
+    cantidad_jugadas = Column(Integer, nullable=False)
+    monto = Column(Float, nullable=False)
+    creado_en = Column(DateTime(timezone=True), server_default=func.now())
