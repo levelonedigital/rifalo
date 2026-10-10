@@ -67,6 +67,25 @@
       <div id="vrev-gestion-caja" style="margin-top:12px"></div>
     </div>
 
+    <!-- VENDEDOR: PAGOS A REVENDEDORES -->
+    <div id="seccion-vpagos-rev" class="tarjeta" style="display:none">
+      <h2>Pagos a revendedores (liquidacion de comisiones)</h2>
+      <p class="chico">Elegi un revendedor, pone el rango de fechas (desde/hasta) y generá la liquidacion: el sistema suma la comision de las jugadas vendidas de ese revendedor cuyos sorteos caen en el rango. No se permiten rangos solapados para el mismo revendedor. Cuando pagues, tocalo "Marcar pagado"; el revendedor confirmara el cobro desde su panel.</p>
+      <div class="grilla">
+        <div><label>Revendedor</label><select id="pago-revendedor" onchange="cargarLiquidacionesRev()"></select></div>
+        <div><label>Desde (AAAA-MM-DD)</label><input id="pago-rev-desde" type="date"></div>
+        <div><label>Hasta (AAAA-MM-DD)</label><input id="pago-rev-hasta" type="date"></div>
+        <div><button onclick="generarLiquidacionRev()">Generar liquidacion</button></div>
+      </div>
+      <h2>Liquidaciones</h2>
+      <button class="secundario" onclick="cargarLiquidacionesRev()">Actualizar</button>
+      <div id="lista-liquidaciones-rev"></div>
+      <div id="detalle-liquidacion-rev" class="modo-box" style="display:block;margin-top:12px"></div>
+      <h2 style="margin-top:20px">Confirmaciones de cobro</h2>
+      <p class="chico">Aca ves cuando un revendedor confirmo que cobro una liquidacion.</p>
+      <div id="confirmaciones-rev"></div>
+    </div>
+
     <!-- VENDEDOR: JUGADORES -->
     <div id="seccion-vjugadores" class="tarjeta" style="display:none">
       <div id="vjug-edit-bar" class="modo-box" style="display:none"></div>
@@ -105,8 +124,8 @@
 
     <!-- VENDEDOR: MIS COBROS -->
     <div id="seccion-cobros" class="tarjeta" style="display:none">
-      <h2>Mis cobros (liquidacion de comisiones)</h2>
+      <h2>Mis cobros (liquidacion de comisiones del administrador)</h2>
       <button class="secundario" onclick="cargarCobros()">Actualizar</button>
-      <p class="chico">Acá ves las liquidaciones de tus comisiones por periodo. Cuando el administrador marque el pago, confirmá que cobraste.</p>
+      <p class="chico">Aca ves las liquidaciones de tus comisiones por periodo. Cuando el administrador marque el pago, confirma que cobraste.</p>
       <div id="lista-cobros-vendedor"></div>
     </div>
