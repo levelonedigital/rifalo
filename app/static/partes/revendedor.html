@@ -7,17 +7,17 @@
       <div id="r-mis-pagos" style="margin-top:16px"></div>
     </div>
 
-    <!-- REVENDEDOR: VENDER JUGADAS (CUPOS) -->
+    <!-- REVENDEDOR: VENDER JUGADAS -->
     <div id="seccion-rcupos" class="tarjeta" style="display:none">
-      <h2>Vender jugadas (cupos)</h2>
-      <p class="chico">El jugador te paga fuera del sistema y vos le habilitás jugadas. Cada cupo se aprueba en el acto: suma al pozo y a tu comisión al instante. El jugador después elige sus números desde su panel.</p>
+      <h2>Vender jugadas</h2>
+      <p class="chico">El jugador te paga fuera del sistema y vos le habilitás jugadas. Cada jugada se aprueba en el acto: suma al pozo y a tu comisión al instante. El jugador después elige sus números desde su panel.</p>
       <label>Sorteo</label><select id="r-cupo-sorteo" onchange="pintarReglasSelect('r-cupo-sorteo','r-cupo-reglas','r-cupo-imagen'); llenarSelectJugadorCupoR(); updateCupoResumenR()"></select>
       <img id="r-cupo-imagen" style="display:none; max-width:220px; border-radius:6px; margin:6px 0">
       <div id="r-cupo-reglas" class="reglas-box"></div>
       <label>Jugador de tu linea</label><select id="r-cupo-jugador"></select>
       <label>Cantidad de jugadas</label><input id="r-cupo-cantidad" type="number" min="1" max="50" value="1" oninput="updateCupoResumenR()">
       <div id="r-cupo-resumen" class="reglas-box"></div>
-      <button onclick="venderCuposR()">Vender cupos</button>
+      <button onclick="venderCuposR()">Vender jugadas</button>
       <div id="r-cupo-msg" class="mensaje ok" style="display:none"></div>
     </div>
 
@@ -50,6 +50,7 @@
       <h2>Mi resumen</h2>
       <button class="secundario" onclick="cargarRResumen()">Actualizar</button>
       <div id="caja-rresumen"></div>
+      <div id="r-cuenta" style="margin-top:16px"></div>
     </div>
 
     <!-- REVENDEDOR: JUGADORES -->
