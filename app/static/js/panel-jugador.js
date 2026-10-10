@@ -60,10 +60,10 @@ async function cargarJSorteos() {
       cartel.style.display = "block";
       cartel.innerHTML = cartelSorteoHtml(elegido);
     }
-    let html = "<table><tr><th>#</th><th>Sorteo</th><th>Horario</th><th>Dia</th><th>Cierre</th><th>Estado</th><th>Precio</th><th>Pozo / Premio</th><th></th></tr>";
+    let html = "<table><tr><th>#</th><th>Sorteo</th><th>Horario</th><th>Dia</th><th>Cierre</th><th>Estado</th><th>Precio</th><th>Pozo / Premio</th><th>Cupos</th><th></th></tr>";
     ss.forEach(s => {
       const filaImagen = s.imagen_url
-        ? "<tr><td colspan='9' style='padding:10px 4px 2px;text-align:center'>" +
+        ? "<tr><td colspan='10' style='padding:10px 4px 2px;text-align:center'>" +
             "<img src='" + s.imagen_url + "' style='display:block;margin:0 auto;max-width:560px;width:100%;height:auto;max-height:320px;object-fit:contain;border-radius:14px;box-shadow:0 6px 18px rgba(0,0,0,.25)'>" +
           "</td></tr>"
         : "";
@@ -74,12 +74,17 @@ async function cargarJSorteos() {
       } else if (s.mis_jugadas && s.mis_jugadas.length) {
         jugando = "<div class='chico' style='color:#FFC107'>Jugando: " + s.mis_jugadas.map((n, i) => ((i + 1) + ": " + n)).join(" - ") + "</div>";
       }
+      const cuposTxt = s.cupos_disponibles > 0
+        ? "<b style='color:#22c55e'>" + s.cupos_disponibles + " disponible(s)</b>"
+        : "<span class='chico' style='color:#ef4444'>Sin cupos</span>";
       const botonPozo = "<button class='secundario' onclick='elegirSorteoJugador(" + s.id + ")'>Ver pozo/Premio</button>";
-      const botonJugar = s.puedo_jugar ? "<button onclick='jugarSorteo(" + s.id + ")'>Jugar</button>" : "<span class='chico'>no habilitado</span>";
+      const botonJugar = s.puedo_jugar && s.cupos_disponibles > 0
+        ? "<button onclick='jugarSorteo(" + s.id + ")'>Jugar</button>"
+        : (s.cupos_disponibles === 0 ? "<span class='chico'>Compra cupos a tu vendedor</span>" : "<span class='chico'>no habilitado</span>");
       const celdaPozo = tienePremioNombre(s) ? "<b style='color:#22c55e'>" + s.premio_nombre + "</b>" : "<b style='color:#FFC107'>$" + s.pozo + "</b>";
       html += filaImagen;
-      html += "<tr><td>" + s.id + "</td><td><b>" + nombreSorteo(s) + "</b>" + (s.titulo ? "<div class='chico'>" + s.modalidad + "</div>" : "") + (s.reprogramando ? " (REPROGRAMANDO)" : "") + "<div class='chico'>" + (s.detalle || "") + "</div>" + jugando + "</td><td>" + s.horario + "</td><td>" + fmtFecha(s.fecha) + "</td><td>" + (s.hora_cierre || "sin limite") + "</td><td>" + s.estado + "</td><td>$" + s.precio_jugada + "</td><td>" + celdaPozo + "</td><td>" + botonPozo + botonJugar + "</td></tr>";
-      html += "<tr id='pozo-fila-" + s.id + "' style='display:none'><td colspan='9'><div class='pozo-grande' style='font-size:16px'>" + cartelSorteoHtml(s) + "</div></td></tr>";
+      html += "<tr><td>" + s.id + "</td><td><b>" + nombreSorteo(s) + "</b>" + (s.titulo ? "<div class='chico'>" + s.modalidad + "</div>" : "") + (s.reprogramando ? " (REPROGRAMANDO)" : "") + "<div class='chico'>" + (s.detalle || "") + "</div>" + jugando + "</td><td>" + s.horario + "</td><td>" + fmtFecha(s.fecha) + "</td><td>" + (s.hora_cierre || "sin limite") + "</td><td>" + s.estado + "</td><td>$" + s.precio_jugada + "</td><td>" + celdaPozo + "</td><td>" + cuposTxt + "</td><td>" + botonPozo + botonJugar + "</td></tr>";
+      html += "<tr id='pozo-fila-" + s.id + "' style='display:none'><td colspan='10'><div class='pozo-grande' style='font-size:16px'>" + cartelSorteoHtml(s) + "</div></td></tr>";
     });
     document.getElementById("lista-jsorteos").innerHTML = html + "</table>";
   } catch (e) { aviso(e.message, true); }
@@ -118,9 +123,11 @@ async function jCargarJugada() {
   };
   try {
     const d = await api("/jugador/jugadas", "POST", cuerpo);
-    mostrarMsgJugada("Jugada #" + d.id + " cargada, espera aprobación de tu vendedor.", false);
+    mostrarMsgJugada("Jugada #" + d.id + " completada con exito. Ya estas participando del sorteo.", false);
     mostrarAvisoIguales(d.aviso_iguales);
     document.getElementById("j-numeros").value = "";
+    // Refrescar la lista de sorteos para actualizar los cupos disponibles
+    cargarJSorteos();
   }
   catch (e) { mostrarMsgJugada(e.message, true); limpiarAvisoIguales(); }
 }
@@ -188,3 +195,4 @@ ACCIONES.jcargar = async () => {
     pintarReglasSelect("j-sorteo", "j-reglas", "j-imagen");
   }
 };
+ACCIONES.resultados = cargarResultadosJugador;
