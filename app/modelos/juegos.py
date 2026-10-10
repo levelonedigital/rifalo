@@ -172,3 +172,18 @@ class Aviso(Base):
     texto = Column(String(500), nullable=False)
     destino = Column(String(20), default="todos")
     creado_en = Column(DateTime(timezone=True), server_default=func.now())
+
+class CupoVendedor(Base):
+    """Cupo de jugadas que el admin habilita a un vendedor para un sorteo.
+
+    Se descuenta con cada venta del vendedor (cupos a jugadores, venta directa) y con
+    lo que vendan sus revendedores. Si no hay registro para un sorteo+vendedor, el
+    vendedor no tiene limite (compatibilidad hasta que el admin asigne cupos).
+    """
+    __tablename__ = "cupos_vendedor"
+
+    id = Column(Integer, primary_key=True, index=True)
+    sorteo_id = Column(Integer, ForeignKey("sorteos.id"), nullable=False)
+    vendedor_id = Column(Integer, ForeignKey("usuarios.id"), nullable=False)
+    cupo_total = Column(Integer, default=0)
+    cupo_usado = Column(Integer, default=0)
