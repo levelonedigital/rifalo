@@ -202,3 +202,31 @@ class PagoVendedor(Base):
     cantidad_jugadas = Column(Integer, nullable=False)
     monto = Column(Float, nullable=False)
     creado_en = Column(DateTime(timezone=True), server_default=func.now())
+
+class CupoRevendedor(Base):
+    """Cupo de jugadas que el VENDEDOR le cede a un revendedor para un sorteo.
+
+    Se descuenta del cupo del vendedor al asignarlo. El revendedor consume de aca al
+    vender. Si no hay registro, el revendedor vende sin limite propio (descuntando del
+    cupo del vendedor, compatibilidad).
+    """
+    __tablename__ = "cupos_revendedor"
+
+    id = Column(Integer, primary_key=True, index=True)
+    sorteo_id = Column(Integer, ForeignKey("sorteos.id"), nullable=False)
+    vendedor_id = Column(Integer, ForeignKey("usuarios.id"), nullable=False)
+    revendedor_id = Column(Integer, ForeignKey("usuarios.id"), nullable=False)
+    cupo_total = Column(Integer, default=0)
+    cupo_usado = Column(Integer, default=0)
+
+class PagoRevendedor(Base):
+    """Registro de pago del revendedor al vendedor por jugadas vendidas de un sorteo."""
+    __tablename__ = "pagos_revendedor"
+
+    id = Column(Integer, primary_key=True, index=True)
+    sorteo_id = Column(Integer, ForeignKey("sorteos.id"), nullable=False)
+    vendedor_id = Column(Integer, ForeignKey("usuarios.id"), nullable=False)
+    revendedor_id = Column(Integer, ForeignKey("usuarios.id"), nullable=False)
+    cantidad_jugadas = Column(Integer, nullable=False)
+    monto = Column(Float, nullable=False)
+    creado_en = Column(DateTime(timezone=True), server_default=func.now())
