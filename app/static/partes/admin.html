@@ -71,6 +71,12 @@
         <div><label>Rendirse a los (min)</label><input id="sorteo-busdur" type="number" placeholder="vacio = default"></div>
       </div>
 
+      <h3>Cupos de venta (limite por vendedor)</h3>
+      <div class="grilla">
+        <div><label>Cupos por vendedor (vacio = sin limite inicial)</label><input id="sorteo-cupos" type="number" min="0" placeholder="Ej: 10"></div>
+      </div>
+      <p class="chico">Al crear el sorteo, cada vendedor activo tendra esa cantidad de jugadas disponibles para vender. Despues podes agregar mas cupos por vendedor desde la ficha del sorteo. Dejarlo vacio significa que el vendedor puede vender sin limite hasta que le asignes cupos.</p>
+
       <button id="btn-crear" onclick="crearSorteo()">Crear sorteo</button>
       <button class="secundario" onclick="guardarPlantilla()">Guardar esta config como guia</button>
       <label>Nombre de la guia</label><input id="plantilla-nombre" placeholder="Ej: Nocturna clasica 200">
@@ -173,6 +179,7 @@
       <button class="secundario" onclick="cargarResumen()">Actualizar</button>
       <div id="caja-resumen"></div>
       <div id="caja-liquidacion"></div>
+      <div id="caja-cupos-pagos" style="margin-top:16px"></div>
     </div>
 
     <!-- ADMIN: BALANCE -->
