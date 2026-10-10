@@ -230,3 +230,12 @@ class PagoRevendedor(Base):
     cantidad_jugadas = Column(Integer, nullable=False)
     monto = Column(Float, nullable=False)
     creado_en = Column(DateTime(timezone=True), server_default=func.now())
+
+class PagoComisionVendedor(Base):
+    """Registro de pago de comision del administrador al vendedor (global, acumulada)."""
+    __tablename__ = "pagos_comision_vendedor"
+
+    id = Column(Integer, primary_key=True, index=True)
+    vendedor_id = Column(Integer, ForeignKey("usuarios.id"), nullable=False)
+    monto = Column(Float, nullable=False)
+    creado_en = Column(DateTime(timezone=True), server_default=func.now())
