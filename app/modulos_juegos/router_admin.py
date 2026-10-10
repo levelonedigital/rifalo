@@ -249,7 +249,7 @@ def crear_sorteo(datos: SorteoCrear, sesion: Session = Depends(obtener_sesion), 
         semanal_dia_inicio=sem_ini,
         semanal_dia_fin=sem_fin,
     )
-       sesion.add(sorteo)
+    sesion.add(sorteo)
     sesion.commit()
     sesion.refresh(sorteo)
     if datos.cupos_por_vendedor:
