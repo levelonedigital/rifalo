@@ -34,7 +34,7 @@
         </div>
       </div>
 
-      <!-- CAMPOS COMUNES (abajo de la configuracion de la modalidad) -->
+      <!-- CAMPOS COMUNES -->
       <h3>Horario, dia y cierre</h3>
       <div class="grilla">
         <div><label>Horario oficial del resultado</label><select id="sorteo-horario"></select></div>
@@ -71,11 +71,11 @@
         <div><label>Rendirse a los (min)</label><input id="sorteo-busdur" type="number" placeholder="vacio = default"></div>
       </div>
 
-      <h3>Cupos de venta (limite por vendedor)</h3>
+      <h3>Jugadas disponibles por vendedor</h3>
       <div class="grilla">
-        <div><label>Cupos por vendedor (vacio = sin limite inicial)</label><input id="sorteo-cupos" type="number" min="0" placeholder="Ej: 10"></div>
+        <div><label>Jugadas por vendedor (vacio = sin limite inicial)</label><input id="sorteo-jugadas" type="number" min="0" placeholder="Ej: 10"></div>
       </div>
-      <p class="chico">Al crear el sorteo, cada vendedor activo tendra esa cantidad de jugadas disponibles para vender. Despues podes agregar mas cupos por vendedor desde la ficha del sorteo. Dejarlo vacio significa que el vendedor puede vender sin limite hasta que le asignes cupos.</p>
+      <p class="chico">Al crear el sorteo, cada vendedor activo tendra esa cantidad de jugadas disponibles para vender. Despues podes asignar mas desde la ficha del sorteo. Dejarlo vacio significa que el vendedor puede vender sin limite hasta que le asignes jugadas.</p>
 
       <button id="btn-crear" onclick="crearSorteo()">Crear sorteo</button>
       <button class="secundario" onclick="guardarPlantilla()">Guardar esta config como guia</button>
@@ -132,6 +132,12 @@
       <button onclick="crearVendedor()">Crear vendedor</button>
       <h2>Vendedores</h2>
       <div id="lista-vendedores"></div>
+      <h2 style="margin-top:20px">Gestion de cuenta de un vendedor</h2>
+      <p class="chico">Elegí un vendedor para ver su cuenta: jugadas entregadas/pagadas/debe, comision acumulada/pagada/pendiente.</p>
+      <select id="admin-vendedor-select" onchange="cargarCuentaVendedorAdmin()">
+        <option value="">Elegi vendedor...</option>
+      </select>
+      <div id="admin-vendedor-cuenta" style="margin-top:12px"></div>
     </div>
 
     <!-- ADMIN: PAGOS A VENDEDORES -->
