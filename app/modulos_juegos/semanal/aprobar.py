@@ -3,6 +3,11 @@
 Igual esquema que clasico: el sobrante cubre el pozo base primero, y el excedente
 suma como pozo_extra. Semanal no cierra por horario (se liquida al fin del rango de
 dias), asi que no trae ciclo.py de preventivo/cancelacion.
+
+Esquema de comisiones: el admin le paga al VENDEDOR la comision de linea completa
+(monto_vendedor). La comision del revendedor (monto_revendedor) es INFORMATIVA: el
+vendedor la paga de su propia comision; el admin no paga a revendedores. No se
+descuenta de la linea ni de la casa.
 """
 
 from app.modelos.juegos import EstadoJugada, Sorteo
@@ -53,8 +58,8 @@ def aprobar_jugada_semanal(sesion, jugada, reglas):
     sorteo.pozo_extra = round((sorteo.pozo_extra or 0.0) + aporte_extra, 2)
 
     monto_rev = round(precio * rev_pct / 100.0, 2)
-    monto_vend = round(precio * vend_efectivo / 100.0, 2) - monto_rev
-    monto_casa = round(precio - monto_rev - monto_vend - aporte_extra - aporte_cubrir, 2)
+    monto_vend = round(precio * vend_efectivo / 100.0, 2)
+    monto_casa = round(precio - monto_vend - aporte_extra - aporte_cubrir, 2)
 
     jugada.estado = EstadoJugada.APROBADA
     jugada.monto_casa = monto_casa
