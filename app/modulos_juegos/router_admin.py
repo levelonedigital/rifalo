@@ -133,6 +133,7 @@ class SorteoCrear(BaseModel):
     busqueda_intervalo_min: int | None = Field(default=None, ge=0)
     busqueda_duracion_min: int | None = Field(default=None, ge=0)
     semanal_dia_inicio: int | None = Field(default=None, ge=0, le=6)
+    semanal_dia_fin: int | None = Field(default=None, ge=0, le=6)
     cupos_por_vendedor: int | None = Field(default=None, ge=0)
 
 class SorteoEditar(BaseModel):
