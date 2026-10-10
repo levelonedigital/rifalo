@@ -217,7 +217,7 @@ async function cargarResultadosRevendedor() {
 
 // ---------- REGISTRO DE PESTANAS DEL REVENDEDOR ----------
 window.ACCIONES = window.ACCIONES || {};
-ACCIONES.rsorteos = cargarRSorteos;
+ACCIONES.rsorteos = async () => { await cargarRSorteos(); await cargarMisCuposPagos(); };
 ACCIONES.rcupos = async () => {
   await llenarSelectSorteos("/revendedor/sorteos", "r-cupo-sorteo");
   await cargarSelectJugadores("r");
@@ -229,3 +229,35 @@ ACCIONES.rjugadas = cargarRJugadas;
 ACCIONES.rresumen = cargarRResumen;
 ACCIONES.rjugadores = cargarRJugadores;
 ACCIONES.resultados = cargarResultados;
+
+// ---------- REVENDEDOR: MIS CUPOS Y MIS PAGOS ----------
+async function cargarMisCuposPagos() {
+  const cajaCupos = document.getElementById("r-mis-cupos");
+  const cajaPagos = document.getElementById("r-mis-pagos");
+  if (cajaCupos) {
+    try {
+      const cupos = await api("/revendedor/mis-cupos", "GET");
+      let html = "<h3>Mis cupos de venta por sorteo</h3>";
+      if (!cupos.length) html += "<p class='chico'>Tu vendedor aun no te asigno cupos propios. Podes vender (descuenta del cupo de tu vendedor).</p>";
+      else {
+        html += "<table><tr><th>Sorteo</th><th>Cupo</th><th>Usado</th><th>Disponibles</th></tr>";
+        cupos.forEach(c => { html += "<tr><td>#" + c.sorteo_id + " " + c.sorteo_titulo + "</td><td>" + c.cupo_total + "</td><td>" + c.cupo_usado + "</td><td><b style='color:" + (c.disponibles > 0 ? "#22c55e" : "#ef4444") + "'>" + c.disponibles + "</b></td></tr>"; });
+        html += "</table>";
+      }
+      cajaCupos.innerHTML = html;
+    } catch (e) { cajaCupos.innerHTML = ""; }
+  }
+  if (cajaPagos) {
+    try {
+      const pagos = await api("/revendedor/mis-pagos", "GET");
+      let html = "<h3>Pagos que tu vendedor te confirmo</h3>";
+      if (!pagos.length) html += "<p class='chico'>Sin pagos registrados todavia.</p>";
+      else {
+        html += "<table><tr><th>Fecha</th><th>Sorteo</th><th>Jugadas pagadas</th><th>Monto</th></tr>";
+        pagos.forEach(p => { html += "<tr><td>" + fmtFecha(p.creado_en) + "</td><td>#" + p.sorteo_id + " " + p.sorteo_titulo + "</td><td>" + p.cantidad_jugadas + "</td><td>$" + p.monto + "</td></tr>"; });
+        html += "</table>";
+      }
+      cajaPagos.innerHTML = html;
+    } catch (e) { cajaPagos.innerHTML = ""; }
+  }
+}
