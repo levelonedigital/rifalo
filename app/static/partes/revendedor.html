@@ -5,9 +5,24 @@
       <div id="lista-rsorteos"></div>
     </div>
 
-    <!-- REVENDEDOR: CARGAR JUGADA -->
+    <!-- REVENDEDOR: VENDER JUGADAS (CUPOS) -->
+    <div id="seccion-rcupos" class="tarjeta" style="display:none">
+      <h2>Vender jugadas (cupos)</h2>
+      <p class="chico">El jugador te paga fuera del sistema y vos le habilitás jugadas. Cada cupo se aprueba en el acto: suma al pozo y a tu comisión al instante. El jugador después elige sus números desde su panel.</p>
+      <label>Sorteo</label><select id="r-cupo-sorteo" onchange="pintarReglasSelect('r-cupo-sorteo','r-cupo-reglas','r-cupo-imagen'); llenarSelectJugadorCupoR(); updateCupoResumenR()"></select>
+      <img id="r-cupo-imagen" style="display:none; max-width:220px; border-radius:6px; margin:6px 0">
+      <div id="r-cupo-reglas" class="reglas-box"></div>
+      <label>Jugador de tu linea</label><select id="r-cupo-jugador"></select>
+      <label>Cantidad de jugadas</label><input id="r-cupo-cantidad" type="number" min="1" max="50" value="1" oninput="updateCupoResumenR()">
+      <div id="r-cupo-resumen" class="reglas-box"></div>
+      <button onclick="venderCuposR()">Vender cupos</button>
+      <div id="r-cupo-msg" class="mensaje ok" style="display:none"></div>
+    </div>
+
+    <!-- REVENDEDOR: CARGAR JUGADA (VENTA DIRECTA) -->
     <div id="seccion-rcargar" class="tarjeta" style="display:none">
-      <h2>Cargar jugada</h2>
+      <h2>Cargar jugada (venta directa)</h2>
+      <p class="chico">Cargás los números que te dio el jugador y la jugada queda APROBADA en el acto (ya cobraste fuera del sistema).</p>
       <label>Sorteo</label><select id="r-sorteo" onchange="pintarReglasSelect('r-sorteo','r-reglas','r-imagen')"></select>
       <img id="r-imagen" style="display:none; max-width:220px; border-radius:6px; margin:6px 0">
       <div id="r-reglas" class="reglas-box"></div>
@@ -18,7 +33,7 @@
       <label>Nombre del jugador (solo si no esta registrado)</label>
       <input id="r-jugador">
       <label>Numeros (separados por coma)</label><input id="r-numeros">
-      <button onclick="rCargarJugada()">Cargar</button>
+      <button onclick="rCargarJugada()">Cargar y aprobar</button>
     </div>
 
     <!-- REVENDEDOR: MIS JUGADAS -->
