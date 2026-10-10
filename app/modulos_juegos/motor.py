@@ -202,3 +202,37 @@ def consumir_cupo_vendedor(sesion: Session, sorteo: Sorteo, vendedor: Usuario) -
     reg.cupo_usado = (reg.cupo_usado or 0) + 1
     sesion.commit()
     return True
+
+# ---------- CUPOS DE VENTA POR REVENDEDOR Y SORTEO ----------
+
+def cupo_revendedor_disponible(sesion: Session, sorteo: Sorteo, rev: Usuario):
+    """Devuelve (tiene_registro, disponibles) del cupo propio del revendedor.
+
+    Si el vendedor aun no le asigno cupos, no hay registro y se devuelve (False, None)
+    = sin limite propio (descuenta del cupo del vendedor, compatibilidad).
+    """
+    from app.modelos.juegos import CupoRevendedor
+    reg = (
+        sesion.query(CupoRevendedor)
+        .filter(CupoRevendedor.sorteo_id == sorteo.id, CupoRevendedor.revendedor_id == rev.id)
+        .first()
+    )
+    if reg is None:
+        return False, None
+    return True, max((reg.cupo_total or 0) - (reg.cupo_usado or 0), 0)
+
+def consumir_cupo_revendedor(sesion: Session, sorteo: Sorteo, rev: Usuario) -> bool:
+    """Descuenta 1 cupo del revendedor. True si pudo (o si no hay registro). False si sin cupo."""
+    from app.modelos.juegos import CupoRevendedor
+    reg = (
+        sesion.query(CupoRevendedor)
+        .filter(CupoRevendedor.sorteo_id == sorteo.id, CupoRevendedor.revendedor_id == rev.id)
+        .first()
+    )
+    if reg is None:
+        return True
+    if (reg.cupo_usado or 0) >= (reg.cupo_total or 0):
+        return False
+    reg.cupo_usado = (reg.cupo_usado or 0) + 1
+    sesion.commit()
+    return True
