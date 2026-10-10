@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Session
 
-from app.modelos.juegos import EstadoJugada, EstadoSorteo, Jugada, ReglasSistema, Sorteo
+from app.modelos.juegos import CupoVendedor, EstadoJugada, EstadoSorteo, Jugada, ReglasSistema, Sorteo
 from app.modelos.usuario import Usuario
 from app.modulos_juegos import descubrimiento
 
@@ -165,3 +165,40 @@ def info_premio_compartido(sesion: Session, sorteo: Sorteo, clave_numeros: str, 
         "premio_estimado": premio_estimado,
         "pozo_estimado": pozo_estimado,
     }
+
+# ---------- CUPOS DE VENTA POR VENDEDOR Y SORTEO ----------
+
+def cupo_vendedor_disponible(sesion: Session, sorteo: Sorteo, vendedor: Usuario):
+    """Devuelve (tiene_registro, disponibles).
+
+    Si el admin aun no asigno cupos para este sorteo+vendedor, no hay registro y se
+    devuelve (False, None) = sin limite (compatibilidad).
+    """
+    reg = (
+        sesion.query(CupoVendedor)
+        .filter(CupoVendedor.sorteo_id == sorteo.id, CupoVendedor.vendedor_id == vendedor.id)
+        .first()
+    )
+    if reg is None:
+        return False, None
+    return True, max((reg.cupo_total or 0) - (reg.cupo_usado or 0), 0)
+
+
+def consumir_cupo_vendedor(sesion: Session, sorteo: Sorteo, vendedor: Usuario) -> bool:
+    """Descuenta 1 cupo de venta del vendedor para el sorteo.
+
+    True si pudo descontar (o si no hay registro = sin limite). False si el vendedor
+    ya no tiene cupos para este sorteo.
+    """
+    reg = (
+        sesion.query(CupoVendedor)
+        .filter(CupoVendedor.sorteo_id == sorteo.id, CupoVendedor.vendedor_id == vendedor.id)
+        .first()
+    )
+    if reg is None:
+        return True
+    if (reg.cupo_usado or 0) >= (reg.cupo_total or 0):
+        return False
+    reg.cupo_usado = (reg.cupo_usado or 0) + 1
+    sesion.commit()
+    return True
