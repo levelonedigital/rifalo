@@ -34,7 +34,7 @@ async function rCargarJugada() {
   catch (e) { aviso(e.message, true); }
 }
 
-// ---------- REVENDEDOR: VENTA DE CUPOS ----------
+// ---------- REVENDEDOR: VENTA DE JUGADAS ----------
 function llenarSelectJugadorCupoR() {
   const sel = document.getElementById("r-cupo-jugador");
   if (!sel) return;
@@ -94,6 +94,53 @@ async function cargarRResumen() {
     const r = await api("/revendedor/resumen", "GET");
     document.getElementById("caja-rresumen").innerHTML = "<table><tr><th>Jugadas aprobadas</th><th>Vendido</th><th>Tu comision</th></tr><tr><td>" + r.jugadas_aprobadas + "</td><td>$" + r.vendido + "</td><td>$" + r.mi_comision + "</td></tr></table>";
   } catch (e) { aviso(e.message, true); }
+}
+
+// ---------- REVENDEDOR: MIS CUPOS Y PAGOS ----------
+async function cargarMisCuposPagos() {
+  const cajaCupos = document.getElementById("r-mis-cupos");
+  const cajaPagos = document.getElementById("r-mis-pagos");
+  if (cajaCupos) {
+    try {
+      const cupos = await api("/revendedor/mis-cupos", "GET");
+      let html = "<h3>Mis jugadas disponibles por sorteo</h3>";
+      if (!cupos.length) html += "<p class='chico'>Tu vendedor aun no te asigno jugadas propias. Podes vender (descuenta de las jugadas de tu vendedor).</p>";
+      else {
+        html += "<table><tr><th>Sorteo</th><th>Jugadas entregadas</th><th>Jugadas usadas</th><th>Jugadas disponibles</th></tr>";
+        cupos.forEach(c => { html += "<tr><td>#" + c.sorteo_id + " " + c.sorteo_titulo + "</td><td>" + c.cupo_total + "</td><td>" + c.cupo_usado + "</td><td><b style='color:" + (c.disponibles > 0 ? "#22c55e" : "#ef4444") + "'>" + c.disponibles + "</b></td></tr>"; });
+        html += "</table>";
+      }
+      cajaCupos.innerHTML = html;
+    } catch (e) { cajaCupos.innerHTML = ""; }
+  }
+  if (cajaPagos) {
+    try {
+      const pagos = await api("/revendedor/mis-pagos", "GET");
+      let html = "<h3>Pagos que tu vendedor te confirmo</h3>";
+      if (!pagos.length) html += "<p class='chico'>Sin pagos registrados todavia.</p>";
+      else {
+        html += "<table><tr><th>Fecha</th><th>Sorteo</th><th>Jugadas pagadas</th><th>Monto</th></tr>";
+        pagos.forEach(p => { html += "<tr><td>" + fmtFecha(p.creado_en) + "</td><td>#" + p.sorteo_id + " " + p.sorteo_titulo + "</td><td>" + p.cantidad_jugadas + "</td><td>$" + p.monto + "</td></tr>"; });
+        html += "</table>";
+      }
+      cajaPagos.innerHTML = html;
+    } catch (e) { cajaPagos.innerHTML = ""; }
+  }
+}
+
+async function cargarMiCuenta() {
+  const caja = document.getElementById("r-cuenta");
+  if (!caja) return;
+  try {
+    const cuenta = await api("/revendedor/mi-cuenta", "GET");
+    let html = "<h3>Mi cuenta</h3>";
+    html += "<table><tr><th>Jugadas entregadas</th><th>Jugadas pagadas</th><th>Jugadas que debo</th></tr>";
+    html += "<tr><td>" + cuenta.jugadas_entregadas + "</td><td>" + cuenta.jugadas_pagadas + "</td><td><b style='color:" + (cuenta.jugadas_debe > 0 ? "#ef4444" : "#22c55e") + "'>" + cuenta.jugadas_debe + "</b></td></tr></table>";
+    html += "<h3 style='margin-top:12px'>Comisiones</h3>";
+    html += "<table><tr><th>Vendido</th><th>Comision generada</th></tr>";
+    html += "<tr><td>$" + cuenta.vendido + "</td><td>$" + cuenta.comision_generada + "</td></tr></table>";
+    caja.innerHTML = html;
+  } catch (e) { caja.innerHTML = ""; }
 }
 
 // ---------- REVENDEDOR: JUGADORES ----------
@@ -226,38 +273,6 @@ ACCIONES.rcupos = async () => {
 };
 ACCIONES.rcargar = () => { llenarSelectSorteos("/revendedor/sorteos", "r-sorteo"); cargarSelectJugadores("r"); };
 ACCIONES.rjugadas = cargarRJugadas;
-ACCIONES.rresumen = cargarRResumen;
+ACCIONES.rresumen = async () => { await cargarRResumen(); await cargarMiCuenta(); };
 ACCIONES.rjugadores = cargarRJugadores;
 ACCIONES.resultados = cargarResultados;
-
-// ---------- REVENDEDOR: MIS CUPOS Y MIS PAGOS ----------
-async function cargarMisCuposPagos() {
-  const cajaCupos = document.getElementById("r-mis-cupos");
-  const cajaPagos = document.getElementById("r-mis-pagos");
-  if (cajaCupos) {
-    try {
-      const cupos = await api("/revendedor/mis-cupos", "GET");
-      let html = "<h3>Mis cupos de venta por sorteo</h3>";
-      if (!cupos.length) html += "<p class='chico'>Tu vendedor aun no te asigno cupos propios. Podes vender (descuenta del cupo de tu vendedor).</p>";
-      else {
-        html += "<table><tr><th>Sorteo</th><th>Cupo</th><th>Usado</th><th>Disponibles</th></tr>";
-        cupos.forEach(c => { html += "<tr><td>#" + c.sorteo_id + " " + c.sorteo_titulo + "</td><td>" + c.cupo_total + "</td><td>" + c.cupo_usado + "</td><td><b style='color:" + (c.disponibles > 0 ? "#22c55e" : "#ef4444") + "'>" + c.disponibles + "</b></td></tr>"; });
-        html += "</table>";
-      }
-      cajaCupos.innerHTML = html;
-    } catch (e) { cajaCupos.innerHTML = ""; }
-  }
-  if (cajaPagos) {
-    try {
-      const pagos = await api("/revendedor/mis-pagos", "GET");
-      let html = "<h3>Pagos que tu vendedor te confirmo</h3>";
-      if (!pagos.length) html += "<p class='chico'>Sin pagos registrados todavia.</p>";
-      else {
-        html += "<table><tr><th>Fecha</th><th>Sorteo</th><th>Jugadas pagadas</th><th>Monto</th></tr>";
-        pagos.forEach(p => { html += "<tr><td>" + fmtFecha(p.creado_en) + "</td><td>#" + p.sorteo_id + " " + p.sorteo_titulo + "</td><td>" + p.cantidad_jugadas + "</td><td>$" + p.monto + "</td></tr>"; });
-        html += "</table>";
-      }
-      cajaPagos.innerHTML = html;
-    } catch (e) { cajaPagos.innerHTML = ""; }
-  }
-}
