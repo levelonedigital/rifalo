@@ -77,12 +77,10 @@ class Sorteo(Base):
     participantes = Column(String(2000), nullable=True)
     busqueda_agotada = Column(Boolean, default=False)
     creado_en = Column(DateTime(timezone=True), server_default=func.now())
-    # Imagen de presentacion: URL externa (legacy) o data URI base64 subida por el admin.
     imagen_url = Column(String(500), nullable=True)
     imagen_data = Column(Text, nullable=True)
     detalle = Column(String(1000), nullable=True)
     titulo = Column(String(120), nullable=True)
-    # Nombre del premio: lo que ve el jugador en vez del monto. Ej: "Smart TV 55 pulgadas".
     premio_nombre = Column(String(200), nullable=True)
 
     precio_jugada = Column(Float, nullable=True)
@@ -92,17 +90,14 @@ class Sorteo(Base):
     minimo_cubrir = Column(Float, nullable=True)
     aviso_costo_enviado = Column(Boolean, default=False)
 
-    # Configuracion POR SORTEO de la busqueda automatica (None = usa el default del sistema).
     busqueda_inicio_min = Column(Integer, nullable=True)
     busqueda_intervalo_min = Column(Integer, nullable=True)
     busqueda_duracion_min = Column(Integer, nullable=True)
-    # Configuracion POR SORTEO del semanal (None = usa el default del sistema).
     semanal_dia_inicio = Column(Integer, nullable=True)
     semanal_dia_fin = Column(Integer, nullable=True)
 
     @property
     def imagen_visible(self):
-        """Data URI si el admin subio archivo; si no, la URL externa; si no, None."""
         return self.imagen_data or self.imagen_url or None
 
     @property
@@ -165,21 +160,40 @@ class LiquidacionVendedor(Base):
     creada_en = Column(DateTime(timezone=True), server_default=func.now())
 
 
-class Aviso(Base):
-    __tablename__ = "avisos"
+class LiquidacionRevendedor(Base):
+    """Liquidacion de comisiones de un revendedor en un rango de fechas (gestion del vendedor).
+
+    Espejo de LiquidacionVendedor: el vendedor genera la liquidacion, marca el pago, y el
+    revendedor confirma el cobro desde su panel. El vendedor ve la confirmacion.
+    """
+    __tablename__ = "liquidaciones_revendedor"
 
     id = Column(Integer, primary_key=True, index=True)
-    texto = Column(String(500), nullable=False)
-    destino = Column(String(20), default="todos")
+    revendedor_id = Column(Integer, ForeignKey("usuarios.id"), nullable=False)
+    vendedor_id = Column(Integer, ForeignKey("usuarios.id"), nullable=False)
+    desde = Column(Date, nullable=False)
+    hasta = Column(Date, nullable=False)
+    monto = Column(Float, nullable=False, default=0.0)
+    detalle = Column(String(4000), nullable=True)
+    pagado_vendedor = Column(Boolean, default=False)
+    cobrado_revendedor = Column(Boolean, default=False)
+    pagado_en = Column(DateTime(timezone=True), nullable=True)
+    cobrado_en = Column(DateTime(timezone=True), nullable=True)
+    creada_en = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class PagoComisionVendedor(Base):
+    """Registro de pago de comision del administrador al vendedor (global, acumulada)."""
+    __tablename__ = "pagos_comision_vendedor"
+
+    id = Column(Integer, primary_key=True, index=True)
+    vendedor_id = Column(Integer, ForeignKey("usuarios.id"), nullable=False)
+    monto = Column(Float, nullable=False)
     creado_en = Column(DateTime(timezone=True), server_default=func.now())
 
-class CupoVendedor(Base):
-    """Cupo de jugadas que el admin habilita a un vendedor para un sorteo.
 
-    Se descuenta con cada venta del vendedor (cupos a jugadores, venta directa) y con
-    lo que vendan sus revendedores. Si no hay registro para un sorteo+vendedor, el
-    vendedor no tiene limite (compatibilidad hasta que el admin asigne cupos).
-    """
+class CupoVendedor(Base):
+    """Jugadas que el admin habilita a un vendedor para un sorteo."""
     __tablename__ = "cupos_vendedor"
 
     id = Column(Integer, primary_key=True, index=True)
@@ -188,12 +202,21 @@ class CupoVendedor(Base):
     cupo_total = Column(Integer, default=0)
     cupo_usado = Column(Integer, default=0)
 
-class PagoVendedor(Base):
-    """Registro de pago del vendedor al administrador por jugadas vendidas de un sorteo.
 
-    El admin confirma que el vendedor le pago X jugadas de ese sorteo. Queda como
-    historial de rendicion (pagos parciales por sorteo).
-    """
+class CupoRevendedor(Base):
+    """Jugadas que el vendedor cede a un revendedor para un sorteo (de su propio cupo)."""
+    __tablename__ = "cupos_revendedor"
+
+    id = Column(Integer, primary_key=True, index=True)
+    sorteo_id = Column(Integer, ForeignKey("sorteos.id"), nullable=False)
+    vendedor_id = Column(Integer, ForeignKey("usuarios.id"), nullable=False)
+    revendedor_id = Column(Integer, ForeignKey("usuarios.id"), nullable=False)
+    cupo_total = Column(Integer, default=0)
+    cupo_usado = Column(Integer, default=0)
+
+
+class PagoVendedor(Base):
+    """Registro de pago del vendedor al administrador por jugadas vendidas de un sorteo."""
     __tablename__ = "pagos_vendedor"
 
     id = Column(Integer, primary_key=True, index=True)
@@ -203,21 +226,6 @@ class PagoVendedor(Base):
     monto = Column(Float, nullable=False)
     creado_en = Column(DateTime(timezone=True), server_default=func.now())
 
-class CupoRevendedor(Base):
-    """Cupo de jugadas que el VENDEDOR le cede a un revendedor para un sorteo.
-
-    Se descuenta del cupo del vendedor al asignarlo. El revendedor consume de aca al
-    vender. Si no hay registro, el revendedor vende sin limite propio (descuntando del
-    cupo del vendedor, compatibilidad).
-    """
-    __tablename__ = "cupos_revendedor"
-
-    id = Column(Integer, primary_key=True, index=True)
-    sorteo_id = Column(Integer, ForeignKey("sorteos.id"), nullable=False)
-    vendedor_id = Column(Integer, ForeignKey("usuarios.id"), nullable=False)
-    revendedor_id = Column(Integer, ForeignKey("usuarios.id"), nullable=False)
-    cupo_total = Column(Integer, default=0)
-    cupo_usado = Column(Integer, default=0)
 
 class PagoRevendedor(Base):
     """Registro de pago del revendedor al vendedor por jugadas vendidas de un sorteo."""
@@ -231,11 +239,11 @@ class PagoRevendedor(Base):
     monto = Column(Float, nullable=False)
     creado_en = Column(DateTime(timezone=True), server_default=func.now())
 
-class PagoComisionVendedor(Base):
-    """Registro de pago de comision del administrador al vendedor (global, acumulada)."""
-    __tablename__ = "pagos_comision_vendedor"
+
+class Aviso(Base):
+    __tablename__ = "avisos"
 
     id = Column(Integer, primary_key=True, index=True)
-    vendedor_id = Column(Integer, ForeignKey("usuarios.id"), nullable=False)
-    monto = Column(Float, nullable=False)
+    texto = Column(String(500), nullable=False)
+    destino = Column(String(20), default="todos")
     creado_en = Column(DateTime(timezone=True), server_default=func.now())
