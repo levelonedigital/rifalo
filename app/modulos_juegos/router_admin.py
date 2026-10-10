@@ -13,7 +13,7 @@ from app.core.security import hash_password
 from app.modulos_juegos import buscador, motor
 from app.modulos_juegos.buscador import _actualizar_semanal, _zona, costo_a_cubrir, pozo_cubierto_total
 from app.modulos_juegos.modalidades import listar, obtener
-from app.modelos.juegos import Aviso, CupoVendedor, EstadoJugada, EstadoSorteo, Jugada, LiquidacionVendedor, PagoVendedor, Sorteo
+from app.modelos.juegos import Aviso, CupoVendedor, EstadoJugada, EstadoSorteo, Jugada, LiquidacionVendedor, PagoComisionVendedor, PagoVendedor, Sorteo
 from app.modelos.usuario import RolUsuario, Usuario
 
 router = APIRouter(prefix="/admin", tags=["juegos"])
@@ -1000,4 +1000,61 @@ def resumen_general(sesion: Session = Depends(obtener_sesion), admin: Usuario = 
         "vendedores": round(vend_total, 2),
         "revendedores": round(rev_total, 2),
         "premios_pagados": round(premios_total, 2),
+
+        # ---------- CUENTA Y COMISIONES POR VENDEDOR ----------
+
+class PagarComision(BaseModel):
+    monto: float | None = Field(default=None, gt=0)
+
+@router.get("/vendedores/{vendedor_id}/cuenta")
+def cuenta_vendedor(vendedor_id: int, sesion: Session = Depends(obtener_sesion), admin: Usuario = admin_dep):
+    """Resumen de cuenta del vendedor: jugadas entregadas/pagadas/debe, vendido y comisiones."""
+    vendedor = sesion.get(Usuario, vendedor_id)
+    if vendedor is None or vendedor.rol != RolUsuario.VENDEDOR:
+        raise HTTPException(status_code=404, detail="Vendedor no encontrado")
+    entregadas = sum(r.cupo_total or 0 for r in sesion.query(CupoVendedor).filter(CupoVendedor.vendedor_id == vendedor_id).all())
+    pagadas = sum(p.cantidad_jugadas or 0 for p in sesion.query(PagoVendedor).filter(PagoVendedor.vendedor_id == vendedor_id).all())
+    vendidas = sesion.query(Jugada).filter(Jugada.vendedor_id == vendedor_id, Jugada.estado.in_(ESTADOS_VENDIDOS)).all()
+    vendido = round(sum(j.precio or 0 for j in vendidas), 2)
+    comision_acum = round(sum(j.monto_vendedor or 0 for j in vendidas), 2)
+    comision_pagada = round(sum(p.monto or 0 for p in sesion.query(PagoComisionVendedor).filter(PagoComisionVendedor.vendedor_id == vendedor_id).all()), 2)
+    return {
+        "jugadas_entregadas": entregadas,
+        "jugadas_pagadas": pagadas,
+        "jugadas_debe": max(entregadas - pagadas, 0),
+        "vendido": vendido,
+        "comision_acumulada": comision_acum,
+        "comision_pagada": comision_pagada,
+        "comision_pendiente": round(comision_acum - comision_pagada, 2),
+    }
+
+@router.post("/vendedores/{vendedor_id}/pagar-comision")
+def pagar_comision(vendedor_id: int, datos: PagarComision, sesion: Session = Depends(obtener_sesion), admin: Usuario = Depends(requerir_permiso("configurar_sorteos"))):
+    """El admin paga comision al vendedor. Si no pone monto, paga todo lo pendiente."""
+    vendedor = sesion.get(Usuario, vendedor_id)
+    if vendedor is None or vendedor.rol != RolUsuario.VENDEDOR:
+        raise HTTPException(status_code=404, detail="Vendedor no encontrado")
+    vendidas = sesion.query(Jugada).filter(Jugada.vendedor_id == vendedor_id, Jugada.estado.in_(ESTADOS_VENDIDOS)).all()
+    comision_acum = round(sum(j.monto_vendedor or 0 for j in vendidas), 2)
+    comision_pagada = round(sum(p.monto or 0 for p in sesion.query(PagoComisionVendedor).filter(PagoComisionVendedor.vendedor_id == vendedor_id).all()), 2)
+    pendiente = round(comision_acum - comision_pagada, 2)
+    monto = datos.monto if datos.monto is not None else pendiente
+    if monto <= 0:
+        raise HTTPException(status_code=400, detail="No hay comision pendiente para pagar")
+    if monto > pendiente:
+        raise HTTPException(status_code=400, detail=f"El monto supera la comision pendiente (${pendiente})")
+    pago = PagoComisionVendedor(vendedor_id=vendedor_id, monto=monto)
+    sesion.add(pago)
+    sesion.commit()
+    auditoria.registrar(sesion, "COMISION_VENDEDOR_PAGADA", detalle=f"vendedor={vendedor.usuario} monto={monto}", usuario=admin)
+    sesion.commit()
+    return {"monto": monto, "pendiente_restante": round(pendiente - monto, 2)}
+
+@router.get("/vendedores/{vendedor_id}/pagos-comision")
+def listar_pagos_comision(vendedor_id: int, sesion: Session = Depends(obtener_sesion), admin: Usuario = admin_dep):
+    pagos = sesion.query(PagoComisionVendedor).filter(PagoComisionVendedor.vendedor_id == vendedor_id).order_by(PagoComisionVendedor.id.desc()).all()
+    return [
+        {"id": p.id, "monto": p.monto, "creado_en": p.creado_en.isoformat() if p.creado_en else None}
+        for p in pagos
+    ]
     }
