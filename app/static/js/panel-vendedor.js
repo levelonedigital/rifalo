@@ -26,7 +26,7 @@ async function vCargarJugada() {
   catch (e) { aviso(e.message, true); }
 }
 
-// ---------- VENDEDOR: VENTA DE CUPOS ----------
+// ---------- VENDEDOR: VENTA DE JUGADAS ----------
 function llenarSelectJugadorCupo() {
   const sel = document.getElementById("v-cupo-jugador");
   if (!sel) return;
@@ -70,28 +70,6 @@ async function venderCupos() {
   } catch (e) {
     if (msgBox) { msgBox.style.display = "block"; msgBox.className = "mensaje error"; msgBox.textContent = e.message; }
   }
-}
-
-async function cargarVPendientes() {
-  try {
-    const js = await api("/vendedor/jugadas/pendientes", "GET");
-    if (!js.length) { document.getElementById("lista-vpendientes").innerHTML = "<p class='chico'>Nada pendiente.</p>"; return; }
-    let html = "<table><tr><th>#</th><th>Sorteo</th><th>Numeros</th><th>Precio</th><th>Jugador</th><th>Origen</th><th>Acciones</th></tr>";
-    js.forEach(j => {
-      html += "<tr><td>" + j.id + "</td><td>" + j.sorteo_id + "</td><td>" + j.numeros + "</td><td>$" + j.precio + "</td><td>" + (j.jugador_nombre || "-") + "</td><td>" + (j.revendedor_id ? "revendedor #" + j.revendedor_id : (j.jugador_id ? "jugador #" + j.jugador_id : "propia")) + "</td><td><button onclick='aprobarV(" + j.id + ")'>Aprobar</button><button class='peligro' onclick='rechazarV(" + j.id + ")'>Rechazar</button></td></tr>";
-    });
-    document.getElementById("lista-vpendientes").innerHTML = html + "</table>";
-  } catch (e) { aviso(e.message, true); }
-}
-
-async function aprobarV(id) {
-  try { await api("/vendedor/jugadas/" + id + "/aprobar", "POST"); aviso("Jugada aprobada"); cargarVPendientes(); }
-  catch (e) { aviso(e.message, true); }
-}
-
-async function rechazarV(id) {
-  try { await api("/vendedor/jugadas/" + id + "/rechazar", "POST"); aviso("Jugada rechazada"); cargarVPendientes(); }
-  catch (e) { aviso(e.message, true); }
 }
 
 async function cargarVJugadas() {
@@ -183,6 +161,74 @@ async function eliminarVRev(id) {
   if (!confirm("Eliminar el revendedor? Solo se puede si no tiene jugadores ni jugadas.")) return;
   try { await api("/vendedor/revendedores/" + id, "DELETE"); aviso("Revendedor eliminado"); cargarVRevendedores(); }
   catch (e) { aviso(e.message, true); }
+}
+
+// ---------- VENDEDOR: GESTION DE CUENTA DE REVENDEDOR ----------
+function llenarSelectRevGestion() {
+  const sel = document.getElementById("vrev-gestion-select");
+  if (!sel) return;
+  const revs = Object.values(REV_CACHE || {});
+  sel.innerHTML = "<option value=''>Elegi revendedor...</option>" + revs.map(r => "<option value='" + r.id + "'>" + r.nombre + " (" + r.usuario + ")</option>").join("");
+  const caja = document.getElementById("vrev-gestion-caja");
+  if (caja) caja.innerHTML = "";
+}
+
+async function cargarGestionRev() {
+  const revId = document.getElementById("vrev-gestion-select").value;
+  const caja = document.getElementById("vrev-gestion-caja");
+  if (!caja) return;
+  if (!revId) { caja.innerHTML = ""; return; }
+  try {
+    const cuenta = await api("/vendedor/revendedores/" + revId + "/cuenta", "GET");
+    const sorteos = await api("/vendedor/sorteos", "GET");
+    const pagos = await api("/vendedor/revendedores/" + revId + "/pagos", "GET");
+    let html = "<h3>Cuenta del revendedor</h3>";
+    html += "<table><tr><th>Jugadas entregadas</th><th>Jugadas pagadas</th><th>Jugadas que debe</th></tr>";
+    html += "<tr><td>" + cuenta.jugadas_entregadas + "</td><td>" + cuenta.jugadas_pagadas + "</td><td><b style='color:" + (cuenta.jugadas_debe > 0 ? "#ef4444" : "#22c55e") + "'>" + cuenta.jugadas_debe + "</b></td></tr></table>";
+    html += "<h3 style='margin-top:12px'>Comisiones</h3>";
+    html += "<table><tr><th>Vendido</th><th>Comision generada (tu revendedor)</th></tr>";
+    html += "<tr><td>$" + cuenta.vendido + "</td><td>$" + cuenta.comision_revendedor + "</td></tr></table>";
+    html += "<h3 style='margin-top:16px'>Asignar jugadas (se descuentan de TU cupo)</h3>";
+    html += "<select id='vrev-gestion-sorteo'>" + sorteos.map(s => "<option value='" + s.id + "'>#" + s.id + " " + (s.titulo || s.modalidad) + "</option>").join("") + "</select>";
+    html += "<input id='vrev-gestion-cant' type='number' min='1' value='1' style='width:80px'>";
+    html += "<button onclick='asignarCupoRev(" + revId + ")'>Asignar jugadas</button>";
+    html += "<h3 style='margin-top:12px'>Confirmar pago del revendedor</h3>";
+    html += "<select id='vrev-pago-sorteo'>" + sorteos.map(s => "<option value='" + s.id + "'>#" + s.id + " " + (s.titulo || s.modalidad) + "</option>").join("") + "</select>";
+    html += "<input id='vrev-pago-cant' type='number' min='1' value='1' style='width:80px'>";
+    html += "<button onclick='registrarPagoRev(" + revId + ")'>Confirmar pago</button>";
+    html += "<h3 style='margin-top:12px'>Historial de pagos del revendedor</h3>";
+    if (!pagos.length) html += "<p class='chico'>Sin pagos registrados.</p>";
+    else {
+      html += "<table><tr><th>Fecha</th><th>Sorteo</th><th>Jugadas pagadas</th><th>Monto</th></tr>";
+      pagos.forEach(p => { html += "<tr><td>" + fmtFecha(p.creado_en) + "</td><td>#" + p.sorteo_id + " " + p.sorteo_titulo + "</td><td>" + p.cantidad_jugadas + "</td><td>$" + p.monto + "</td></tr>"; });
+      html += "</table>";
+    }
+    caja.innerHTML = html;
+  } catch (e) { caja.innerHTML = "<p class='mensaje error'>" + e.message + "</p>"; }
+}
+
+async function asignarCupoRev(revId) {
+  const sorteoId = document.getElementById("vrev-gestion-sorteo").value;
+  const cant = parseInt(document.getElementById("vrev-gestion-cant").value, 10);
+  if (!sorteoId || !cant || cant < 1) { aviso("Completa sorteo y cantidad", true); return; }
+  if (!confirm("Vas a asignar " + cant + " jugadas de TU cupo a este revendedor para el sorteo #" + sorteoId + ". Continuar?")) return;
+  try {
+    await api("/vendedor/revendedores/" + revId + "/cupos", "POST", { sorteo_id: parseInt(sorteoId), cantidad: cant });
+    aviso("Jugadas asignadas al revendedor.");
+    cargarGestionRev();
+  } catch (e) { aviso(e.message, true); }
+}
+
+async function registrarPagoRev(revId) {
+  const sorteoId = document.getElementById("vrev-pago-sorteo").value;
+  const cant = parseInt(document.getElementById("vrev-pago-cant").value, 10);
+  if (!sorteoId || !cant || cant < 1) { aviso("Completa sorteo y cantidad", true); return; }
+  if (!confirm("Confirmas que el revendedor te pago " + cant + " jugadas del sorteo #" + sorteoId + "?")) return;
+  try {
+    const d = await api("/vendedor/revendedores/" + revId + "/pagos", "POST", { sorteo_id: parseInt(sorteoId), cantidad_jugadas: cant });
+    aviso("Pago confirmado: " + d.cantidad_jugadas + " jugadas por $" + d.monto + ".");
+    cargarGestionRev();
+  } catch (e) { aviso(e.message, true); }
 }
 
 // ---------- VENDEDOR: JUGADORES ----------
@@ -376,78 +422,8 @@ ACCIONES.vcupos = async () => {
   updateCupoResumen();
 };
 ACCIONES.vcargar = () => { llenarSelectSorteos("/vendedor/sorteos", "v-sorteo"); cargarSelectJugadores("v"); };
-ACCIONES.vpendientes = cargarVPendientes;
 ACCIONES.vjugadas = cargarVJugadas;
 ACCIONES.vrevendedores = async () => { await cargarVRevendedores(); llenarSelectRevGestion(); };
 ACCIONES.vjugadores = cargarVJugadores;
 ACCIONES.resultados = cargarResultados;
 ACCIONES.cobros = cargarCobros;
-
-// ---------- VENDEDOR: GESTION DE CUPOS Y PAGOS DE REVENDEDORES ----------
-function llenarSelectRevGestion() {
-  const sel = document.getElementById("vrev-gestion-select");
-  if (!sel) return;
-  const revs = Object.values(REV_CACHE || {});
-  sel.innerHTML = "<option value=''>Elegi revendedor...</option>" + revs.map(r => "<option value='" + r.id + "'>" + r.nombre + " (" + r.usuario + ")</option>").join("");
-  const caja = document.getElementById("vrev-gestion-caja");
-  if (caja) caja.innerHTML = "";
-}
-
-async function cargarGestionRev() {
-  const revId = document.getElementById("vrev-gestion-select").value;
-  const caja = document.getElementById("vrev-gestion-caja");
-  if (!caja) return;
-  if (!revId) { caja.innerHTML = ""; return; }
-  try {
-    const cupos = await api("/vendedor/revendedores/" + revId + "/cupos", "GET");
-    const sorteos = await api("/vendedor/sorteos", "GET");
-    let html = "<h3>Cupos del revendedor por sorteo</h3>";
-    if (!cupos.length) html += "<p class='chico'>Aun no le asignaste cupos propios. Puede vender sin limite propio (descuenta de tu cupo).</p>";
-    else {
-      html += "<table><tr><th>Sorteo</th><th>Cupo</th><th>Usado</th><th>Disponibles</th></tr>";
-      cupos.forEach(c => { html += "<tr><td>#" + c.sorteo_id + " " + c.sorteo_titulo + "</td><td>" + c.cupo_total + "</td><td>" + c.cupo_usado + "</td><td><b style='color:" + (c.disponibles > 0 ? "#22c55e" : "#ef4444") + "'>" + c.disponibles + "</b></td></tr>"; });
-      html += "</table>";
-    }
-    html += "<h3 style='margin-top:12px'>Ceder mas cupos (se descuentan de TU cupo)</h3>";
-    html += "<select id='vrev-gestion-sorteo'>" + sorteos.map(s => "<option value='" + s.id + "'>#" + s.id + " " + (s.titulo || s.modalidad) + "</option>").join("") + "</select>";
-    html += "<input id='vrev-gestion-cant' type='number' min='1' value='1' style='width:80px'>";
-    html += "<button onclick='asignarCupoRev(" + revId + ")'>Ceder cupos</button>";
-    html += "<h3 style='margin-top:12px'>Confirmar pago del revendedor</h3>";
-    html += "<select id='vrev-pago-sorteo'>" + sorteos.map(s => "<option value='" + s.id + "'>#" + s.id + " " + (s.titulo || s.modalidad) + "</option>").join("") + "</select>";
-    html += "<input id='vrev-pago-cant' type='number' min='1' value='1' style='width:80px'>";
-    html += "<button onclick='registrarPagoRev(" + revId + ")'>Confirmar pago</button>";
-    html += "<h3 style='margin-top:12px'>Historial de pagos del revendedor</h3>";
-    const pagos = await api("/vendedor/revendedores/" + revId + "/pagos", "GET");
-    if (!pagos.length) html += "<p class='chico'>Sin pagos registrados.</p>";
-    else {
-      html += "<table><tr><th>Fecha</th><th>Sorteo</th><th>Jugadas</th><th>Monto</th></tr>";
-      pagos.forEach(p => { html += "<tr><td>" + fmtFecha(p.creado_en) + "</td><td>#" + p.sorteo_id + " " + p.sorteo_titulo + "</td><td>" + p.cantidad_jugadas + "</td><td>$" + p.monto + "</td></tr>"; });
-      html += "</table>";
-    }
-    caja.innerHTML = html;
-  } catch (e) { caja.innerHTML = "<p class='mensaje error'>" + e.message + "</p>"; }
-}
-
-async function asignarCupoRev(revId) {
-  const sorteoId = document.getElementById("vrev-gestion-sorteo").value;
-  const cant = parseInt(document.getElementById("vrev-gestion-cant").value, 10);
-  if (!sorteoId || !cant || cant < 1) { aviso("Completa sorteo y cantidad", true); return; }
-  if (!confirm("Vas a ceder " + cant + " cupos de TU cupo a este revendedor para el sorteo #" + sorteoId + ". Continuar?")) return;
-  try {
-    await api("/vendedor/revendedores/" + revId + "/cupos", "POST", { sorteo_id: parseInt(sorteoId), cantidad: cant });
-    aviso("Cupos cedidos al revendedor.");
-    cargarGestionRev();
-  } catch (e) { aviso(e.message, true); }
-}
-
-async function registrarPagoRev(revId) {
-  const sorteoId = document.getElementById("vrev-pago-sorteo").value;
-  const cant = parseInt(document.getElementById("vrev-pago-cant").value, 10);
-  if (!sorteoId || !cant || cant < 1) { aviso("Completa sorteo y cantidad", true); return; }
-  if (!confirm("Confirmas que el revendedor te pago " + cant + " jugadas del sorteo #" + sorteoId + "?")) return;
-  try {
-    const d = await api("/vendedor/revendedores/" + revId + "/pagos", "POST", { sorteo_id: parseInt(sorteoId), cantidad_jugadas: cant });
-    aviso("Pago confirmado: " + d.cantidad_jugadas + " jugadas por $" + d.monto + ".");
-    cargarGestionRev();
-  } catch (e) { aviso(e.message, true); }
-}
