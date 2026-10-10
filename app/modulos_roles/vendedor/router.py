@@ -13,7 +13,7 @@ from app.modulos_juegos.buscador import _zona
 from app.modulos_juegos.jugadas_core import crear_cupo, crear_jugada
 from app.modulos_juegos.modalidades import obtener
 from app.modulos_juegos.motor import aprobar_jugada, obtener_reglas
-from app.modelos.juegos import EstadoJugada, EstadoSorteo, Jugada, LiquidacionVendedor, Sorteo
+from app.modelos.juegos import CupoRevendedor, EstadoJugada, EstadoSorteo, Jugada, LiquidacionVendedor, PagoRevendedor, Sorteo
 from app.modelos.usuario import RolUsuario, Usuario
 
 router = APIRouter(prefix="/vendedor", tags=["vendedor"])
@@ -558,3 +558,100 @@ def confirmar_cobro(liq_id: int, sesion: Session = Depends(obtener_sesion), vend
     auditoria.registrar(sesion, "COBRO_VENDEDOR_CONFIRMADO", detalle=f"liq={liq_id}", usuario=vendedor)
     sesion.commit()
     return _cobro_out(liq)
+    
+# ---------- CUPOS Y PAGOS DE REVENDEDORES ----------
+
+class CupoRevAsignar(BaseModel):
+    sorteo_id: int
+    cantidad: int = Field(ge=1)
+
+class PagoRevCrear(BaseModel):
+    sorteo_id: int
+    cantidad_jugadas: int = Field(ge=1)
+
+@router.post("/revendedores/{revendedor_id}/cupos")
+def asignar_cupo_rev(revendedor_id: int, datos: CupoRevAsignar, sesion: Session = Depends(obtener_sesion), vendedor: Usuario = vendedor_dep):
+    """El vendedor cede N cupos de SU propio cupo a un revendedor para un sorteo."""
+    rev = sesion.get(Usuario, revendedor_id)
+    if rev is None or rev.padre_id != vendedor.id or rev.rol != RolUsuario.REVENDEDOR:
+        raise HTTPException(status_code=404, detail="Revendedor no encontrado en tu linea")
+    sorteo = sesion.get(Sorteo, datos.sorteo_id)
+    if sorteo is None:
+        raise HTTPException(status_code=404, detail="Sorteo no encontrado")
+    tiene_reg, disp = motor.cupo_vendedor_disponible(sesion, sorteo, vendedor)
+    if tiene_reg and (disp is None or disp < datos.cantidad):
+        raise HTTPException(status_code=400, detail=f"Sin cupos suficientes para ceder: te quedan {disp} en este sorteo.")
+    try:
+        for _ in range(datos.cantidad):
+            if not motor.consumir_cupo_vendedor(sesion, sorteo, vendedor):
+                raise ValueError("Sin cupos de venta para ceder")
+        reg = (
+            sesion.query(CupoRevendedor)
+            .filter(CupoRevendedor.sorteo_id == sorteo.id, CupoRevendedor.revendedor_id == rev.id)
+            .first()
+        )
+        if reg is None:
+            reg = CupoRevendedor(sorteo_id=sorteo.id, vendedor_id=vendedor.id, revendedor_id=rev.id, cupo_total=datos.cantidad, cupo_usado=0)
+            sesion.add(reg)
+        else:
+            reg.cupo_total = (reg.cupo_total or 0) + datos.cantidad
+        sesion.commit()
+        auditoria.registrar(sesion, "CUPO_REV_ASIGNADO", detalle=f"sorteo={sorteo.id} rev={rev.usuario} +{datos.cantidad} total={reg.cupo_total}", usuario=vendedor)
+        sesion.commit()
+    except ValueError as e:
+        sesion.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"revendedor_id": rev.id, "cupo_total": reg.cupo_total, "cupo_usado": reg.cupo_usado or 0, "disponibles": max((reg.cupo_total or 0) - (reg.cupo_usado or 0), 0)}
+
+@router.get("/revendedores/{revendedor_id}/cupos")
+def listar_cupos_rev(revendedor_id: int, sesion: Session = Depends(obtener_sesion), vendedor: Usuario = vendedor_dep):
+    rev = sesion.get(Usuario, revendedor_id)
+    if rev is None or rev.padre_id != vendedor.id or rev.rol != RolUsuario.REVENDEDOR:
+        raise HTTPException(status_code=404, detail="Revendedor no encontrado en tu linea")
+    regs = sesion.query(CupoRevendedor).filter(CupoRevendedor.revendedor_id == rev.id, CupoRevendedor.vendedor_id == vendedor.id).all()
+    salida = []
+    for r in regs:
+        s = sesion.get(Sorteo, r.sorteo_id)
+        salida.append({
+            "sorteo_id": r.sorteo_id,
+            "sorteo_titulo": (s.titulo or s.modalidad) if s else "-",
+            "cupo_total": r.cupo_total or 0,
+            "cupo_usado": r.cupo_usado or 0,
+            "disponibles": max((r.cupo_total or 0) - (r.cupo_usado or 0), 0),
+        })
+    return salida
+
+@router.post("/revendedores/{revendedor_id}/pagos")
+def registrar_pago_rev(revendedor_id: int, datos: PagoRevCrear, sesion: Session = Depends(obtener_sesion), vendedor: Usuario = vendedor_dep):
+    """El vendedor confirma que el revendedor le pago X jugadas de un sorteo."""
+    rev = sesion.get(Usuario, revendedor_id)
+    if rev is None or rev.padre_id != vendedor.id or rev.rol != RolUsuario.REVENDEDOR:
+        raise HTTPException(status_code=404, detail="Revendedor no encontrado en tu linea")
+    sorteo = sesion.get(Sorteo, datos.sorteo_id)
+    if sorteo is None:
+        raise HTTPException(status_code=404, detail="Sorteo no encontrado")
+    monto = round((sorteo.precio_jugada or 0.0) * datos.cantidad_jugadas, 2)
+    pago = PagoRevendedor(sorteo_id=sorteo.id, vendedor_id=vendedor.id, revendedor_id=rev.id, cantidad_jugadas=datos.cantidad_jugadas, monto=monto)
+    sesion.add(pago)
+    sesion.commit()
+    auditoria.registrar(sesion, "PAGO_REV_CONFIRMADO", detalle=f"sorteo={sorteo.id} rev={rev.usuario} jugadas={datos.cantidad_jugadas} monto={monto}", usuario=vendedor)
+    sesion.commit()
+    return {"id": pago.id, "cantidad_jugadas": pago.cantidad_jugadas, "monto": pago.monto}
+
+@router.get("/revendedores/{revendedor_id}/pagos")
+def listar_pagos_rev(revendedor_id: int, sesion: Session = Depends(obtener_sesion), vendedor: Usuario = vendedor_dep):
+    rev = sesion.get(Usuario, revendedor_id)
+    if rev is None or rev.padre_id != vendedor.id or rev.rol != RolUsuario.REVENDEDOR:
+        raise HTTPException(status_code=404, detail="Revendedor no encontrado en tu linea")
+    pagos = sesion.query(PagoRevendedor).filter(PagoRevendedor.revendedor_id == rev.id, PagoRevendedor.vendedor_id == vendedor.id).order_by(PagoRevendedor.id.desc()).all()
+    salida = []
+    for p in pagos:
+        s = sesion.get(Sorteo, p.sorteo_id)
+        salida.append({
+            "sorteo_id": p.sorteo_id,
+            "sorteo_titulo": (s.titulo or s.modalidad) if s else "-",
+            "cantidad_jugadas": p.cantidad_jugadas,
+            "monto": p.monto,
+            "creado_en": p.creado_en.isoformat() if p.creado_en else None,
+        })
+    return salida
