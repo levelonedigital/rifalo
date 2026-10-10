@@ -4,6 +4,11 @@ Regla propia de clasico: el sobrante (100 - casa - vendedores) de cada jugada cu
 PRIMERO el pozo base (se acumula en pozo_cubierto). Recien cuando el acumulado previo
 ya cubrio el base, el sobrante suma como pozo_extra (hace crecer el pozo publicado).
 La casa cobra solo su porcentaje en ambos tramos.
+
+Esquema de comisiones: el admin le paga al VENDEDOR la comision de linea completa
+(monto_vendedor). La comision del revendedor (monto_revendedor) es INFORMATIVA: el
+vendedor la paga de su propia comision cuando arreglen; el admin no paga a revendedores.
+Por eso monto_revendedor NO se descuenta de la linea ni de la casa.
 """
 
 from app.modelos.juegos import EstadoJugada, Sorteo
@@ -13,7 +18,6 @@ from app.modulos_juegos.clasico.cobertura import meta_cobertura_clasico
 
 
 def _porcentajes(sorteo: Sorteo, reglas):
-    """Lectura de porcentajes del sorteo (independiente del motor)."""
     casa = sorteo.casa_pct if sorteo.casa_pct is not None else 30.0
     linea = sorteo.vendedor_pct if sorteo.vendedor_pct is not None else reglas.vendedor_pct
     pozo = max(0.0, 100.0 - casa - linea)
@@ -38,7 +42,6 @@ def aprobar_jugada_clasico(sesion, jugada, reglas):
     base = meta_cobertura_clasico(sorteo)
     sorteo.recaudado = (sorteo.recaudado or 0.0) + precio
 
-    # En clasico el sobrante siempre alimenta el pozo (cubrir base primero, extra despues).
     sobrante = round(precio * pozo_pct / 100.0, 2)
 
     aporte_cubrir = 0.0
@@ -55,9 +58,11 @@ def aprobar_jugada_clasico(sesion, jugada, reglas):
     sorteo.pozo_cubierto = round((sorteo.pozo_cubierto or 0.0) + aporte_cubrir, 2)
     sorteo.pozo_extra = round((sorteo.pozo_extra or 0.0) + aporte_extra, 2)
 
+    # Comision del revendedor INFORMATIVA (la paga el vendedor de su comision).
     monto_rev = round(precio * rev_pct / 100.0, 2)
-    monto_vend = round(precio * vend_efectivo / 100.0, 2) - monto_rev
-    monto_casa = round(precio - monto_rev - monto_vend - aporte_extra - aporte_cubrir, 2)
+    # Comision del vendedor = linea completa (sin descontar revendedor).
+    monto_vend = round(precio * vend_efectivo / 100.0, 2)
+    monto_casa = round(precio - monto_vend - aporte_extra - aporte_cubrir, 2)
 
     jugada.estado = EstadoJugada.APROBADA
     jugada.monto_casa = monto_casa
