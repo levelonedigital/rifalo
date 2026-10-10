@@ -143,6 +143,50 @@ async function cargarMiCuenta() {
   } catch (e) { caja.innerHTML = ""; }
 }
 
+// ---------- REVENDEDOR: MIS COBROS (liquidaciones del vendedor) ----------
+async function cargarCobrosRev() {
+  const caja = document.getElementById("lista-cobros-revendedor");
+  if (!caja) return;
+  try {
+    const ls = await api("/revendedor/cobros", "GET");
+    if (!ls.length) { caja.innerHTML = "<p class='chico'>Todavia no hay liquidaciones. Tu vendedor genera la liquidacion de tus comisiones por periodo.</p>"; return; }
+    let html = "";
+    ls.forEach(l => {
+      let estado;
+      if (l.pagado_vendedor && l.cobrado_revendedor) estado = "<span class='ok'>Pagado y confirmado ✔</span>";
+      else if (l.pagado_vendedor) estado = "<span class='warn'>Tu vendedor marco el pago. Confirma que cobraste.</span>";
+      else estado = "<span class='chico'>Pendiente de pago por tu vendedor.</span>";
+      html += "<div class='buscador-box'>";
+      html += "<b>Liquidacion #" + l.id + "</b> · Periodo " + fmtFecha(l.desde) + " a " + fmtFecha(l.hasta) + "<br>";
+      html += "<span style='font-size:20px;font-weight:bold;color:#22c55e'>$" + l.monto + "</span> " + estado + "<br>";
+      if (l.pagado_en) html += "<span class='chico'>Pagado el " + l.pagado_en.slice(0,10) + "</span><br>";
+      if (l.cobrado_en) html += "<span class='chico'>Cobrado el " + l.cobrado_en.slice(0,10) + "</span><br>";
+      if (l.detalle && l.detalle.length) {
+        html += "<details style='margin-top:6px'><summary class='chico' style='cursor:pointer'>Ver detalle por sorteo (" + l.detalle.length + ")</summary>";
+        html += "<table><tr><th>Sorteo</th><th>Modalidad</th><th>Horario</th><th>Dia</th><th>Jugadas</th><th>Vendido</th><th>Comision</th></tr>";
+        l.detalle.forEach(d => {
+          html += "<tr><td>#" + d.sorteo_id + "</td><td>" + d.modalidad + "</td><td>" + d.horario + "</td><td>" + fmtFecha(d.fecha) + "</td><td>" + d.jugadas + "</td><td>$" + d.vendido + "</td><td>$" + d.comision + "</td></tr>";
+        });
+        html += "</table></details>";
+      }
+      if (l.pagado_vendedor && !l.cobrado_revendedor) {
+        html += "<button onclick='confirmarCobroRev(" + l.id + ")'>Confirmar que cobre</button>";
+      }
+      html += "</div>";
+    });
+    caja.innerHTML = html;
+  } catch (e) { aviso(e.message, true); }
+}
+
+async function confirmarCobroRev(id) {
+  if (!confirm("Confirmas que ya cobraste esta liquidacion de tu vendedor?")) return;
+  try {
+    await api("/revendedor/cobros/" + id + "/confirmar-cobro", "POST");
+    aviso("Listo, confirmaste el cobro. Tu vendedor ya lo ve.");
+    cargarCobrosRev();
+  } catch (e) { aviso(e.message, true); }
+}
+
 // ---------- REVENDEDOR: JUGADORES ----------
 async function crearRJugador() {
   const cuerpo = {
@@ -274,5 +318,6 @@ ACCIONES.rcupos = async () => {
 ACCIONES.rcargar = () => { llenarSelectSorteos("/revendedor/sorteos", "r-sorteo"); cargarSelectJugadores("r"); };
 ACCIONES.rjugadas = cargarRJugadas;
 ACCIONES.rresumen = async () => { await cargarRResumen(); await cargarMiCuenta(); };
+ACCIONES.rcobros = cargarCobrosRev;
 ACCIONES.rjugadores = cargarRJugadores;
 ACCIONES.resultados = cargarResultados;
