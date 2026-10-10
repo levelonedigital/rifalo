@@ -655,3 +655,23 @@ def listar_pagos_rev(revendedor_id: int, sesion: Session = Depends(obtener_sesio
             "creado_en": p.creado_en.isoformat() if p.creado_en else None,
         })
     return salida
+
+@router.get("/revendedores/{revendedor_id}/cuenta")
+def cuenta_rev(revendedor_id: int, sesion: Session = Depends(obtener_sesion), vendedor: Usuario = vendedor_dep):
+    """Resumen de cuenta del revendedor: jugadas entregadas/pagadas/debe, vendido y su comision."""
+    from app.modelos.juegos import CupoRevendedor, PagoRevendedor
+    rev = sesion.get(Usuario, revendedor_id)
+    if rev is None or rev.padre_id != vendedor.id or rev.rol != RolUsuario.REVENDEDOR:
+        raise HTTPException(status_code=404, detail="Revendedor no encontrado en tu linea")
+    entregadas = sum(r.cupo_total or 0 for r in sesion.query(CupoRevendedor).filter(CupoRevendedor.revendedor_id == rev.id, CupoRevendedor.vendedor_id == vendedor.id).all())
+    pagadas = sum(p.cantidad_jugadas or 0 for p in sesion.query(PagoRevendedor).filter(PagoRevendedor.revendedor_id == rev.id, PagoRevendedor.vendedor_id == vendedor.id).all())
+    vendidas = sesion.query(Jugada).filter(Jugada.revendedor_id == rev.id, Jugada.estado.in_(ESTADOS_VENDIDOS)).all()
+    vendido = round(sum(j.precio or 0 for j in vendidas), 2)
+    comision_rev = round(sum(j.monto_revendedor or 0 for j in vendidas), 2)
+    return {
+        "jugadas_entregadas": entregadas,
+        "jugadas_pagadas": pagadas,
+        "jugadas_debe": max(entregadas - pagadas, 0),
+        "vendido": vendido,
+        "comision_revendedor": comision_rev,
+    }
