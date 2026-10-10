@@ -66,6 +66,13 @@
       <button onclick="crearVRevendedor()">Crear revendedor</button>
       <h2>Mis revendedores</h2>
       <div id="lista-vrevendedores"></div>
+
+      <h2 style="margin-top:20px">Cupos y pagos de un revendedor</h2>
+      <p class="chico">Elegí un revendedor para ver sus cupos por sorteo, cederle más cupos (se descuentan de tu cupo) y confirmar pagos que te hizo.</p>
+      <select id="vrev-gestion-select" onchange="cargarGestionRev()">
+        <option value="">Elegi revendedor...</option>
+      </select>
+      <div id="vrev-gestion-caja" style="margin-top:12px"></div>
     </div>
 
     <!-- VENDEDOR: JUGADORES -->
