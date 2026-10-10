@@ -326,10 +326,13 @@ def numeros_ocupados(sorteo_id: int, sesion: Session = Depends(obtener_sesion), 
 
 @router.post("/jugadas")
 def cargar_jugada(datos: JugadaCrear, sesion: Session = Depends(obtener_sesion), vendedor: Usuario = vendedor_dep):
-    """Venta directa: crea la jugada con numeros y la aprueba en el acto."""
+    """Venta directa: crea la jugada con numeros y la aprueba en el acto. Descuenta cupo."""
     sorteo = sesion.get(Sorteo, datos.sorteo_id)
     if sorteo is None:
         raise HTTPException(status_code=404, detail="Sorteo no encontrado")
+    tiene_reg, disp = motor.cupo_vendedor_disponible(sesion, sorteo, vendedor)
+    if tiene_reg and (disp is None or disp < 1):
+        raise HTTPException(status_code=400, detail="Sin cupos de venta para este sorteo. Pedi mas al administrador.")
     jugador_id = None
     nombre = datos.jugador_nombre
     revendedor_id = None
@@ -342,6 +345,8 @@ def cargar_jugada(datos: JugadaCrear, sesion: Session = Depends(obtener_sesion),
         revendedor_id = pj.revendedor_padre_id
     try:
         motor.validar_numeros_rifa(sesion, sorteo, datos.numeros)
+        if not motor.consumir_cupo_vendedor(sesion, sorteo, vendedor):
+            raise ValueError("Sin cupos de venta para este sorteo")
         jugada = crear_jugada(sesion, sorteo, datos.numeros, vendedor, revendedor_id=revendedor_id, jugador_id=jugador_id, jugador_nombre=nombre)
         reglas = obtener_reglas(sesion)
         aprobar_jugada(sesion, jugada, reglas)
@@ -356,14 +361,13 @@ def cargar_jugada(datos: JugadaCrear, sesion: Session = Depends(obtener_sesion),
 
 @router.post("/cupos")
 def vender_cupos(datos: CuposVender, sesion: Session = Depends(obtener_sesion), vendedor: Usuario = vendedor_dep):
-    """Vende N cupos (jugadas aprobadas sin numeros) a un jugador de su linea.
-
-    El cobro es fuera del sistema. Al crear cada cupo se aprueba en el acto: el precio
-    se reparte y suma al pozo inmediatamente. Doble confirmacion en el frontend.
-    """
+    """Vende N cupos a un jugador. Descuenta N cupos de venta del vendedor."""
     sorteo = sesion.get(Sorteo, datos.sorteo_id)
     if sorteo is None:
         raise HTTPException(status_code=404, detail="Sorteo no encontrado")
+    tiene_reg, disp = motor.cupo_vendedor_disponible(sesion, sorteo, vendedor)
+    if tiene_reg and (disp is None or disp < datos.cantidad):
+        raise HTTPException(status_code=400, detail=f"Sin cupos suficientes: te quedan {disp} jugadas para este sorteo. Pedi mas al administrador.")
     jugador = sesion.get(Usuario, datos.jugador_id)
     if jugador is None or jugador.padre_id != vendedor.id or jugador.rol != RolUsuario.JUGADOR:
         raise HTTPException(status_code=400, detail="Jugador invalido para tu linea")
@@ -371,6 +375,8 @@ def vender_cupos(datos: CuposVender, sesion: Session = Depends(obtener_sesion), 
     creadas = []
     try:
         for _ in range(datos.cantidad):
+            if not motor.consumir_cupo_vendedor(sesion, sorteo, vendedor):
+                raise ValueError("Sin cupos de venta para este sorteo")
             cupo = crear_cupo(
                 sesion,
                 sorteo,
