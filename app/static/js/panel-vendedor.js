@@ -231,6 +231,86 @@ async function registrarPagoRev(revId) {
   } catch (e) { aviso(e.message, true); }
 }
 
+// ---------- VENDEDOR: PAGOS A REVENDEDORES (LIQUIDACIONES) ----------
+async function cargarLiquidacionesRev() {
+  const revId = document.getElementById("pago-revendedor").value;
+  const caja = document.getElementById("lista-liquidaciones-rev");
+  if (!caja) return;
+  let ruta = "/vendedor/liquidaciones-rev";
+  if (revId) ruta += "?revendedor_id=" + revId;
+  try {
+    const ls = await api(ruta, "GET");
+    if (!ls.length) { caja.innerHTML = "<p class='chico'>No hay liquidaciones todavia. Elegi un revendedor, pone el rango y generá la liquidacion.</p>"; return; }
+    let html = "<table><tr><th>#</th><th>Revendedor</th><th>Desde</th><th>Hasta</th><th>Total a pagar</th><th>Estado</th><th>Acciones</th></tr>";
+    ls.forEach(l => {
+      let estado;
+      if (l.pagado_vendedor && l.cobrado_revendedor) estado = "<span class='ok'>Pagado y cobrado ✔</span>";
+      else if (l.pagado_vendedor) estado = "<span class='warn'>Pagado por vos; esperando confirmacion del revendedor</span>";
+      else estado = "<span class='chico'>Pendiente de pago</span>";
+      html += "<tr><td>" + l.id + "</td><td>" + l.revendedor + "</td><td>" + fmtFecha(l.desde) + "</td><td>" + fmtFecha(l.hasta) + "</td><td><b>$" + l.monto + "</b></td><td>" + estado + "</td><td>";
+      html += "<button class='secundario' onclick='verDetalleLiqRev(" + l.id + ")'>Ver detalle</button>";
+      if (!l.pagado_vendedor) html += "<button onclick='marcarLiqRevPagada(" + l.id + ")'>Marcar pagado</button>";
+      html += "</td></tr>";
+    });
+    caja.innerHTML = html + "</table>";
+    cargarConfirmacionesRev();
+  } catch (e) { aviso(e.message, true); }
+}
+
+async function generarLiquidacionRev() {
+  const revId = document.getElementById("pago-revendedor").value;
+  const desde = document.getElementById("pago-rev-desde").value;
+  const hasta = document.getElementById("pago-rev-hasta").value;
+  if (!revId) { aviso("Elegi un revendedor para liquidar", true); return; }
+  if (!desde || !hasta) { aviso("Pone la fecha DESDE y HASTA", true); return; }
+  try {
+    const d = await api("/vendedor/revendedores/" + revId + "/liquidaciones", "POST", { desde: desde, hasta: hasta });
+    aviso("Liquidacion #" + d.id + " generada por $" + d.monto + " para " + d.revendedor + ". Revisala con 'Ver detalle' y marcala pagada cuando pagues.");
+    cargarLiquidacionesRev();
+  } catch (e) { aviso(e.message, true); }
+}
+
+async function marcarLiqRevPagada(id) {
+  if (!confirm("Confirmas que ya le pagaste al revendedor la liquidacion #" + id + "?")) return;
+  try { await api("/vendedor/liquidaciones-rev/" + id + "/marcar-pagado", "POST"); aviso("Liquidacion #" + id + " marcada como pagada"); cargarLiquidacionesRev(); }
+  catch (e) { aviso(e.message, true); }
+}
+
+function verDetalleLiqRev(id) {
+  const ruta = "/vendedor/liquidaciones-rev";
+  api(ruta, "GET").then(ls => {
+    const l = ls.find(x => x.id === id);
+    if (!l) return;
+    const caja = document.getElementById("detalle-liquidacion-rev");
+    if (!caja) return;
+    let html = "<h3>Liquidacion #" + l.id + " - " + l.revendedor + " (" + l.revendedor_usuario + ")</h3>";
+    html += "<p>Periodo: " + fmtFecha(l.desde) + " a " + fmtFecha(l.hasta) + " | <b>Total a pagar: $" + l.monto + "</b></p>";
+    html += "<table><tr><th>Sorteo</th><th>Modalidad</th><th>Horario</th><th>Dia</th><th>Jugadas vendidas</th><th>Vendido</th><th>Comision</th></tr>";
+    (l.detalle || []).forEach(d => {
+      html += "<tr><td>#" + d.sorteo_id + "</td><td>" + d.modalidad + "</td><td>" + d.horario + "</td><td>" + fmtFecha(d.fecha) + "</td><td>" + d.jugadas + "</td><td>$" + d.vendido + "</td><td>$" + d.comision + "</td></tr>";
+    });
+    html += "</table>";
+    caja.innerHTML = html;
+    caja.scrollIntoView({ behavior: "smooth" });
+  });
+}
+
+async function cargarConfirmacionesRev() {
+  const caja = document.getElementById("confirmaciones-rev");
+  if (!caja) return;
+  try {
+    const ls = await api("/vendedor/liquidaciones-rev", "GET");
+    const confirmadas = ls.filter(l => l.cobrado_revendedor);
+    if (!confirmadas.length) { caja.innerHTML = "<p class='chico'>Aun no hay confirmaciones de cobro.</p>"; return; }
+    let html = "<table><tr><th>#</th><th>Revendedor</th><th>Monto</th><th>Confirmado el</th></tr>";
+    confirmadas.forEach(l => {
+      html += "<tr><td>" + l.id + "</td><td>" + l.revendedor + " (" + l.revendedor_usuario + ")</td><td>$" + l.monto + "</td><td>" + (l.cobrado_en ? fmtFecha(l.cobrado_en) : "-") + "</td></tr>";
+    });
+    html += "</table>";
+    caja.innerHTML = html;
+  } catch (e) { caja.innerHTML = "<p class='chico'>Error al cargar confirmaciones.</p>"; }
+}
+
 // ---------- VENDEDOR: JUGADORES ----------
 async function crearVJugador() {
   const cuerpo = {
@@ -368,7 +448,7 @@ async function marcarPremioVendedor(jugadaId, pagado) {
   } catch (e) { aviso(e.message, true); }
 }
 
-// ---------- VENDEDOR: MIS COBROS (liquidaciones de comisiones) ----------
+// ---------- VENDEDOR: MIS COBROS (liquidaciones del administrador) ----------
 async function cargarCobrosVendedor() {
   const caja = document.getElementById("lista-cobros-vendedor");
   if (!caja) return;
@@ -424,6 +504,12 @@ ACCIONES.vcupos = async () => {
 ACCIONES.vcargar = () => { llenarSelectSorteos("/vendedor/sorteos", "v-sorteo"); cargarSelectJugadores("v"); };
 ACCIONES.vjugadas = cargarVJugadas;
 ACCIONES.vrevendedores = async () => { await cargarVRevendedores(); llenarSelectRevGestion(); };
+ACCIONES["vpagos-rev"] = async () => {
+  const rs = await api("/vendedor/revendedores", "GET");
+  const sel = document.getElementById("pago-revendedor");
+  if (sel) sel.innerHTML = "<option value=''>Elegi revendedor...</option>" + rs.map(r => "<option value='" + r.id + "'>" + r.nombre + " (" + r.usuario + ")</option>").join("");
+  cargarLiquidacionesRev();
+};
 ACCIONES.vjugadores = cargarVJugadores;
 ACCIONES.resultados = cargarResultados;
-ACCIONES.cobros = cargarCobros;
+ACCIONES.cobros = cargarCobrosVendedor;
