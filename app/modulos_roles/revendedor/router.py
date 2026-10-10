@@ -7,8 +7,9 @@ from app.core.database import obtener_sesion
 from app.core.dependencias import requerir_rol
 from app.core.security import hash_password
 from app.modulos_juegos import motor
-from app.modulos_juegos.jugadas_core import crear_jugada
+from app.modulos_juegos.jugadas_core import crear_cupo, crear_jugada
 from app.modulos_juegos.modalidades import obtener
+from app.modulos_juegos.motor import aprobar_jugada, obtener_reglas
 from app.modelos.juegos import EstadoJugada, EstadoSorteo, Jugada, Sorteo
 from app.modelos.usuario import RolUsuario, Usuario
 
@@ -45,6 +46,12 @@ class JugadorEditar(BaseModel):
     activo: bool | None = None
 
 
+class CuposVender(BaseModel):
+    sorteo_id: int
+    jugador_id: int
+    cantidad: int = Field(ge=1, le=50)
+
+
 def _mio_jugador(sesion: Session, jugador_id: int, rev: Usuario) -> Usuario:
     jugador = sesion.get(Usuario, jugador_id)
     if jugador is None or jugador.revendedor_padre_id != rev.id or jugador.rol != RolUsuario.JUGADOR:
@@ -77,11 +84,10 @@ def _sorteo_out(s: Sorteo):
     }
 
 
-# ---------- JUGADORES DEL REVENDEDOR (crear, editar, eliminar) ----------
+# ---------- JUGADORES DEL REVENDEDOR ----------
 
 @router.post("/jugadores")
 def crear_jugador(datos: JugadorCrear, sesion: Session = Depends(obtener_sesion), rev: Usuario = rev_dep):
-    """El revendedor carga a mano un jugador: queda en la linea del vendedor duenio y atado a este revendedor."""
     vendedor = sesion.get(Usuario, rev.padre_id) if rev.padre_id else None
     if vendedor is None or not vendedor.activo:
         raise HTTPException(status_code=403, detail="Tu vendedor duenio no esta activo")
@@ -167,7 +173,6 @@ def sorteos_abiertos(sesion: Session = Depends(obtener_sesion), rev: Usuario = r
 
 @router.get("/sorteos/{sorteo_id}/ocupados")
 def numeros_ocupados(sorteo_id: int, sesion: Session = Depends(obtener_sesion), rev: Usuario = rev_dep):
-    """Numeros ya jugados en una rifa de numero unico (para la grilla). None si no aplica."""
     sorteo = sesion.get(Sorteo, sorteo_id)
     if sorteo is None:
         raise HTTPException(status_code=404, detail="Sorteo no encontrado")
@@ -176,6 +181,7 @@ def numeros_ocupados(sorteo_id: int, sesion: Session = Depends(obtener_sesion), 
 
 @router.post("/jugadas")
 def cargar_jugada(datos: JugadaCrear, sesion: Session = Depends(obtener_sesion), rev: Usuario = rev_dep):
+    """Venta directa: crea jugada con numeros y aprueba en el acto."""
     vendedor = sesion.get(Usuario, rev.padre_id) if rev.padre_id else None
     if vendedor is None or not vendedor.activo:
         raise HTTPException(status_code=403, detail="Tu vendedor duenio no esta activo")
@@ -193,9 +199,52 @@ def cargar_jugada(datos: JugadaCrear, sesion: Session = Depends(obtener_sesion),
     try:
         motor.validar_numeros_rifa(sesion, sorteo, datos.numeros)
         jugada = crear_jugada(sesion, sorteo, datos.numeros, vendedor, revendedor_id=rev.id, jugador_id=jugador_id, jugador_nombre=nombre)
+        reglas = obtener_reglas(sesion)
+        aprobar_jugada(sesion, jugada, reglas)
+        sesion.commit()
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    return {"id": jugada.id, "numeros": jugada.numeros, "precio": jugada.precio, "estado": jugada.estado.value}
+    aviso_iguales = motor.info_premio_compartido(sesion, sorteo, jugada.numeros, incluir_pendiente=False)
+    return {"id": jugada.id, "numeros": jugada.numeros, "precio": jugada.precio, "estado": jugada.estado.value, "aviso_iguales": aviso_iguales}
+
+
+@router.post("/cupos")
+def vender_cupos(datos: CuposVender, sesion: Session = Depends(obtener_sesion), rev: Usuario = rev_dep):
+    """Vende N cupos (jugadas aprobadas sin numeros) a un jugador de su linea."""
+    vendedor = sesion.get(Usuario, rev.padre_id) if rev.padre_id else None
+    if vendedor is None or not vendedor.activo:
+        raise HTTPException(status_code=403, detail="Tu vendedor duenio no esta activo")
+    sorteo = sesion.get(Sorteo, datos.sorteo_id)
+    if sorteo is None:
+        raise HTTPException(status_code=404, detail="Sorteo no encontrado")
+    jugador = _mio_jugador(sesion, datos.jugador_id, rev)
+    reglas = obtener_reglas(sesion)
+    creadas = []
+    try:
+        for _ in range(datos.cantidad):
+            cupo = crear_cupo(
+                sesion,
+                sorteo,
+                vendedor,
+                revendedor_id=rev.id,
+                jugador_id=jugador.id,
+                jugador_nombre=jugador.nombre,
+            )
+            aprobar_jugada(sesion, cupo, reglas)
+            creadas.append(cupo.id)
+        sesion.commit()
+        auditoria.registrar(
+            sesion,
+            "CUPOS_VENDIDOS_REV",
+            detalle=f"sorteo={sorteo.id} jugador={jugador.usuario} cantidad={datos.cantidad} rev={rev.usuario}",
+            usuario=rev,
+        )
+        sesion.commit()
+    except ValueError as e:
+        sesion.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
+    monto_total = round((sorteo.precio_jugada or 0.0) * len(creadas), 2)
+    return {"ids": creadas, "cantidad": len(creadas), "monto_total": monto_total}
 
 
 @router.get("/jugadas")
@@ -215,7 +264,6 @@ def mis_jugadas(sesion: Session = Depends(obtener_sesion), rev: Usuario = rev_de
 
 @router.get("/resumen")
 def resumen(sesion: Session = Depends(obtener_sesion), rev: Usuario = rev_dep):
-    """Cuenta todas las jugadas que cargaste y fueron aprobadas (incluidas ya liquidadas)."""
     jugadas = sesion.query(Jugada).filter(Jugada.revendedor_id == rev.id, Jugada.estado.in_(ESTADOS_VENDIDOS)).all()
     return {
         "jugadas_aprobadas": len(jugadas),
@@ -228,7 +276,6 @@ def resumen(sesion: Session = Depends(obtener_sesion), rev: Usuario = rev_dep):
 
 @router.get("/resultados")
 def resultados(sesion: Session = Depends(obtener_sesion), revendedor: Usuario = rev_dep):
-    """Ultimos 5 sorteos liquidados con sus resultados y los jugadores ganadores de tu linea."""
     sorteos = (
         sesion.query(Sorteo)
         .filter(Sorteo.estado == EstadoSorteo.LIQUIDADO)
