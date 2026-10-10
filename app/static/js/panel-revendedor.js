@@ -2,6 +2,9 @@
 async function cargarRSorteos() {
   try {
     const ss = await api("/revendedor/sorteos", "GET");
+    SORTEOS_ABIERTOS_CACHE["r-sorteo"] = {};
+    SORTEOS_ABIERTOS_CACHE["r-cupo-sorteo"] = {};
+    ss.forEach(s => { SORTEOS_ABIERTOS_CACHE["r-sorteo"][s.id] = s; SORTEOS_ABIERTOS_CACHE["r-cupo-sorteo"][s.id] = s; });
     let html = "<table><tr><th>#</th><th>Img</th><th>Sorteo</th><th>Horario</th><th>Dia</th><th>Cierre</th><th>Estado</th><th>Precio</th><th>Pozo / Premio</th></tr>";
     ss.forEach(s => {
       const celdaPozo = tienePremioNombre(s) ? "<b style='color:#22c55e'>" + s.premio_nombre + "</b>" : "<b style='color:#22c55e'>$" + s.pozo + "</b>";
@@ -19,8 +22,62 @@ async function rCargarJugada() {
   };
   if (selJugador) cuerpo.jugador_id = parseInt(selJugador);
   else cuerpo.jugador_nombre = document.getElementById("r-jugador").value || null;
-  try { const d = await api("/revendedor/jugadas", "POST", cuerpo); aviso("Jugada #" + d.id + " cargada, la aprueba tu vendedor"); document.getElementById("r-numeros").value = ""; }
+  try {
+    const d = await api("/revendedor/jugadas", "POST", cuerpo);
+    let txt = "Jugada #" + d.id + " cargada y APROBADA (venta directa).";
+    if (d.aviso_iguales && d.aviso_iguales.aplica && d.aviso_iguales.coincidencias > 0) {
+      txt += " Atencion: hay " + d.aviso_iguales.coincidencias + " jugada(s) igual(es) en el sorteo; si gana, el pozo se divide y el premio estimado es $" + d.aviso_iguales.premio_estimado + ".";
+    }
+    aviso(txt);
+    document.getElementById("r-numeros").value = "";
+  }
   catch (e) { aviso(e.message, true); }
+}
+
+// ---------- REVENDEDOR: VENTA DE CUPOS ----------
+function llenarSelectJugadorCupoR() {
+  const sel = document.getElementById("r-cupo-jugador");
+  if (!sel) return;
+  const todos = RJUG_CACHE ? Object.values(RJUG_CACHE) : [];
+  const idSel = document.getElementById("r-cupo-sorteo").value;
+  const s = SORTEOS_ABIERTOS_CACHE["r-cupo-sorteo"] && SORTEOS_ABIERTOS_CACHE["r-cupo-sorteo"][idSel];
+  let lista = todos.filter(j => j.activo);
+  if (s && s.solo_participantes && s.participantes && s.participantes.length) {
+    lista = lista.filter(j => s.participantes.includes(j.nombre));
+  }
+  sel.innerHTML = "<option value=''>Elegi jugador...</option>" + lista.map(j => "<option value='" + j.id + "'>" + j.nombre + " (" + j.usuario + ")</option>").join("");
+}
+
+function updateCupoResumenR() {
+  const caja = document.getElementById("r-cupo-resumen");
+  if (!caja) return;
+  const idSel = document.getElementById("r-cupo-sorteo").value;
+  const s = SORTEOS_ABIERTOS_CACHE["r-cupo-sorteo"] && SORTEOS_ABIERTOS_CACHE["r-cupo-sorteo"][idSel];
+  const cant = parseInt(document.getElementById("r-cupo-cantidad").value || "0", 10);
+  if (!s || !cant || cant < 1) { caja.textContent = ""; return; }
+  const total = Math.round((s.precio_jugada || 0) * cant * 100) / 100;
+  caja.innerHTML = "<b>Total a cobrarle al jugador: $" + total + "</b> (" + cant + " x $" + s.precio_jugada + "). Al confirmar, ese monto se reparte y suma al pozo en el acto.";
+}
+
+async function venderCuposR() {
+  const sorteoId = document.getElementById("r-cupo-sorteo").value;
+  const jugadorId = document.getElementById("r-cupo-jugador").value;
+  const cant = parseInt(document.getElementById("r-cupo-cantidad").value || "0", 10);
+  const msgBox = document.getElementById("r-cupo-msg");
+  if (!sorteoId || !jugadorId || !cant || cant < 1) { aviso("Completa sorteo, jugador y cantidad", true); return; }
+  const s = SORTEOS_ABIERTOS_CACHE["r-cupo-sorteo"][sorteoId];
+  const j = (RJUG_CACHE || {})[jugadorId] || (Object.values(RJUG_CACHE || {}).find(x => String(x.id) === String(jugadorId)));
+  const total = Math.round((s.precio_jugada || 0) * cant * 100) / 100;
+  if (!confirm("Vas a vender " + cant + " jugada(s) del sorteo #" + sorteoId + " a " + (j ? j.nombre : jugadorId) + " por $" + total + ". El jugador debe haberte pagado ese monto fuera del sistema. Continuar?")) return;
+  if (!confirm("CONFIRMACION FINAL: esta venta no se puede editar ni cancelar despues. El monto suma al pozo y a tu comision ahora mismo. Confirmas?")) return;
+  try {
+    const d = await api("/revendedor/cupos", "POST", { sorteo_id: parseInt(sorteoId), jugador_id: parseInt(jugadorId), cantidad: cant });
+    if (msgBox) { msgBox.style.display = "block"; msgBox.className = "mensaje ok"; msgBox.textContent = "Vendiste " + d.cantidad + " jugada(s) por $" + d.monto_total + ". El jugador ya las ve disponibles en su panel."; }
+    document.getElementById("r-cupo-cantidad").value = 1;
+    updateCupoResumenR();
+  } catch (e) {
+    if (msgBox) { msgBox.style.display = "block"; msgBox.className = "mensaje error"; msgBox.textContent = e.message; }
+  }
 }
 
 async function cargarRJugadas() {
@@ -137,7 +194,7 @@ async function cargarResultadosRevendedor() {
     rs.forEach(r => {
       html += "<div class='buscador-box'>";
       html += "<b>Sorteo #" + r.sorteo_id + "</b> - " + (r.titulo || r.modalidad) + " " + r.horario + " - " + fmtFecha(r.fecha) + "<br>";
-      html += "<span class='nums'>Numeros: " + r.resultados.map(n => String(n).padStart(2, "0")).join(", ") + "</span><br>";
+      html += resultadosColumnaHTML(r.resultados);
       html += "<span class='chico'>Cantidad de ganadores: " + r.cantidad_ganadores + "</span><br>";
       if (r.mis_ganadores && r.mis_ganadores.length) {
         r.mis_ganadores.forEach(g => {
@@ -161,7 +218,14 @@ async function cargarResultadosRevendedor() {
 // ---------- REGISTRO DE PESTANAS DEL REVENDEDOR ----------
 window.ACCIONES = window.ACCIONES || {};
 ACCIONES.rsorteos = cargarRSorteos;
+ACCIONES.rcupos = async () => {
+  await llenarSelectSorteos("/revendedor/sorteos", "r-cupo-sorteo");
+  await cargarSelectJugadores("r");
+  llenarSelectJugadorCupoR();
+  updateCupoResumenR();
+};
 ACCIONES.rcargar = () => { llenarSelectSorteos("/revendedor/sorteos", "r-sorteo"); cargarSelectJugadores("r"); };
 ACCIONES.rjugadas = cargarRJugadas;
 ACCIONES.rresumen = cargarRResumen;
 ACCIONES.rjugadores = cargarRJugadores;
+ACCIONES.resultados = cargarResultados;
