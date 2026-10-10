@@ -13,7 +13,7 @@ from app.core.security import hash_password
 from app.modulos_juegos import buscador, motor
 from app.modulos_juegos.buscador import _actualizar_semanal, _zona, costo_a_cubrir, pozo_cubierto_total
 from app.modulos_juegos.modalidades import listar, obtener
-from app.modelos.juegos import Aviso, EstadoJugada, EstadoSorteo, Jugada, LiquidacionVendedor, Sorteo
+from app.modelos.juegos import Aviso, CupoVendedor, EstadoJugada, EstadoSorteo, Jugada, LiquidacionVendedor, PagoVendedor, Sorteo
 from app.modelos.usuario import RolUsuario, Usuario
 
 router = APIRouter(prefix="/admin", tags=["juegos"])
@@ -133,7 +133,7 @@ class SorteoCrear(BaseModel):
     busqueda_intervalo_min: int | None = Field(default=None, ge=0)
     busqueda_duracion_min: int | None = Field(default=None, ge=0)
     semanal_dia_inicio: int | None = Field(default=None, ge=0, le=6)
-    semanal_dia_fin: int | None = Field(default=None, ge=0, le=6)
+    cupos_por_vendedor: int | None = Field(default=None, ge=0)
 
 class SorteoEditar(BaseModel):
     horario: str | None = None
@@ -249,10 +249,15 @@ def crear_sorteo(datos: SorteoCrear, sesion: Session = Depends(obtener_sesion), 
         semanal_dia_inicio=sem_ini,
         semanal_dia_fin=sem_fin,
     )
-    sesion.add(sorteo)
+       sesion.add(sorteo)
     sesion.commit()
     sesion.refresh(sorteo)
-    auditoria.registrar(sesion, "SORTEO_CREADO", detalle=f"{sorteo.modalidad} {sorteo.horario} id={sorteo.id} pozo={pozo} (en preparacion)", usuario=admin)
+    if datos.cupos_por_vendedor:
+        vendedores = sesion.query(Usuario).filter(Usuario.rol == RolUsuario.VENDEDOR, Usuario.activo.is_(True)).all()
+        for v in vendedores:
+            sesion.add(CupoVendedor(sorteo_id=sorteo.id, vendedor_id=v.id, cupo_total=int(datos.cupos_por_vendedor), cupo_usado=0))
+        sesion.commit()
+    auditoria.registrar(sesion, "SORTEO_CREADO", detalle=f"{sorteo.modalidad} {sorteo.horario} id={sorteo.id} pozo={pozo} cupos_por_vendedor={datos.cupos_por_vendedor} (en preparacion)", usuario=admin)
     sesion.commit()
     return {"id": sorteo.id, "modalidad": sorteo.modalidad, "horario": sorteo.horario, "pozo_inicial": pozo, "titulo": sorteo.titulo}
 
@@ -561,6 +566,98 @@ def pozo_vacante(sorteo_id: int, datos: PozoVacanteCrear, sesion: Session = Depe
     auditoria.registrar(sesion, "POZO_VACANTE_CREADO", detalle=f"origen={sorteo.id} nuevo={nuevo.id} (en preparacion)", usuario=admin)
     sesion.commit()
     return {"id": nuevo.id, "pozo_inicial": nuevo.pozo_inicial, "participantes": nuevo.participantes}
+
+# ---------- CUPOS DE VENTA POR VENDEDOR Y PAGOS VENDEDOR->ADMIN ----------
+
+class CupoAsignar(BaseModel):
+    vendedor_id: int
+    cantidad: int = Field(ge=1)
+
+class PagoVendedorCrear(BaseModel):
+    vendedor_id: int
+    cantidad_jugadas: int = Field(ge=1)
+
+@router.post("/sorteos/{sorteo_id}/cupos")
+def asignar_cupo(sorteo_id: int, datos: CupoAsignar, sesion: Session = Depends(obtener_sesion), admin: Usuario = Depends(requerir_permiso("configurar_sorteos"))):
+    """Asigna o suma cupos de venta a un vendedor para este sorteo."""
+    sorteo = sesion.get(Sorteo, sorteo_id)
+    if sorteo is None:
+        raise HTTPException(status_code=404, detail="Sorteo no encontrado")
+    vendedor = sesion.get(Usuario, datos.vendedor_id)
+    if vendedor is None or vendedor.rol != RolUsuario.VENDEDOR:
+        raise HTTPException(status_code=404, detail="Vendedor no encontrado")
+    reg = (
+        sesion.query(CupoVendedor)
+        .filter(CupoVendedor.sorteo_id == sorteo.id, CupoVendedor.vendedor_id == vendedor.id)
+        .first()
+    )
+    if reg is None:
+        reg = CupoVendedor(sorteo_id=sorteo.id, vendedor_id=vendedor.id, cupo_total=datos.cantidad, cupo_usado=0)
+        sesion.add(reg)
+    else:
+        reg.cupo_total = (reg.cupo_total or 0) + datos.cantidad
+    sesion.commit()
+    auditoria.registrar(sesion, "CUPO_VENDEDOR_ASIGNADO", detalle=f"sorteo={sorteo.id} vendedor={vendedor.usuario} +{datos.cantidad} total={reg.cupo_total}", usuario=admin)
+    sesion.commit()
+    return {"vendedor_id": vendedor.id, "cupo_total": reg.cupo_total, "cupo_usado": reg.cupo_usado or 0, "disponibles": max((reg.cupo_total or 0) - (reg.cupo_usado or 0), 0)}
+
+@router.get("/sorteos/{sorteo_id}/cupos")
+def listar_cupos(sorteo_id: int, sesion: Session = Depends(obtener_sesion), admin: Usuario = admin_dep):
+    sorteo = sesion.get(Sorteo, sorteo_id)
+    if sorteo is None:
+        raise HTTPException(status_code=404, detail="Sorteo no encontrado")
+    regs = sesion.query(CupoVendedor).filter(CupoVendedor.sorteo_id == sorteo.id).all()
+    salida = []
+    for r in regs:
+        v = sesion.get(Usuario, r.vendedor_id)
+        salida.append({
+            "vendedor_id": r.vendedor_id,
+            "vendedor": (v.usuario if v else "-"),
+            "vendedor_nombre": (v.nombre if v else "-"),
+            "cupo_total": r.cupo_total or 0,
+            "cupo_usado": r.cupo_usado or 0,
+            "disponibles": max((r.cupo_total or 0) - (r.cupo_usado or 0), 0),
+        })
+    return salida
+
+@router.post("/sorteos/{sorteo_id}/pagos-vendedor")
+def registrar_pago_vendedor(sorteo_id: int, datos: PagoVendedorCrear, sesion: Session = Depends(obtener_sesion), admin: Usuario = Depends(requerir_permiso("configurar_sorteos"))):
+    """El admin confirma que el vendedor le pago X jugadas de este sorteo."""
+    sorteo = sesion.get(Sorteo, sorteo_id)
+    if sorteo is None:
+        raise HTTPException(status_code=404, detail="Sorteo no encontrado")
+    vendedor = sesion.get(Usuario, datos.vendedor_id)
+    if vendedor is None or vendedor.rol != RolUsuario.VENDEDOR:
+        raise HTTPException(status_code=404, detail="Vendedor no encontrado")
+    monto = round((sorteo.precio_jugada or 0.0) * datos.cantidad_jugadas, 2)
+    pago = PagoVendedor(sorteo_id=sorteo.id, vendedor_id=vendedor.id, cantidad_jugadas=datos.cantidad_jugadas, monto=monto)
+    sesion.add(pago)
+    sesion.commit()
+    auditoria.registrar(sesion, "PAGO_VENDEDOR_CONFIRMADO", detalle=f"sorteo={sorteo.id} vendedor={vendedor.usuario} jugadas={datos.cantidad_jugadas} monto={monto}", usuario=admin)
+    sesion.commit()
+    return {"id": pago.id, "vendedor_id": vendedor.id, "cantidad_jugadas": pago.cantidad_jugadas, "monto": pago.monto}
+
+@router.get("/sorteos/{sorteo_id}/pagos-vendedor")
+def listar_pagos_vendedor(sorteo_id: int, vendedor_id: int | None = None, sesion: Session = Depends(obtener_sesion), admin: Usuario = admin_dep):
+    sorteo = sesion.get(Sorteo, sorteo_id)
+    if sorteo is None:
+        raise HTTPException(status_code=404, detail="Sorteo no encontrado")
+    consulta = sesion.query(PagoVendedor).filter(PagoVendedor.sorteo_id == sorteo.id)
+    if vendedor_id is not None:
+        consulta = consulta.filter(PagoVendedor.vendedor_id == vendedor_id)
+    pagos = consulta.order_by(PagoVendedor.id.desc()).all()
+    salida = []
+    for p in pagos:
+        v = sesion.get(Usuario, p.vendedor_id)
+        salida.append({
+            "id": p.id,
+            "vendedor_id": p.vendedor_id,
+            "vendedor": (v.usuario if v else "-"),
+            "cantidad_jugadas": p.cantidad_jugadas,
+            "monto": p.monto,
+            "creado_en": p.creado_en.isoformat() if p.creado_en else None,
+        })
+    return salida
 
 # ---------- JUGADAS ----------
 
