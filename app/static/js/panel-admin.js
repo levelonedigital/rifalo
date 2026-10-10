@@ -1,5 +1,5 @@
 let LIQ_CACHE = {};
-let imagen_data_pending = null; // null = no cambiar; dataUri = subir; "" = quitar
+let imagen_data_pending = null;
 let reprog_id = null;
 
 // ---------- MODALIDADES Y BLOQUES POR MODALIDAD ----------
@@ -144,6 +144,8 @@ function leerFormSorteo() {
     cuerpo.imagen_data = imagen_data_pending;
     if (imagen_data_pending === "") cuerpo.imagen_url = "";
   }
+  const cupos = document.getElementById("sorteo-cupos");
+  if (cupos && cupos.value) cuerpo.cupos_por_vendedor = parseInt(cupos.value, 10);
   return cuerpo;
 }
 
@@ -154,6 +156,8 @@ async function crearSorteo() {
     const d = await api("/admin/sorteos", "POST", cuerpo);
     aviso("Sorteo #" + d.id + " creado EN PREPARACION (inactivo) con titulo \"" + (d.titulo || "") + "\". Revisalo, editalo si hace falta y recien ahi activalo.");
     resetImagenForm();
+    const cuposInput = document.getElementById("sorteo-cupos");
+    if (cuposInput) cuposInput.value = "";
     cargarSorteos();
   }
   catch (e) { aviso(e.message, true); }
@@ -253,6 +257,7 @@ async function guardarPlantilla() {
   delete cuerpo.busqueda_inicio_min;
   delete cuerpo.busqueda_intervalo_min;
   delete cuerpo.busqueda_duracion_min;
+  delete cuerpo.cupos_por_vendedor;
   try { await api("/admin/plantillas", "POST", cuerpo); aviso("Guia guardada: " + nombre); cargarPlantillas(); }
   catch (e) { aviso(e.message, true); }
 }
@@ -322,7 +327,7 @@ async function cargarSorteos() {
   } catch (e) { aviso(e.message, true); }
 }
 
-// ---------- REPROGRAMACION (fecha + horario) ----------
+// ---------- REPROGRAMACION (fecha + horario + cierre) ----------
 function asegurarBarraReprog() {
   let bar = document.getElementById("reprog-bar");
   if (!bar) {
@@ -636,7 +641,6 @@ async function llenarSelectJugadasSorteos() {
   } catch (e) { aviso(e.message, true); }
 }
 
-// Icono rapido de estado de cobro para jugadas ganadoras
 function iconoCobro(j) {
   if (j.estado !== "ganadora") return "";
   if (j.premio_pagado && j.premio_cobrado) return " <span title='Entregado y cobrado' style='color:#22c55e;font-weight:bold'>✔✔</span>";
@@ -706,6 +710,7 @@ async function cargarResumen() {
         "<tr><td>#" + r.sorteo_id + " " + r.modalidad + " " + r.horario + "</td><td>" + r.estado + "</td><td>" + r.jugadas_vendidas + "</td><td>$" + r.vendido + "</td><td>$" + r.casa + "</td><td>$" + r.vendedores + "</td><td>$" + r.revendedores + "</td><td>$" + r.pozo + "</td><td>$" + r.pozo_cubierto + " / $" + r.costo + (r.costo_cubierto ? " ✔" : " ✘") + "</td><td>$" + r.premios_pagados + "</td><td>" + (r.ganadoras.join(", ") || "-") + "</td></tr></table>" +
         "<p class='chico'>Recaudado $" + r.recaudado + ". " + (r.es_premio_fijo ? "Casa bruta $" + r.casa_bruta + " menos premios $" + r.premios_pagados + " = ganancia neta $" + r.casa + ". " : "Pozo aportado (cobertura + extra): $" + r.pozo_aportado + ". ") + "Resultados: " + (r.resultados || "sin cargar") + "</p>";
       if (r.estado === "liquidado") await cargarLiquidacion(SORT_ACTUAL);
+      await cargarCuposPagos(SORT_ACTUAL);
       return;
     }
     const r = await api("/admin/resumen-general", "GET");
@@ -753,6 +758,74 @@ async function marcarPremio(jugadaId, pagado) {
 async function marcarComision(jugadaId, pagado) {
   try { await api("/admin/jugadas/" + jugadaId + "/marcar-comision", "POST", { pagado: pagado }); cargarResumen(); }
   catch (e) { aviso(e.message, true); }
+}
+
+// ---------- CUPOS Y PAGOS VENDEDOR->ADMIN ----------
+async function cargarCuposPagos(sorteoId) {
+  const caja = document.getElementById("caja-cupos-pagos");
+  if (!caja) return;
+  try {
+    const cupos = await api("/admin/sorteos/" + sorteoId + "/cupos", "GET");
+    const vendedores = await api("/admin/vendedores", "GET");
+    let html = "<h3>Cupos de venta por vendedor</h3>";
+    if (!cupos.length) {
+      html += "<p class='chico'>Aun no hay cupos asignados. Los vendedores pueden vender sin limite.</p>";
+    } else {
+      html += "<table><tr><th>Vendedor</th><th>Cupo total</th><th>Usado</th><th>Disponibles</th><th>Accion</th></tr>";
+      cupos.forEach(c => {
+        html += "<tr><td>" + c.vendedor_nombre + " (" + c.vendedor + ")</td><td>" + c.cupo_total + "</td><td>" + c.cupo_usado + "</td><td><b style='color:" + (c.disponibles > 0 ? "#22c55e" : "#ef4444") + "'>" + c.disponibles + "</b></td>";
+        html += "<td><button class='secundario' onclick='asignarMasCupo(" + sorteoId + "," + c.vendedor_id + ",\"" + c.vendedor + "\")'>Agregar cupo</button></td></tr>";
+      });
+      html += "</table>";
+    }
+    html += "<h3 style='margin-top:16px'>Registrar pago de vendedor</h3>";
+    html += "<p class='chico'>Confirma que el vendedor te pago X jugadas de este sorteo.</p>";
+    html += "<select id='pago-vend-sel'>";
+    vendedores.forEach(v => { html += "<option value='" + v.id + "'>" + v.nombre + " (" + v.usuario + ")</option>"; });
+    html += "</select>";
+    html += "<input id='pago-vend-cant' type='number' min='1' value='1' placeholder='Cantidad de jugadas'>";
+    html += "<button onclick='registrarPagoVendedor(" + sorteoId + ")'>Confirmar pago</button>";
+    html += "<div id='pago-vend-msg' class='mensaje ok' style='display:none;margin-top:8px'></div>";
+    html += "<h3 style='margin-top:16px'>Historial de pagos</h3>";
+    try {
+      const pagos = await api("/admin/sorteos/" + sorteoId + "/pagos-vendedor", "GET");
+      if (!pagos.length) {
+        html += "<p class='chico'>No hay pagos registrados para este sorteo.</p>";
+      } else {
+        html += "<table><tr><th>Fecha</th><th>Vendedor</th><th>Jugadas pagadas</th><th>Monto</th></tr>";
+        pagos.forEach(p => {
+          html += "<tr><td>" + fmtFecha(p.creado_en) + "</td><td>" + p.vendedor + "</td><td>" + p.cantidad_jugadas + "</td><td>$" + p.monto + "</td></tr>";
+        });
+        html += "</table>";
+      }
+    } catch (e) { html += "<p class='chico'>Error al cargar historial.</p>"; }
+    caja.innerHTML = html;
+  } catch (e) { caja.innerHTML = "<p class='mensaje error'>Error: " + e.message + "</p>"; }
+}
+
+async function asignarMasCupo(sorteoId, vendedorId, vendedorNombre) {
+  const cant = prompt("Cuantas jugadas adicionales para " + vendedorNombre + "?", "10");
+  if (!cant || isNaN(cant) || parseInt(cant, 10) < 1) return;
+  try {
+    const d = await api("/admin/sorteos/" + sorteoId + "/cupos", "POST", { vendedor_id: vendedorId, cantidad: parseInt(cant, 10) });
+    aviso("Cupo asignado: " + d.disponibles + " disponibles para " + vendedorNombre);
+    cargarCuposPagos(sorteoId);
+  } catch (e) { aviso(e.message, true); }
+}
+
+async function registrarPagoVendedor(sorteoId) {
+  const vendedorId = document.getElementById("pago-vend-sel").value;
+  const cant = parseInt(document.getElementById("pago-vend-cant").value, 10);
+  const msgBox = document.getElementById("pago-vend-msg");
+  if (!cant || cant < 1) { aviso("Pone una cantidad valida", true); return; }
+  if (!confirm("Confirmas que el vendedor te pago " + cant + " jugadas de este sorteo?")) return;
+  try {
+    const d = await api("/admin/sorteos/" + sorteoId + "/pagos-vendedor", "POST", { vendedor_id: parseInt(vendedorId), cantidad_jugadas: cant });
+    if (msgBox) { msgBox.style.display = "block"; msgBox.className = "mensaje ok"; msgBox.textContent = "Pago confirmado: " + d.cantidad_jugadas + " jugadas por $" + d.monto; }
+    cargarCuposPagos(sorteoId);
+  } catch (e) {
+    if (msgBox) { msgBox.style.display = "block"; msgBox.className = "mensaje error"; msgBox.textContent = e.message; }
+  }
 }
 
 // ---------- ADMIN: BALANCE ----------
