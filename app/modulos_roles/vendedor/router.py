@@ -146,29 +146,31 @@ def _sorteo_out(s: Sorteo):
 
 
 def _cobro_out(liq: LiquidacionVendedor):
-    try:
-        detalle = json.loads(liq.detalle) if liq.detalle else []
-    except Exception:
-        detalle = []
     return {
         "id": liq.id,
         "desde": liq.desde.isoformat(),
         "hasta": liq.hasta.isoformat(),
         "monto": liq.monto,
-        "detalle": detalle,
+        "detalle": _normalizar_detalle(liq.detalle),
         "pagado_admin": bool(liq.pagado_admin),
         "cobrado_vendedor": bool(liq.cobrado_vendedor),
         "pagado_en": liq.pagado_en.isoformat() if liq.pagado_en else None,
         "cobrado_en": liq.cobrado_en.isoformat() if liq.cobrado_en else None,
     }
 
+def _normalizar_detalle(crudo):
+    try:
+        d = json.loads(crudo) if crudo else []
+    except Exception:
+        d = []
+    if isinstance(d, dict):
+        return {"por_sorteo": d.get("por_sorteo", []), "jugada_ids": d.get("jugada_ids", [])}
+    if isinstance(d, list):
+        return {"por_sorteo": d, "jugada_ids": []}
+    return {"por_sorteo": [], "jugada_ids": []}
 
 def _liq_rev_out(liq: LiquidacionRevendedor, sesion: Session):
     rev = sesion.get(Usuario, liq.revendedor_id)
-    try:
-        detalle = json.loads(liq.detalle) if liq.detalle else []
-    except Exception:
-        detalle = []
     return {
         "id": liq.id,
         "revendedor_id": liq.revendedor_id,
@@ -177,7 +179,7 @@ def _liq_rev_out(liq: LiquidacionRevendedor, sesion: Session):
         "desde": liq.desde.isoformat(),
         "hasta": liq.hasta.isoformat(),
         "monto": liq.monto,
-        "detalle": detalle,
+        "detalle": _normalizar_detalle(liq.detalle),
         "pagado_vendedor": bool(liq.pagado_vendedor),
         "cobrado_revendedor": bool(liq.cobrado_revendedor),
         "pagado_en": liq.pagado_en.isoformat() if liq.pagado_en else None,
@@ -651,20 +653,14 @@ def generar_liquidacion_rev(revendedor_id: int, datos: LiquidacionRevCrear, sesi
     rev = _mio_rev(sesion, revendedor_id, vendedor)
     if datos.desde > datos.hasta:
         raise HTTPException(status_code=400, detail="La fecha 'desde' no puede ser posterior a 'hasta'")
-    solapa = (
+    pagadas_ids = set()
+    liqs_pagadas = (
         sesion.query(LiquidacionRevendedor)
-        .filter(
-            LiquidacionRevendedor.revendedor_id == revendedor_id,
-            LiquidacionRevendedor.desde <= datos.hasta,
-            LiquidacionRevendedor.hasta >= datos.desde,
-        )
-        .first()
+        .filter(LiquidacionRevendedor.revendedor_id == revendedor_id, LiquidacionRevendedor.pagado_vendedor == True)
+        .all()
     )
-    if solapa is not None:
-        raise HTTPException(
-            status_code=400,
-            detail=f"El rango se solapa con la liquidacion #{solapa.id} ({solapa.desde} a {solapa.hasta}). No se puede pagar dos veces el mismo periodo.",
-        )
+    for l in liqs_pagadas:
+        pagadas_ids.update(_normalizar_detalle(l.detalle)["jugada_ids"])
     z = _zona()
     dt_desde = datetime.combine(datos.desde, datetime.min.time(), tzinfo=z)
     dt_hasta = datetime.combine(datos.hasta + timedelta(days=1), datetime.min.time(), tzinfo=z)
@@ -680,7 +676,11 @@ def generar_liquidacion_rev(revendedor_id: int, datos: LiquidacionRevCrear, sesi
         .all()
     )
     agrupado = {}
+    ids_incluidos = []
     for j in jugadas:
+        if j.id in pagadas_ids:
+            continue
+        ids_incluidos.append(j.id)
         d = agrupado.setdefault(j.sorteo_id, {"jugadas": 0, "vendido": 0.0, "comision": 0.0})
         d["jugadas"] += 1
         d["vendido"] = round(d["vendido"] + (j.precio or 0.0), 2)
@@ -709,7 +709,7 @@ def generar_liquidacion_rev(revendedor_id: int, datos: LiquidacionRevCrear, sesi
         desde=datos.desde,
         hasta=datos.hasta,
         monto=total,
-        detalle=json.dumps(detalle),
+        detalle=json.dumps({"por_sorteo": detalle, "jugada_ids": ids_incluidos}),
     )
     sesion.add(liq)
     sesion.commit()
