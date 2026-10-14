@@ -811,3 +811,22 @@ def confirmar_cobro(liq_id: int, sesion: Session = Depends(obtener_sesion), vend
     auditoria.registrar(sesion, "COBRO_VENDEDOR_CONFIRMADO", detalle=f"liq={liq_id} monto={liq.monto}", usuario=vendedor)
     sesion.commit()
     return _cobro_out(liq)
+
+# ---------- MIS JUGADAS DISPONIBLES POR SORTEO ----------
+
+@router.get("/mis-cupos")
+def mis_cupos_vendedor(sesion: Session = Depends(obtener_sesion), vendedor: Usuario = vendedor_dep):
+    """Jugadas que el admin le asigno al vendedor por sorteo, con usadas y disponibles."""
+    from app.modelos.juegos import CupoVendedor
+    regs = sesion.query(CupoVendedor).filter(CupoVendedor.vendedor_id == vendedor.id).all()
+    salida = []
+    for r in regs:
+        s = sesion.get(Sorteo, r.sorteo_id)
+        salida.append({
+            "sorteo_id": r.sorteo_id,
+            "sorteo_titulo": (s.titulo or s.modalidad) if s else "-",
+            "cupo_total": r.cupo_total or 0,
+            "cupo_usado": r.cupo_usado or 0,
+            "disponibles": max((r.cupo_total or 0) - (r.cupo_usado or 0), 0),
+        })
+    return salida
