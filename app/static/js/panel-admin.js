@@ -507,6 +507,7 @@ function empezarEdicionVendedor(id) {
   bar.innerHTML =
     "Editando vendedor " + v.usuario + "." +
     "<div class='grilla'>" +
+    "<div><label>Usuario</label><input id='ve-usuario'></div>" +
     "<div><label>Nombre</label><input id='ve-nombre'></div>" +
     "<div><label>Telefono</label><input id='ve-telefono'></div>" +
     "<div><label>Codigo</label><input id='ve-codigo'></div>" +
@@ -516,6 +517,7 @@ function empezarEdicionVendedor(id) {
     "</div>" +
     "<div class='check-linea'><input type='checkbox' id='ve-activo'><span>Vendedor activo</span></div>" +
     "<button onclick='guardarEdicionVendedor()'>Guardar cambios</button><button class='peligro' onclick='cancelarEdicionVendedor()'>Cancelar</button>";
+  document.getElementById("ve-usuario").value = v.usuario || "";
   document.getElementById("ve-nombre").value = v.nombre || "";
   document.getElementById("ve-telefono").value = v.telefono || "";
   document.getElementById("ve-codigo").value = v.codigo || "";
@@ -533,6 +535,7 @@ function cancelarEdicionVendedor() {
 
 async function guardarEdicionVendedor() {
   const cuerpo = {
+    usuario: document.getElementById("ve-usuario").value,
     nombre: document.getElementById("ve-nombre").value,
     telefono: document.getElementById("ve-telefono").value || null,
     codigo: document.getElementById("ve-codigo").value,
