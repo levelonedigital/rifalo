@@ -370,16 +370,22 @@ def mis_pagos(sesion: Session = Depends(obtener_sesion), rev: Usuario = rev_dep)
 
 @router.get("/mi-cuenta")
 def mi_cuenta(sesion: Session = Depends(obtener_sesion), rev: Usuario = rev_dep):
-    """Resumen de cuenta del revendedor: jugadas entregadas/pagadas/debe, vendido y comision generada."""
-    entregadas = sum(r.cupo_total or 0 for r in sesion.query(CupoRevendedor).filter(CupoRevendedor.revendedor_id == rev.id).all())
-    pagadas = sum(p.cantidad_jugadas or 0 for p in sesion.query(PagoRevendedor).filter(PagoRevendedor.revendedor_id == rev.id).all())
+    regs = sesion.query(CupoRevendedor).filter(CupoRevendedor.revendedor_id == rev.id).all()
+    cedido = sum(r.cupo_total or 0 for r in regs)
+    usado = sum(r.cupo_usado or 0 for r in regs)
+    pagadas = sum(
+        p.cantidad_jugadas or 0
+        for p in sesion.query(PagoRevendedor).filter(PagoRevendedor.revendedor_id == rev.id).all()
+    )
     vendidas = sesion.query(Jugada).filter(Jugada.revendedor_id == rev.id, Jugada.estado.in_(ESTADOS_VENDIDOS)).all()
+    compat = max(len(vendidas) - usado, 0)
     vendido = round(sum(j.precio or 0 for j in vendidas), 2)
     comision_generada = round(sum(j.monto_revendedor or 0 for j in vendidas), 2)
+
     return {
-        "jugadas_entregadas": entregadas,
+        "jugadas_entregadas": cedido + compat,
         "jugadas_pagadas": pagadas,
-        "jugadas_debe": max(entregadas - pagadas, 0),
+        "jugadas_debe": max(cedido + compat - pagadas, 0),
         "vendido": vendido,
         "comision_generada": comision_generada,
     }
