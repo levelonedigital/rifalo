@@ -197,6 +197,7 @@ class VendedorCrear(BaseModel):
 
 
 class VendedorEditar(BaseModel):
+    usuario: str | None = None
     nombre: str | None = None
     telefono: str | None = None
     codigo: str | None = Field(default=None, max_length=10)
@@ -837,6 +838,22 @@ def editar_vendedor(vendedor_id: int, datos: VendedorEditar, sesion: Session = D
     vendedor = sesion.get(Usuario, vendedor_id)
     if vendedor is None or vendedor.rol != RolUsuario.VENDEDOR:
         raise HTTPException(status_code=404, detail="Vendedor no encontrado")
+    if datos.usuario is not None:
+        if datos.usuario != vendedor.usuario:
+            otro = sesion.query(Usuario).filter(Usuario.usuario == datos.usuario, Usuario.id != vendedor_id).first()
+            if otro:
+                raise HTTPException(status_code=400, detail="El nombre de usuario ya existe")
+        vendedor.usuario = datos.usuario
+    if datos.codigo is not None:
+        codigo = datos.codigo.upper()
+        if codigo != vendedor.codigo:
+            otro = sesion.query(Usuario).filter(Usuario.codigo == codigo, Usuario.id != vendedor_id).first()
+            if otro:
+                raise HTTPException(status_code=400, detail="El codigo ya existe")
+        vendedor.codigo = codigo
+    if datos.password:
+        from app.core.security import hash_password
+        vendedor.password_hash = hash_password(datos.password)
     for campo in ("nombre", "telefono", "comision_pct", "datos_transferencia", "activo"):
         valor = getattr(datos, campo)
         if valor is not None:
