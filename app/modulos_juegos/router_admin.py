@@ -873,20 +873,6 @@ def generar_liquidacion(vendedor_id: int, datos: LiquidacionCrear, sesion: Sessi
         raise HTTPException(status_code=404, detail="Vendedor no encontrado")
     if datos.desde > datos.hasta:
         raise HTTPException(status_code=400, detail="La fecha 'desde' no puede ser posterior a 'hasta'")
-    solapa = (
-        sesion.query(LiquidacionVendedor)
-        .filter(
-            LiquidacionVendedor.vendedor_id == vendedor_id,
-            LiquidacionVendedor.desde <= datos.hasta,
-            LiquidacionVendedor.hasta >= datos.desde,
-        )
-        .first()
-    )
-    if solapa is not None:
-        raise HTTPException(
-            status_code=400,
-            detail=f"El rango se solapa con la liquidacion #{solapa.id} ({solapa.desde} a {solapa.hasta}). No se puede pagar dos veces el mismo periodo.",
-        )
     z = _zona()
     dt_desde = datetime.combine(datos.desde, datetime.min.time(), tzinfo=z)
     dt_hasta = datetime.combine(datos.hasta + timedelta(days=1), datetime.min.time(), tzinfo=z)
