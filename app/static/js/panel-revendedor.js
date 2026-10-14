@@ -34,6 +34,14 @@ async function rCargarJugada() {
   catch (e) { aviso(e.message, true); }
 }
 
+async function cargarRJugadoresCache() {
+  try {
+    const js = await api("/revendedor/jugadores", "GET");
+    RJUG_CACHE = {};
+    js.forEach(j => { RJUG_CACHE[j.id] = j; });
+  } catch (e) { /* ignora */ }
+}
+
 // ---------- REVENDEDOR: VENTA DE JUGADAS ----------
 function llenarSelectJugadorCupoR() {
   const sel = document.getElementById("r-cupo-jugador");
@@ -311,7 +319,8 @@ window.ACCIONES = window.ACCIONES || {};
 ACCIONES.rsorteos = async () => { await cargarRSorteos(); await cargarMisCuposPagos(); };
 ACCIONES.rcupos = async () => {
   await llenarSelectSorteos("/revendedor/sorteos", "r-cupo-sorteo");
-  await cargarSelectJugadores("r");
+  try { await cargarSelectJugadores("r"); } catch (e) {}
+  await cargarRJugadoresCache();
   llenarSelectJugadorCupoR();
   updateCupoResumenR();
 };
