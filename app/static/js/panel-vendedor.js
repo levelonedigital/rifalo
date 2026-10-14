@@ -33,6 +33,31 @@ async function cargarVJugadoresCache() {
 }
 
 // ---------- VENDEDOR: VENTA DE JUGADAS ----------
+async function cargarVMisCupos() {
+  let caja = document.getElementById("v-mis-cupos");
+  if (!caja) {
+    const seccion = document.getElementById("seccion-vcupos");
+    if (!seccion) return;
+    caja = document.createElement("div");
+    caja.id = "v-mis-cupos";
+    caja.className = "reglas-box";
+    caja.style.marginBottom = "10px";
+    seccion.insertBefore(caja, seccion.children[1] || null);
+  }
+  try {
+    const cs = await api("/vendedor/mis-cupos", "GET");
+    if (!cs.length) {
+      caja.innerHTML = "<b>Mis jugadas disponibles:</b> el admin aun no te asigno jugadas; podes vender sin limite hasta que te asigne.";
+      return;
+    }
+    let html = "<b>Mis jugadas disponibles por sorteo:</b><table><tr><th>Sorteo</th><th>Entregadas</th><th>Usadas</th><th>Disponibles</th></tr>";
+    cs.forEach(c => {
+      html += "<tr><td>#" + c.sorteo_id + " " + c.sorteo_titulo + "</td><td>" + c.cupo_total + "</td><td>" + c.cupo_usado + "</td><td><b style='color:" + (c.disponibles > 0 ? "#22c55e" : "#ef4444") + "'>" + c.disponibles + "</b></td></tr>";
+    });
+    caja.innerHTML = html + "</table>";
+  } catch (e) { caja.innerHTML = ""; }
+}
+
 function llenarSelectJugadorCupo() {
   const sel = document.getElementById("v-cupo-jugador");
   if (!sel) return;
@@ -169,6 +194,8 @@ async function eliminarVRev(id) {
   catch (e) { aviso(e.message, true); }
 }
 
+
+
 // ---------- VENDEDOR: GESTION DE CUENTA DE REVENDEDOR ----------
 function llenarSelectRevGestion() {
   const sel = document.getElementById("vrev-gestion-select");
@@ -246,7 +273,7 @@ async function cargarLiquidacionesRev() {
   if (revId) ruta += "?revendedor_id=" + revId;
   try {
     const ls = await api(ruta, "GET");
-    if (!ls.length) { caja.innerHTML = "<p class='chico'>No hay liquidaciones todavia. Elegi un revendedor, pone el rango y generá la liquidacion.</p>"; return; }
+    if (!ls.length) { caja.innerHTML = "<p class='chico'>No hay liquidaciones todavia. Elegi un revendedor, pone el rango y genera la liquidacion.</p>"; return; }
     let html = "<table><tr><th>#</th><th>Revendedor</th><th>Desde</th><th>Hasta</th><th>Total a pagar</th><th>Estado</th><th>Acciones</th></tr>";
     ls.forEach(l => {
       let estado;
@@ -271,7 +298,7 @@ async function generarLiquidacionRev() {
   if (!desde || !hasta) { aviso("Pone la fecha DESDE y HASTA", true); return; }
   try {
     const d = await api("/vendedor/revendedores/" + revId + "/liquidaciones", "POST", { desde: desde, hasta: hasta });
-    aviso("Liquidacion #" + d.id + " generada por $" + d.monto + " para " + d.revendedor + ". Revisala con 'Ver detalle' y marcala pagada cuando pagues.");
+    aviso("Liquidacion #" + d.id + " generada por $" + d.monto + " para " + d.revendedor + ".");
     cargarLiquidacionesRev();
   } catch (e) { aviso(e.message, true); }
 }
@@ -507,6 +534,7 @@ ACCIONES.vcupos = async () => {
   await cargarVJugadoresCache();
   llenarSelectJugadorCupo();
   updateCupoResumen();
+  cargarVMisCupos();
 };
 ACCIONES.vcargar = async () => {
   await llenarSelectSorteos("/vendedor/sorteos", "v-sorteo");
@@ -522,5 +550,5 @@ ACCIONES["vpagos-rev"] = async () => {
   cargarLiquidacionesRev();
 };
 ACCIONES.vjugadores = cargarVJugadores;
-ACCIONES.resultados = cargarResultados;
+ACCIONES.resultados = cargarResultadosVendedor;
 ACCIONES.cobros = cargarCobrosVendedor;
