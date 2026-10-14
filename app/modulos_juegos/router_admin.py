@@ -1082,16 +1082,19 @@ def cuenta_vendedor(vendedor_id: int, sesion: Session = Depends(obtener_sesion),
     vendedor = sesion.get(Usuario, vendedor_id)
     if vendedor is None or vendedor.rol != RolUsuario.VENDEDOR:
         raise HTTPException(status_code=404, detail="Vendedor no encontrado")
-    entregadas = sum(r.cupo_total or 0 for r in sesion.query(CupoVendedor).filter(CupoVendedor.vendedor_id == vendedor_id).all())
+    regs = sesion.query(CupoVendedor).filter(CupoVendedor.vendedor_id == vendedor_id).all()
+    cedido = sum(r.cupo_total or 0 for r in regs)
+    usado = sum(r.cupo_usado or 0 for r in regs)
     pagadas = sum(p.cantidad_jugadas or 0 for p in sesion.query(PagoVendedor).filter(PagoVendedor.vendedor_id == vendedor_id).all())
     vendidas = sesion.query(Jugada).filter(Jugada.vendedor_id == vendedor_id, Jugada.estado.in_(ESTADOS_VENDIDOS)).all()
+    compat = max(len(vendidas) - usado, 0)
     vendido = round(sum(j.precio or 0 for j in vendidas), 2)
     comision_acum = round(sum(j.monto_vendedor or 0 for j in vendidas), 2)
     comision_pagada = round(sum(p.monto or 0 for p in sesion.query(PagoComisionVendedor).filter(PagoComisionVendedor.vendedor_id == vendedor_id).all()), 2)
     return {
-        "jugadas_entregadas": entregadas,
+        "jugadas_entregadas": cedido + compat,
         "jugadas_pagadas": pagadas,
-        "jugadas_debe": max(entregadas - pagadas, 0),
+        "jugadas_debe": max(cedido + compat - pagadas, 0),
         "vendido": vendido,
         "comision_acumulada": comision_acum,
         "comision_pagada": comision_pagada,
