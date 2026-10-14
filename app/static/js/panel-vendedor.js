@@ -26,6 +26,12 @@ async function vCargarJugada() {
   catch (e) { aviso(e.message, true); }
 }
 
+async function cargarVJugadoresCache() {
+  try {
+    JUGADORES_CACHE["v"] = await api("/vendedor/jugadores", "GET");
+  } catch (e) { /* ignora */ }
+}
+
 // ---------- VENDEDOR: VENTA DE JUGADAS ----------
 function llenarSelectJugadorCupo() {
   const sel = document.getElementById("v-cupo-jugador");
@@ -497,11 +503,16 @@ window.ACCIONES = window.ACCIONES || {};
 ACCIONES.vresumen = cargarVResumen;
 ACCIONES.vcupos = async () => {
   await llenarSelectSorteos("/vendedor/sorteos", "v-cupo-sorteo");
-  await cargarSelectJugadores("v");
+  try { await cargarSelectJugadores("v"); } catch (e) {}
+  await cargarVJugadoresCache();
   llenarSelectJugadorCupo();
   updateCupoResumen();
 };
-ACCIONES.vcargar = () => { llenarSelectSorteos("/vendedor/sorteos", "v-sorteo"); cargarSelectJugadores("v"); };
+ACCIONES.vcargar = async () => {
+  await llenarSelectSorteos("/vendedor/sorteos", "v-sorteo");
+  try { await cargarSelectJugadores("v"); } catch (e) {}
+  await cargarVJugadoresCache();
+};
 ACCIONES.vjugadas = cargarVJugadas;
 ACCIONES.vrevendedores = async () => { await cargarVRevendedores(); llenarSelectRevGestion(); };
 ACCIONES["vpagos-rev"] = async () => {
