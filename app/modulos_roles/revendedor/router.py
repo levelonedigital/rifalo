@@ -389,3 +389,72 @@ def mi_cuenta(sesion: Session = Depends(obtener_sesion), rev: Usuario = rev_dep)
         "vendido": vendido,
         "comision_generada": comision_generada,
     }
+
+# ---------- BLOQUE DE RESPALDO: COBROS Y RESULTADOS ----------
+
+@router.get("/cobros")
+def mis_cobros(sesion: Session = Depends(obtener_sesion), rev: Usuario = rev_dep):
+    liqs = (
+        sesion.query(LiquidacionRevendedor)
+        .filter(LiquidacionRevendedor.revendedor_id == rev.id)
+        .order_by(LiquidacionRevendedor.id.desc())
+        .all()
+    )
+    return [_cobro_rev_out(l) for l in liqs]
+
+
+@router.post("/cobros/{liq_id}/confirmar-cobro")
+def confirmar_cobro(liq_id: int, sesion: Session = Depends(obtener_sesion), rev: Usuario = rev_dep):
+    liq = sesion.get(LiquidacionRevendedor, liq_id)
+    if liq is None or liq.revendedor_id != rev.id:
+        raise HTTPException(status_code=404, detail="Liquidacion no encontrada")
+    if not liq.pagado_vendedor:
+        raise HTTPException(status_code=400, detail="Tu vendedor todavia no marco el pago; espera a que te lo confirme")
+    liq.cobrado_revendedor = True
+    liq.cobrado_en = datetime.now(_zona())
+    sesion.commit()
+    auditoria.registrar(sesion, "COBRO_REV_CONFIRMADO", detalle=f"liq={liq_id} monto={liq.monto}", usuario=rev)
+    sesion.commit()
+    return _cobro_rev_out(liq)
+
+
+@router.get("/resultados")
+def resultados(sesion: Session = Depends(obtener_sesion), revendedor: Usuario = rev_dep):
+    sorteos = (
+        sesion.query(Sorteo)
+        .filter(Sorteo.estado == EstadoSorteo.LIQUIDADO)
+        .order_by(Sorteo.id.desc())
+        .limit(5)
+        .all()
+    )
+    salida = []
+    for s in sorteos:
+        ganadoras = sesion.query(Jugada).filter(Jugada.sorteo_id == s.id, Jugada.estado == EstadoJugada.GANADORA).all()
+        mis_ganadoras = [g for g in ganadoras if g.revendedor_id == revendedor.id]
+        tuve = (
+            sesion.query(Jugada)
+            .filter(Jugada.sorteo_id == s.id, Jugada.revendedor_id == revendedor.id)
+            .count()
+        ) > 0
+        salida.append({
+            "sorteo_id": s.id,
+            "titulo": s.titulo,
+            "modalidad": s.modalidad,
+            "horario": s.horario,
+            "fecha": s.fecha.isoformat(),
+            "premio_nombre": s.premio_nombre,
+            "resultados": s.lista_resultados,
+            "cantidad_ganadores": len(ganadoras),
+            "tuve_jugadores": tuve,
+            "mis_ganadores": [
+                {
+                    "jugada_id": g.id,
+                    "jugador_nombre": g.jugador_nombre,
+                    "premio": g.premio,
+                    "premio_pagado": g.premio_pagado,
+                    "premio_cobrado": g.premio_cobrado,
+                }
+                for g in mis_ganadoras
+            ],
+        })
+    return salida
