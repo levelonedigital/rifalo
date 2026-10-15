@@ -467,14 +467,18 @@ async function cargarEstadoBuscador() {
 
 // ---------- ADMIN: VENDEDORES ----------
 async function crearVendedor() {
+  if (!validarRequeridos([
+    ["vend-usuario","Usuario"],["vend-password","Contraseña"],["vend-nombre","Nombre"],
+    ["vend-codigo","Codigo",null,10],["vend-comision","Comision %",null,null,[0,100]],
+  ])) return;
   const cuerpo = {
-    usuario: document.getElementById("vend-usuario").value,
+    usuario: document.getElementById("vend-usuario").value.trim(),
     password: document.getElementById("vend-password").value,
-    nombre: document.getElementById("vend-nombre").value,
-    telefono: document.getElementById("vend-telefono").value || null,
-    codigo: document.getElementById("vend-codigo").value,
+    nombre: document.getElementById("vend-nombre").value.trim(),
+    telefono: document.getElementById("vend-telefono").value.trim() || null,
+    codigo: document.getElementById("vend-codigo").value.trim(),
     comision_pct: parseFloat(document.getElementById("vend-comision").value),
-    datos_transferencia: document.getElementById("vend-transferencia").value || null,
+    datos_transferencia: document.getElementById("vend-transferencia").value.trim() || null,
   };
   try { await api("/admin/vendedores", "POST", cuerpo); aviso("Vendedor creado"); cargarVendedores(); }
   catch (e) { aviso(e.message, true); }
