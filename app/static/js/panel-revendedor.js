@@ -1,5 +1,21 @@
 let RCUPOS_CACHE = {};
 
+function validarRequeridos(campos) {
+  const faltan = [];
+  const cortos = [];
+  campos.forEach(c => {
+    const el = document.getElementById(c[0]);
+    if (!el) return;
+    const v = String(el.value || "").trim();
+    if (!v) { faltan.push(c[1]); return; }
+    if (c[2] && v.length < c[2]) cortos.push(c[1] + " (min " + c[2] + " caracteres)");
+  });
+  const partes = [];
+  if (faltan.length) partes.push("Completá los campos obligatorios: " + faltan.join(", "));
+  if (cortos.length) partes.push("Revisá la longitud: " + cortos.join(", "));
+  return partes.length ? partes.join(" · ") : null;
+}
+
 // ---------- REVENDEDOR: SORTEOS Y JUGADAS ----------
 async function cargarRSorteos() {
   try {
@@ -248,12 +264,20 @@ async function confirmarCobroRev(id) {
 
 // ---------- REVENDEDOR: JUGADORES ----------
 async function crearRJugador() {
+  const err = validarRequeridos([
+    ["rj-usuario", "Usuario"],
+    ["rj-password", "Contraseña"],
+    ["rj-nombre", "Nombre y apellido"],
+    ["rj-telefono", "Teléfono", 5],
+    ["rj-cobro", "Alias o CBU", 1],
+  ]);
+  if (err) { aviso(err, true); return; }
   const cuerpo = {
-    usuario: document.getElementById("rj-usuario").value,
+    usuario: document.getElementById("rj-usuario").value.trim(),
     password: document.getElementById("rj-password").value,
-    nombre: document.getElementById("rj-nombre").value,
-    telefono: document.getElementById("rj-telefono").value,
-    datos_cobro: document.getElementById("rj-cobro").value,
+    nombre: document.getElementById("rj-nombre").value.trim(),
+    telefono: document.getElementById("rj-telefono").value.trim(),
+    datos_cobro: document.getElementById("rj-cobro").value.trim(),
     cobro_transferencia: document.getElementById("rj-transferencia").checked,
   };
   try { await api("/revendedor/jugadores", "POST", cuerpo); aviso("Jugador cargado a tu linea"); cargarRJugadores(); }
