@@ -264,14 +264,10 @@ async function confirmarCobroRev(id) {
 
 // ---------- REVENDEDOR: JUGADORES ----------
 async function crearRJugador() {
-  const err = validarRequeridos([
-    ["rj-usuario", "Usuario"],
-    ["rj-password", "Contraseña"],
-    ["rj-nombre", "Nombre y apellido"],
-    ["rj-telefono", "Teléfono", 5],
-    ["rj-cobro", "Alias o CBU", 1],
-  ]);
-  if (err) { aviso(err, true); return; }
+  if (!validarRequeridos([
+    ["rj-usuario","Usuario"],["rj-password","Contraseña"],["rj-nombre","Nombre y apellido"],
+    ["rj-telefono","Telefono",5],["rj-cobro","Alias o CBU",1],
+  ])) return;
   const cuerpo = {
     usuario: document.getElementById("rj-usuario").value.trim(),
     password: document.getElementById("rj-password").value,
