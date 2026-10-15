@@ -66,13 +66,19 @@ def _ganancia_admin(sorteo, sesion, vendidas, ganadoras):
         casa = casa_bruta
     return casa, casa_bruta, premios, es_pf
 
+def _normalizar_detalle(crudo):
+    try:
+        d = json.loads(crudo) if crudo else []
+    except Exception:
+        d = []
+    if isinstance(d, dict):
+        return {"por_sorteo": d.get("por_sorteo", []), "jugada_ids": d.get("jugada_ids", [])}
+    if isinstance(d, list):
+        return {"por_sorteo": d, "jugada_ids": []}
+    return {"por_sorteo": [], "jugada_ids": []}
 
 def _liq_out(liq: LiquidacionVendedor, sesion: Session):
     vendedor = sesion.get(Usuario, liq.vendedor_id)
-    try:
-        detalle = json.loads(liq.detalle) if liq.detalle else []
-    except Exception:
-        detalle = []
     return {
         "id": liq.id,
         "vendedor_id": liq.vendedor_id,
@@ -81,14 +87,13 @@ def _liq_out(liq: LiquidacionVendedor, sesion: Session):
         "desde": liq.desde.isoformat(),
         "hasta": liq.hasta.isoformat(),
         "monto": liq.monto,
-        "detalle": detalle,
+        "detalle": _normalizar_detalle(liq.detalle),
         "pagado_admin": bool(liq.pagado_admin),
         "cobrado_vendedor": bool(liq.cobrado_vendedor),
         "pagado_en": liq.pagado_en.isoformat() if liq.pagado_en else None,
         "cobrado_en": liq.cobrado_en.isoformat() if liq.cobrado_en else None,
         "creada_en": liq.creada_en.isoformat() if liq.creada_en else None,
     }
-
 
 # ---------- ESTADO DEL BUSCADOR ----------
 
@@ -873,6 +878,15 @@ def generar_liquidacion(vendedor_id: int, datos: LiquidacionCrear, sesion: Sessi
         raise HTTPException(status_code=404, detail="Vendedor no encontrado")
     if datos.desde > datos.hasta:
         raise HTTPException(status_code=400, detail="La fecha 'desde' no puede ser posterior a 'hasta'")
+    # Jugadas que ya entraron en liquidaciones PAGADAS: no se vuelven a sumar
+    pagadas_ids = set()
+    liqs_pagadas = (
+        sesion.query(LiquidacionVendedor)
+        .filter(LiquidacionVendedor.vendedor_id == vendedor_id, LiquidacionVendedor.pagado_admin == True)
+        .all()
+    )
+    for l in liqs_pagadas:
+        pagadas_ids.update(_normalizar_detalle(l.detalle)["jugada_ids"])
     z = _zona()
     dt_desde = datetime.combine(datos.desde, datetime.min.time(), tzinfo=z)
     dt_hasta = datetime.combine(datos.hasta + timedelta(days=1), datetime.min.time(), tzinfo=z)
@@ -888,7 +902,11 @@ def generar_liquidacion(vendedor_id: int, datos: LiquidacionCrear, sesion: Sessi
         .all()
     )
     agrupado = {}
+    ids_incluidos = []
     for j in jugadas:
+        if j.id in pagadas_ids:
+            continue
+        ids_incluidos.append(j.id)
         d = agrupado.setdefault(j.sorteo_id, {"jugadas": 0, "vendido": 0.0, "comision": 0.0})
         d["jugadas"] += 1
         d["vendido"] = round(d["vendido"] + (j.precio or 0.0), 2)
@@ -916,7 +934,7 @@ def generar_liquidacion(vendedor_id: int, datos: LiquidacionCrear, sesion: Sessi
         desde=datos.desde,
         hasta=datos.hasta,
         monto=total,
-        detalle=json.dumps(detalle),
+        detalle=json.dumps({"por_sorteo": detalle, "jugada_ids": ids_incluidos}),
     )
     sesion.add(liq)
     sesion.commit()
