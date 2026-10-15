@@ -1105,6 +1105,48 @@ def cuenta_vendedor(vendedor_id: int, sesion: Session = Depends(obtener_sesion),
         "comision_pendiente": round(comision_acum - comision_pagada, 2),
     }
 
+@router.get("/vendedores/{vendedor_id}/cuenta-sorteos")
+def cuenta_sorteos_vendedor(vendedor_id: int, sesion: Session = Depends(obtener_sesion), admin: Usuario = admin_dep):
+    """Desglose por sorteo de la deuda de jugadas de un vendedor."""
+    vendedor = sesion.get(Usuario, vendedor_id)
+    if vendedor is None or vendedor.rol != RolUsuario.VENDEDOR:
+        raise HTTPException(status_code=404, detail="Vendedor no encontrado")
+    cupos = {r.sorteo_id: r for r in sesion.query(CupoVendedor).filter(CupoVendedor.vendedor_id == vendedor_id).all()}
+    vendidas_por = {}
+    for j in sesion.query(Jugada).filter(Jugada.vendedor_id == vendedor_id, Jugada.estado.in_(ESTADOS_VENDIDOS)).all():
+        vendidas_por[j.sorteo_id] = vendidas_por.get(j.sorteo_id, 0) + 1
+    pagadas_por = {}
+    for p in sesion.query(PagoVendedor).filter(PagoVendedor.vendedor_id == vendedor_id).all():
+        pagadas_por[p.sorteo_id] = pagadas_por.get(p.sorteo_id, 0) + (p.cantidad_jugadas or 0)
+    sorteos_ids = set(cupos) | set(vendidas_por) | set(pagadas_por)
+    salida = []
+    for sid in sorteos_ids:
+        s = sesion.get(Sorteo, sid)
+        if s is None:
+            continue
+        reg = cupos.get(sid)
+        entregadas = (reg.cupo_total or 0) if reg else 0
+        vendidas = vendidas_por.get(sid, 0)
+        pagadas = pagadas_por.get(sid, 0)
+        debe_jugadas = max(vendidas - pagadas, 0)
+        precio = s.precio_jugada or 0.0
+        salida.append({
+            "sorteo_id": sid,
+            "titulo": (s.titulo or s.modalidad),
+            "horario": s.horario,
+            "fecha": s.fecha.isoformat(),
+            "estado_sorteo": s.estado.value,
+            "precio_jugada": precio,
+            "entregadas": entregadas,
+            "vendidas": vendidas,
+            "disponibles": max(entregadas - vendidas, 0),
+            "pagadas": pagadas,
+            "debe_jugadas": debe_jugadas,
+            "debe_monto": round(debe_jugadas * precio, 2),
+            "sin_cupo": reg is None,
+        })
+    salida.sort(key=lambda x: (x["fecha"], x["sorteo_id"]))
+    return salida
 
 @router.post("/vendedores/{vendedor_id}/pagar-comision")
 def pagar_comision(vendedor_id: int, datos: PagarComision, sesion: Session = Depends(obtener_sesion), admin: Usuario = Depends(requerir_permiso("configurar_sorteos"))):
