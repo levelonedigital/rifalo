@@ -1,3 +1,5 @@
+let RCUPOS_CACHE = {};
+
 // ---------- REVENDEDOR: SORTEOS Y JUGADAS ----------
 async function cargarRSorteos() {
   try {
@@ -43,6 +45,46 @@ async function rCargarJugada() {
 }
 
 // ---------- REVENDEDOR: VENTA DE JUGADAS ----------
+function pintarBloqueCupoElegidoR() {
+  const sel = document.getElementById("r-cupo-sorteo");
+  if (!sel) return;
+  let caja = document.getElementById("r-cupo-elegido");
+  if (!caja) {
+    caja = document.createElement("div");
+    caja.id = "r-cupo-elegido";
+    caja.className = "reglas-box";
+    caja.style.margin = "8px 0";
+    sel.insertAdjacentElement("afterend", caja);
+  }
+  const sid = sel.value;
+  if (!sid) { caja.innerHTML = "<span class='chico'>Elegí un sorteo para ver tu cupo de ese sorteo.</span>"; return; }
+  const s = (SORTEOS_ABIERTOS_CACHE["r-cupo-sorteo"] || {})[sid] || {};
+  const c = RCUPOS_CACHE[sid];
+  const precio = s.precio_jugada ?? 0;
+  let html = "<b>Sorteo #" + sid + " - " + (s.titulo || s.modalidad || "") + "</b> " + (s.horario || "") + " " + (s.fecha ? fmtFecha(s.fecha) : "") + "<br>";
+  html += "<span class='chico'>Precio de la jugada: $" + precio + "</span>";
+  if (!c) {
+    html += "<p class='chico' style='margin-top:6px'>Tu vendedor no te asigno jugadas propias en este sorteo: vas a vender del cupo de tu vendedor.</p>";
+  } else {
+    const disp = c.disponibles;
+    html += "<table style='margin-top:6px'><tr><th>Entregadas</th><th>Usadas</th><th>Disponibles</th></tr>";
+    html += "<tr><td>" + c.cupo_total + "</td><td>" + c.cupo_usado + "</td><td><b style='color:" + (disp > 0 ? "#22c55e" : "#ef4444") + "'>" + disp + "</b></td></tr></table>";
+    if (disp <= 0) html += "<p class='mensaje error' style='margin-top:6px'>Sin jugadas propias disponibles en este sorteo. Pedí más a tu vendedor.</p>";
+  }
+  caja.innerHTML = html;
+}
+
+async function cargarRCuposElegido() {
+  const sel = document.getElementById("r-cupo-sorteo");
+  if (sel) sel.onchange = () => { pintarBloqueCupoElegidoR(); updateCupoResumenR(); };
+  try {
+    const cs = await api("/revendedor/mis-cupos", "GET");
+    RCUPOS_CACHE = {};
+    cs.forEach(c => { RCUPOS_CACHE[c.sorteo_id] = c; });
+  } catch (e) { RCUPOS_CACHE = {}; }
+  pintarBloqueCupoElegidoR();
+}
+
 function llenarSelectJugadorCupoR() {
   const sel = document.getElementById("r-cupo-jugador");
   if (!sel) return;
@@ -83,6 +125,7 @@ async function venderCuposR() {
     if (msgBox) { msgBox.style.display = "block"; msgBox.className = "mensaje ok"; msgBox.textContent = "Vendiste " + d.cantidad + " jugada(s) por $" + d.monto_total + ". El jugador ya las ve disponibles en su panel."; }
     document.getElementById("r-cupo-cantidad").value = 1;
     updateCupoResumenR();
+    cargarRCuposElegido();
   } catch (e) {
     if (msgBox) { msgBox.style.display = "block"; msgBox.className = "mensaje error"; msgBox.textContent = e.message; }
   }
@@ -331,6 +374,7 @@ ACCIONES.rcupos = async () => {
   await cargarRJugadoresCache();
   llenarSelectJugadorCupoR();
   updateCupoResumenR();
+  await cargarRCuposElegido();
 };
 ACCIONES.rcargar = async () => {
   await llenarSelectSorteos("/revendedor/sorteos", "r-sorteo");
