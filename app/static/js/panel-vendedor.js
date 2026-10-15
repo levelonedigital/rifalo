@@ -167,8 +167,8 @@ async function cargarVJugadas() {
 
 // ---------- VENDEDOR: REVENDEDORES ----------
 async function crearVRevendedor() {
-  if (!validarRequeridos([
-    ["vrev-usuario","Usuario"],["vrev-password","Contraseña"],["vrev-nombre","Nombre"],
+  if (!validarCamposInline([
+    ["vrev-usuario","Usuario"],["vrev-password","Contrasenia"],["vrev-nombre","Nombre"],
     ["vrev-codigo","Codigo",null,10],["vrev-comision","Comision %",null,null,[0,100]],
   ])) return;
   const cuerpo = {
@@ -408,8 +408,8 @@ async function cargarConfirmacionesRev() {
 
 // ---------- VENDEDOR: JUGADORES ----------
 async function crearVJugador() {
-  if (!validarRequeridos([
-    ["vj-usuario","Usuario"],["vj-password","Contraseña"],["vj-nombre","Nombre y apellido"],
+  if (!validarCamposInline([
+    ["vj-usuario","Usuario"],["vj-password","Contrasenia"],["vj-nombre","Nombre y apellido"],
     ["vj-telefono","Telefono",5],["vj-cobro","Alias o CBU",1],
   ])) return;
   const cuerpo = {
