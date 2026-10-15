@@ -167,12 +167,16 @@ async function cargarVJugadas() {
 
 // ---------- VENDEDOR: REVENDEDORES ----------
 async function crearVRevendedor() {
+  if (!validarRequeridos([
+    ["vrev-usuario","Usuario"],["vrev-password","Contraseña"],["vrev-nombre","Nombre"],
+    ["vrev-codigo","Codigo",null,10],["vrev-comision","Comision %",null,null,[0,100]],
+  ])) return;
   const cuerpo = {
-    usuario: document.getElementById("vrev-usuario").value,
+    usuario: document.getElementById("vrev-usuario").value.trim(),
     password: document.getElementById("vrev-password").value,
-    nombre: document.getElementById("vrev-nombre").value,
-    telefono: document.getElementById("vrev-telefono").value || null,
-    codigo: document.getElementById("vrev-codigo").value,
+    nombre: document.getElementById("vrev-nombre").value.trim(),
+    telefono: document.getElementById("vrev-telefono").value.trim() || null,
+    codigo: document.getElementById("vrev-codigo").value.trim(),
     comision_pct: parseFloat(document.getElementById("vrev-comision").value),
   };
   try { await api("/vendedor/revendedores", "POST", cuerpo); aviso("Revendedor creado"); cargarVRevendedores(); }
@@ -404,14 +408,10 @@ async function cargarConfirmacionesRev() {
 
 // ---------- VENDEDOR: JUGADORES ----------
 async function crearVJugador() {
-  const err = validarRequeridos([
-    ["vj-usuario", "Usuario"],
-    ["vj-password", "Contraseña"],
-    ["vj-nombre", "Nombre y apellido"],
-    ["vj-telefono", "Teléfono", 5],
-    ["vj-cobro", "Alias o CBU", 1],
-  ]);
-  if (err) { aviso(err, true); return; }
+  if (!validarRequeridos([
+    ["vj-usuario","Usuario"],["vj-password","Contraseña"],["vj-nombre","Nombre y apellido"],
+    ["vj-telefono","Telefono",5],["vj-cobro","Alias o CBU",1],
+  ])) return;
   const cuerpo = {
     usuario: document.getElementById("vj-usuario").value.trim(),
     password: document.getElementById("vj-password").value,
