@@ -632,18 +632,35 @@ async function cargarLiquidaciones() {
     LIQ_CACHE = {};
     ls.forEach(l => { LIQ_CACHE[l.id] = l; });
     if (!ls.length) { caja.innerHTML = "<p class='chico'>No hay liquidaciones todavia. Elegi un vendedor, pone el rango y generá la liquidacion.</p>"; return; }
-    let html = "<table><tr><th>#</th><th>Vendedor</th><th>Desde</th><th>Hasta</th><th>Total a pagar</th><th>Estado</th><th>Acciones</th></tr>";
-    ls.forEach(l => {
-      let estado;
-      if (l.pagado_admin && l.cobrado_vendedor) estado = "<span class='ok'>Pagado y cobrado ✔</span>";
-      else if (l.pagado_admin) estado = "<span class='warn'>Pagado por vos; esperando confirmacion del vendedor</span>";
-      else estado = "<span class='chico'>Pendiente de pago</span>";
-      html += "<tr><td>" + l.id + "</td><td>" + l.vendedor + "</td><td>" + fmtFecha(l.desde) + "</td><td>" + fmtFecha(l.hasta) + "</td><td><b>$" + l.monto + "</b></td><td>" + estado + "</td><td>";
-      html += "<button class='secundario' onclick='verDetalleLiq(" + l.id + ")'>Ver detalle</button>";
-      if (!l.pagado_admin) html += "<button onclick='marcarLiqPagada(" + l.id + ")'>Marcar pagado</button>";
-      html += "</td></tr>";
-    });
-    caja.innerHTML = html + "</table>";
+    const pendientes = ls.filter(l => !l.pagado_admin);
+    const pagadas = ls.filter(l => l.pagado_admin);
+    let html = "<h3>Pendientes de pago</h3>";
+    if (!pendientes.length) {
+      html += "<p class='chico'>No hay liquidaciones pendientes.</p>";
+    } else {
+      html += "<table><tr><th>#</th><th>Vendedor</th><th>Desde</th><th>Hasta</th><th>Total a pagar</th><th>Acciones</th></tr>";
+      pendientes.forEach(l => {
+        html += "<tr><td>" + l.id + "</td><td>" + l.vendedor + "</td><td>" + fmtFecha(l.desde) + "</td><td>" + fmtFecha(l.hasta) + "</td><td><b>$" + l.monto + "</b></td><td>";
+        html += "<button class='secundario' onclick='verDetalleLiq(" + l.id + ")'>Ver detalle</button>";
+        html += "<button onclick='marcarLiqPagada(" + l.id + ")'>Marcar pagado</button>";
+        html += "</td></tr>";
+      });
+      html += "</table>";
+    }
+    html += "<h3 style='margin-top:16px'>Ya pagadas</h3>";
+    if (!pagadas.length) {
+      html += "<p class='chico'>No hay liquidaciones pagadas todavia.</p>";
+    } else {
+      html += "<table><tr><th>#</th><th>Vendedor</th><th>Desde</th><th>Hasta</th><th>Total</th><th>Estado</th><th>Acciones</th></tr>";
+      pagadas.forEach(l => {
+        let estado = l.cobrado_vendedor ? "<span class='ok'>Pagado y cobrado ✔</span>" : "<span class='warn'>Pagado por vos; esperando confirmacion del vendedor</span>";
+        html += "<tr><td>" + l.id + "</td><td>" + l.vendedor + "</td><td>" + fmtFecha(l.desde) + "</td><td>" + fmtFecha(l.hasta) + "</td><td><b>$" + l.monto + "</b></td><td>" + estado + "</td><td>";
+        html += "<button class='secundario' onclick='verDetalleLiq(" + l.id + ")'>Ver detalle</button>";
+        html += "</td></tr>";
+      });
+      html += "</table>";
+    }
+    caja.innerHTML = html;
   } catch (e) { aviso(e.message, true); }
 }
 
@@ -671,13 +688,18 @@ function verDetalleLiq(id) {
   if (!l) return;
   const caja = document.getElementById("detalle-liquidacion");
   if (!caja) return;
+  const det = (l.detalle && l.detalle.por_sorteo) ? l.detalle.por_sorteo : [];
   let html = "<h3>Liquidacion #" + l.id + " - " + l.vendedor + " (" + l.vendedor_usuario + ")</h3>";
   html += "<p>Periodo: " + fmtFecha(l.desde) + " a " + fmtFecha(l.hasta) + " | <b>Total a cobrar: $" + l.monto + "</b></p>";
-  html += "<table><tr><th>Sorteo</th><th>Modalidad</th><th>Horario</th><th>Dia</th><th>Jugadas vendidas</th><th>Vendido</th><th>Comision</th></tr>";
-  (l.detalle || []).forEach(d => {
-    html += "<tr><td>#" + d.sorteo_id + "</td><td>" + d.modalidad + "</td><td>" + d.horario + "</td><td>" + fmtFecha(d.fecha) + "</td><td>" + d.jugadas + "</td><td>$" + d.vendido + "</td><td>$" + d.comision + "</td></tr>";
-  });
-  html += "</table>";
+  if (det.length) {
+    html += "<table><tr><th>Sorteo</th><th>Modalidad</th><th>Horario</th><th>Dia</th><th>Jugadas vendidas</th><th>Vendido</th><th>Comision</th></tr>";
+    det.forEach(d => {
+      html += "<tr><td>#" + d.sorteo_id + "</td><td>" + d.modalidad + "</td><td>" + d.horario + "</td><td>" + fmtFecha(d.fecha) + "</td><td>" + d.jugadas + "</td><td>$" + d.vendido + "</td><td>$" + d.comision + "</td></tr>";
+    });
+    html += "</table>";
+  } else {
+    html += "<p class='chico'>Sin detalle disponible.</p>";
+  }
   caja.innerHTML = html;
   caja.scrollIntoView({ behavior: "smooth" });
 }
