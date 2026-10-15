@@ -467,8 +467,8 @@ async function cargarEstadoBuscador() {
 
 // ---------- ADMIN: VENDEDORES ----------
 async function crearVendedor() {
-  if (!validarRequeridos([
-    ["vend-usuario","Usuario"],["vend-password","Contraseña"],["vend-nombre","Nombre"],
+  if (!validarCamposInline([
+    ["vend-usuario","Usuario"],["vend-password","Contrasenia"],["vend-nombre","Nombre"],
     ["vend-codigo","Codigo",null,10],["vend-comision","Comision %",null,null,[0,100]],
   ])) return;
   const cuerpo = {
