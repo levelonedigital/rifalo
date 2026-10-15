@@ -383,29 +383,54 @@ async function login() {
 function mostrarRegistro() { document.getElementById("form-registro").style.display = "block"; }
 
 async function registrarJugador() {
+  if (!validarRequeridos([
+    ["reg-usuario", "Usuario"],
+    ["reg-password", "Contraseña"],
+    ["reg-nombre", "Nombre y apellido"],
+    ["reg-telefono", "Teléfono", 5],
+    ["reg-codigo", "Código de vendedor o revendedor"],
+    ["reg-cobro", "Alias o CBU", 1],
+  ])) return;
+
   const cuerpo = {
-    usuario: document.getElementById("reg-usuario").value,
+    usuario: document.getElementById("reg-usuario").value.trim(),
     password: document.getElementById("reg-password").value,
-    nombre: document.getElementById("reg-nombre").value,
-    telefono: document.getElementById("reg-telefono").value,
-    codigo_vendedor: document.getElementById("reg-codigo").value,
-    datos_cobro: document.getElementById("reg-cobro").value,
+    nombre: document.getElementById("reg-nombre").value.trim(),
+    telefono: document.getElementById("reg-telefono").value.trim(),
+    codigo_vendedor: document.getElementById("reg-codigo").value.trim(),
+    datos_cobro: document.getElementById("reg-cobro").value.trim(),
     cobro_transferencia: document.getElementById("reg-transferencia").checked,
   };
+
   try {
-    const r = await fetch("/auth/registro-jugador", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(cuerpo) });
+    const r = await fetch("/auth/registro-jugador", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(cuerpo),
+    });
+
     const d = await r.json().catch(() => ({}));
+
     if (!r.ok) {
-      const det = typeof d.detail === "string" ? d.detail : JSON.stringify(d.detail);
+      let det;
+      if (Array.isArray(d.detail)) {
+        det = "Revisá los campos marcados en rojo.";
+      } else {
+        det = typeof d.detail === "string" ? d.detail : JSON.stringify(d.detail);
+      }
+
       if (det.includes("ya existe")) {
-        regMsg("El usuario ya existe, elegi otro.", true);
+        regMsg("El usuario ya existe, elegí otro.", true);
       } else {
         regMsg(det || "Error de registro", true);
       }
       return;
     }
-    regMsg("Registro listo: ya podes ingresar con tu usuario y contrasenia. Tus premios se acreditan en tu alias/CBU.");
-  } catch (e) { regMsg(e.message, true); }
+
+    regMsg("Registro listo: ya podés ingresar con tu usuario y contraseña. Tus premios se acreditan en tu alias/CBU.");
+  } catch (e) {
+    regMsg(e.message, true);
+  }
 }
 
 function salir() {
