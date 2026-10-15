@@ -623,7 +623,7 @@ def pozo_vacante(sorteo_id: int, datos: PozoVacanteCrear, sesion: Session = Depe
 
 @router.post("/sorteos/{sorteo_id}/jugadas")
 def asignar_jugadas_vendedor(sorteo_id: int, datos: CupoAsignar, sesion: Session = Depends(obtener_sesion), admin: Usuario = Depends(requerir_permiso("configurar_sorteos"))):
-    """Asigna o suma jugadas disponibles a un vendedor para este sorteo."""
+    """Asigna o suma jugadas disponibles a un vendedor para este sorteo. Sincroniza 'usadas' con ventas reales."""
     sorteo = sesion.get(Sorteo, sorteo_id)
     if sorteo is None:
         raise HTTPException(status_code=404, detail="Sorteo no encontrado")
@@ -640,11 +640,11 @@ def asignar_jugadas_vendedor(sorteo_id: int, datos: CupoAsignar, sesion: Session
         sesion.add(reg)
     else:
         reg.cupo_total = (reg.cupo_total or 0) + datos.cantidad
+    reg.cupo_usado = _vendidas_vendedor_sorteo(sesion, vendedor.id, sorteo.id)
     sesion.commit()
-    auditoria.registrar(sesion, "JUGADAS_VENDEDOR_ASIGNADAS", detalle=f"sorteo={sorteo.id} vendedor={vendedor.usuario} +{datos.cantidad} total={reg.cupo_total}", usuario=admin)
+    auditoria.registrar(sesion, "JUGADAS_VENDEDOR_ASIGNADAS", detalle=f"sorteo={sorteo.id} vendedor={vendedor.usuario} +{datos.cantidad} total={reg.cupo_total} usadas={reg.cupo_usado}", usuario=admin)
     sesion.commit()
     return {"vendedor_id": vendedor.id, "cupo_total": reg.cupo_total, "cupo_usado": reg.cupo_usado or 0, "disponibles": max((reg.cupo_total or 0) - (reg.cupo_usado or 0), 0)}
-
 
 @router.get("/sorteos/{sorteo_id}/jugadas")
 def listar_jugadas_vendedor(sorteo_id: int, sesion: Session = Depends(obtener_sesion), admin: Usuario = admin_dep):
@@ -1178,3 +1178,34 @@ def listar_pagos_comision(vendedor_id: int, sesion: Session = Depends(obtener_se
         {"id": p.id, "monto": p.monto, "creado_en": p.creado_en.isoformat() if p.creado_en else None}
         for p in pagos
     ]
+
+def _vendidas_vendedor_sorteo(sesion: Session, vendedor_id: int, sorteo_id: int) -> int:
+    """Cantidad real de jugadas vendidas de un vendedor en un sorteo (fuente de verdad)."""
+    return (
+        sesion.query(Jugada)
+        .filter(
+            Jugada.vendedor_id == vendedor_id,
+            Jugada.sorteo_id == sorteo_id,
+            Jugada.estado.in_(ESTADOS_VENDIDOS),
+        )
+        .count()
+    )
+
+
+@router.post("/vendedores/{vendedor_id}/sincronizar-cupos")
+def sincronizar_cupos_vendedor(vendedor_id: int, sesion: Session = Depends(obtener_sesion), admin: Usuario = admin_dep):
+    """Recalcula cupo_usado de cada sorteo = jugadas reales vendidas. Sanea cupos desincronizados."""
+    vendedor = sesion.get(Usuario, vendedor_id)
+    if vendedor is None or vendedor.rol != RolUsuario.VENDEDOR:
+        raise HTTPException(status_code=404, detail="Vendedor no encontrado")
+    regs = sesion.query(CupoVendedor).filter(CupoVendedor.vendedor_id == vendedor_id).all()
+    corregidos = 0
+    for r in regs:
+        reales = _vendidas_vendedor_sorteo(sesion, vendedor_id, r.sorteo_id)
+        if (r.cupo_usado or 0) != reales:
+            r.cupo_usado = reales
+            corregidos += 1
+    sesion.commit()
+    auditoria.registrar(sesion, "CUPOS_SYNCRONIZADOS", detalle=f"vendedor={vendedor.usuario} corregidos={corregidos}/{len(regs)}", usuario=admin)
+    sesion.commit()
+    return {"corregidos": corregidos, "total": len(regs)}
