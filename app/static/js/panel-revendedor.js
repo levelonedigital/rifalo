@@ -264,8 +264,8 @@ async function confirmarCobroRev(id) {
 
 // ---------- REVENDEDOR: JUGADORES ----------
 async function crearRJugador() {
-  if (!validarRequeridos([
-    ["rj-usuario","Usuario"],["rj-password","Contraseña"],["rj-nombre","Nombre y apellido"],
+  if (!validarCamposInline([
+    ["rj-usuario","Usuario"],["rj-password","Contrasenia"],["rj-nombre","Nombre y apellido"],
     ["rj-telefono","Telefono",5],["rj-cobro","Alias o CBU",1],
   ])) return;
   const cuerpo = {
