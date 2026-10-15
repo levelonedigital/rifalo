@@ -1,3 +1,4 @@
+let CUENTA_SORT_CACHE = {};
 let LIQ_CACHE = {};
 let imagen_data_pending = null;
 let reprog_id = null;
@@ -566,7 +567,7 @@ async function cargarCuentaVendedorAdmin() {
     let html = "<h3>Cuenta del vendedor</h3>";
     html += "<table><tr><th>Jugadas entregadas</th><th>Jugadas pagadas</th><th>Jugadas que debe</th></tr>";
     html += "<tr><td>" + cuenta.jugadas_entregadas + "</td><td>" + cuenta.jugadas_pagadas + "</td><td><b style='color:" + (cuenta.jugadas_debe > 0 ? "#ef4444" : "#22c55e") + "'>" + cuenta.jugadas_debe + "</b></td></tr></table>";
-    html += "<h3 style='margin-top:12px'>Comisiones</h3>";
+    html += "<h3 style='margin-top:12px'>Comisiones (lo que LE debes vos)</h3>";
     html += "<table><tr><th>Vendido</th><th>Comision acumulada</th><th>Comision pagada</th><th>Comision pendiente</th></tr>";
     html += "<tr><td>$" + cuenta.vendido + "</td><td>$" + cuenta.comision_acumulada + "</td><td>$" + cuenta.comision_pagada + "</td><td><b style='color:" + (cuenta.comision_pendiente > 0 ? "#f59e0b" : "#22c55e") + "'>$" + cuenta.comision_pendiente + "</b></td></tr></table>";
     html += "<div style='margin-top:12px'>";
@@ -579,12 +580,64 @@ async function cargarCuentaVendedorAdmin() {
       pagos.forEach(p => { html += "<tr><td>" + fmtFecha(p.creado_en) + "</td><td>$" + p.monto + "</td></tr>"; });
       html += "</table>";
     }
-    html += "<h3 style='margin-top:16px'>Asignar jugadas por sorteo</h3>";
+    html += "<h3 style='margin-top:16px'>Asignar jugadas (cupo) por sorteo</h3>";
     html += "<select id='admin-jugadas-sorteo'>" + sorteos.map(s => "<option value='" + s.id + "'>#" + s.id + " " + (s.titulo || s.modalidad) + "</option>").join("") + "</select>";
     html += "<input id='admin-jugadas-cant' type='number' min='1' value='1' style='width:80px'>";
     html += "<button onclick='asignarJugadasVendedor(" + vendedorId + ")'>Asignar jugadas</button>";
+    html += "<h3 style='margin-top:16px'>Deuda de jugadas por sorteo (lo que TE debe a vos)</h3>";
+    html += "<select id='admin-cuenta-sorteo' onchange='mostrarDetalleSorteoVendedor(" + vendedorId + ")'></select>";
+    html += "<div id='admin-cuenta-sorteo-detalle' style='margin-top:8px'></div>";
     caja.innerHTML = html;
+    cargarCuentaSorteosVendedor(vendedorId);
   } catch (e) { caja.innerHTML = "<p class='mensaje error'>" + e.message + "</p>"; }
+}
+
+async function cargarCuentaSorteosVendedor(vendedorId, preseleccion) {
+  const sel = document.getElementById("admin-cuenta-sorteo");
+  const caja = document.getElementById("admin-cuenta-sorteo-detalle");
+  if (!sel || !caja) return;
+  let lista = [];
+  try { lista = await api("/admin/vendedores/" + vendedorId + "/cuenta-sorteos", "GET"); } catch (e) {}
+  CUENTA_SORT_CACHE[vendedorId] = {};
+  lista.forEach(s => { CUENTA_SORT_CACHE[vendedorId][s.sorteo_id] = s; });
+  sel.innerHTML = "<option value=''>Elegi sorteo...</option>" + lista.map(s => "<option value='" + s.sorteo_id + "'>#" + s.sorteo_id + " " + s.titulo + " " + s.horario + " " + fmtFecha(s.fecha) + (s.debe_jugadas > 0 ? " (DEBE " + s.debe_jugadas + ")" : "") + "</option>").join("");
+  if (preseleccion) sel.value = String(preseleccion);
+  mostrarDetalleSorteoVendedor(vendedorId);
+}
+
+function mostrarDetalleSorteoVendedor(vendedorId) {
+  const sel = document.getElementById("admin-cuenta-sorteo");
+  const caja = document.getElementById("admin-cuenta-sorteo-detalle");
+  if (!sel || !caja) return;
+  const sid = sel.value;
+  if (!sid) { caja.innerHTML = ""; return; }
+  const s = (CUENTA_SORT_CACHE[vendedorId] || {})[sid];
+  if (!s) { caja.innerHTML = ""; return; }
+  let html = "<div class='buscador-box'>";
+  html += "<b>Sorteo #" + s.sorteo_id + " - " + s.titulo + "</b> " + s.horario + " " + fmtFecha(s.fecha) + " (" + s.estado_sorteo + ")<br>";
+  html += "<span class='chico'>Precio de la jugada: $" + s.precio_jugada + "</span><br>";
+  html += "<table><tr><th>Entregadas</th><th>Vendidas</th><th>Disponibles</th><th>Pagadas</th><th>Te debe</th></tr>";
+  html += "<tr><td>" + s.entregadas + "</td><td>" + s.vendidas + "</td><td>" + s.disponibles + "</td><td>" + s.pagadas + "</td><td><b style='color:" + (s.debe_jugadas > 0 ? "#ef4444" : "#22c55e") + "'>" + s.debe_jugadas + " jugada(s) = $" + s.debe_monto + "</b></td></tr></table>";
+  if (s.sin_cupo) html += "<p class='chico'>Sin cupo asignado por vos: vende sin limite en este sorteo.</p>";
+  if (s.debe_jugadas > 0) {
+    html += "<div style='margin-top:8px'><input id='pago-jug-cant' type='number' min='1' max='" + s.debe_jugadas + "' value='" + s.debe_jugadas + "' style='width:90px'> <button onclick='registrarPagoJugadas(" + vendedorId + "," + s.sorteo_id + ")'>Registrar pago de jugadas</button></div>";
+    html += "<span class='chico'>Pone cuantas jugadas te pago de este sorteo (max " + s.debe_jugadas + "). El monto se calcula solo.</span>";
+  } else {
+    html += "<p class='ok' style='margin-top:8px'>Al dia en este sorteo ✔</p>";
+  }
+  html += "</div>";
+  caja.innerHTML = html;
+}
+
+async function registrarPagoJugadas(vendedorId, sorteoId) {
+  const cant = parseInt(document.getElementById("pago-jug-cant").value, 10);
+  if (!cant || cant < 1) { aviso("Pone una cantidad valida", true); return; }
+  if (!confirm("Confirmas que el vendedor te pago " + cant + " jugada(s) de este sorteo?")) return;
+  try {
+    const d = await api("/admin/sorteos/" + sorteoId + "/pagos-vendedor", "POST", { vendedor_id: vendedorId, cantidad_jugadas: cant });
+    aviso("Pago registrado: " + d.cantidad_jugadas + " jugadas por $" + d.monto + ".");
+    await cargarCuentaSorteosVendedor(vendedorId, sorteoId);
+  } catch (e) { aviso(e.message, true); }
 }
 
 async function pagarComisionVendedor(vendedorId) {
@@ -851,7 +904,6 @@ async function cargarJugadasPagosSorteo(sorteoId) {
   if (!caja) return;
   try {
     const jugadas = await api("/admin/sorteos/" + sorteoId + "/jugadas", "GET");
-    const vendedores = await api("/admin/vendedores", "GET");
     let html = "<h3>Jugadas asignadas por vendedor</h3>";
     if (!jugadas.length) {
       html += "<p class='chico'>Aun no hay jugadas asignadas. Los vendedores pueden vender sin limite.</p>";
@@ -863,15 +915,8 @@ async function cargarJugadasPagosSorteo(sorteoId) {
       });
       html += "</table>";
     }
-    html += "<h3 style='margin-top:16px'>Registrar pago de vendedor</h3>";
-    html += "<p class='chico'>Confirma que el vendedor te pago X jugadas de este sorteo.</p>";
-    html += "<select id='pago-vend-sel'>";
-    vendedores.forEach(v => { html += "<option value='" + v.id + "'>" + v.nombre + " (" + v.usuario + ")</option>"; });
-    html += "</select>";
-    html += "<input id='pago-vend-cant' type='number' min='1' value='1' placeholder='Cantidad de jugadas'>";
-    html += "<button onclick='registrarPagoVendedor(" + sorteoId + ")'>Confirmar pago</button>";
-    html += "<div id='pago-vend-msg' class='mensaje ok' style='display:none;margin-top:8px'></div>";
-    html += "<h3 style='margin-top:16px'>Historial de pagos</h3>";
+    html += "<h3 style='margin-top:16px'>Historial de pagos de este sorteo (lectura)</h3>";
+    html += "<p class='chico'>Para cobrar jugadas, hacelo desde Vendedores → Gestion de cuenta.</p>";
     try {
       const pagos = await api("/admin/sorteos/" + sorteoId + "/pagos-vendedor", "GET");
       if (!pagos.length) {
@@ -898,20 +943,6 @@ async function asignarMasJugadas(sorteoId, vendedorId, vendedorNombre) {
   } catch (e) { aviso(e.message, true); }
 }
 
-async function registrarPagoVendedor(sorteoId) {
-  const vendedorId = document.getElementById("pago-vend-sel").value;
-  const cant = parseInt(document.getElementById("pago-vend-cant").value, 10);
-  const msgBox = document.getElementById("pago-vend-msg");
-  if (!cant || cant < 1) { aviso("Pone una cantidad valida", true); return; }
-  if (!confirm("Confirmas que el vendedor te pago " + cant + " jugadas de este sorteo?")) return;
-  try {
-    const d = await api("/admin/sorteos/" + sorteoId + "/pagos-vendedor", "POST", { vendedor_id: parseInt(vendedorId), cantidad_jugadas: cant });
-    if (msgBox) { msgBox.style.display = "block"; msgBox.className = "mensaje ok"; msgBox.textContent = "Pago confirmado: " + d.cantidad_jugadas + " jugadas por $" + d.monto; }
-    cargarJugadasPagosSorteo(sorteoId);
-  } catch (e) {
-    if (msgBox) { msgBox.style.display = "block"; msgBox.className = "mensaje error"; msgBox.textContent = e.message; }
-  }
-}
 
 // ---------- ADMIN: BALANCE ----------
 async function cargarBalance() {
