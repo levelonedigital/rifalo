@@ -572,7 +572,9 @@ async function cargarCuentaVendedorAdmin() {
     html += "<tr><td>$" + cuenta.vendido + "</td><td>$" + cuenta.comision_acumulada + "</td><td>$" + cuenta.comision_pagada + "</td><td><b style='color:" + (cuenta.comision_pendiente > 0 ? "#f59e0b" : "#22c55e") + "'>$" + cuenta.comision_pendiente + "</b></td></tr></table>";
     html += "<div style='margin-top:12px'>";
     html += "<button onclick='pagarComisionVendedor(" + vendedorId + ")'>Pagar comision pendiente</button>";
+    html += " <button class='secundario' onclick='sincronizarCuposVendedor(" + vendedorId + ")'>Sincronizar cupos con ventas reales</button>";
     html += "</div>";
+    html += "<p class='chico'>Usalo si un vendedor vendio antes de que le asignaras cupo: recalcula 'usadas' segun las jugadas reales.</p>";
     html += "<h3 style='margin-top:12px'>Historial de pagos de comision</h3>";
     if (!pagos.length) html += "<p class='chico'>Sin pagos registrados.</p>";
     else {
@@ -590,6 +592,15 @@ async function cargarCuentaVendedorAdmin() {
     caja.innerHTML = html;
     cargarCuentaSorteosVendedor(vendedorId);
   } catch (e) { caja.innerHTML = "<p class='mensaje error'>" + e.message + "</p>"; }
+}
+
+async function sincronizarCuposVendedor(vendedorId) {
+  if (!confirm("Recalcular 'usadas' de todos los cupos segun las jugadas reales de este vendedor?")) return;
+  try {
+    const d = await api("/admin/vendedores/" + vendedorId + "/sincronizar-cupos", "POST", {});
+    aviso("Sincronizado: " + d.corregidos + " cupo(s) corregido(s) de " + d.total + ".");
+    await cargarCuentaVendedorAdmin();
+  } catch (e) { aviso(e.message, true); }
 }
 
 async function cargarCuentaSorteosVendedor(vendedorId, preseleccion) {
