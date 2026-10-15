@@ -361,7 +361,8 @@ async function borrarAviso(id) {
 
 // ---------- SESION ----------
 async function login() {
-  const cuerpo = { usuario: document.getElementById("login-usuario").value, password: document.getElementById("login-password").value };
+  if (!validarCamposInline([["login-usuario","Usuario"],["login-password","Contrasenia"]])) return;
+  const cuerpo = { usuario: document.getElementById("login-usuario").value.trim(), password: document.getElementById("login-password").value };
   const f = document.getElementById("login-2fa").value;
   if (f) cuerpo.codigo_2fa = f;
   try {
@@ -383,15 +384,10 @@ async function login() {
 function mostrarRegistro() { document.getElementById("form-registro").style.display = "block"; }
 
 async function registrarJugador() {
-  if (!validarRequeridos([
-    ["reg-usuario", "Usuario"],
-    ["reg-password", "Contraseña"],
-    ["reg-nombre", "Nombre y apellido"],
-    ["reg-telefono", "Teléfono", 5],
-    ["reg-codigo", "Código de vendedor o revendedor"],
-    ["reg-cobro", "Alias o CBU", 1],
+  if (!validarCamposInline([
+    ["reg-usuario","Usuario"],["reg-password","Contrasenia"],["reg-nombre","Nombre y apellido"],
+    ["reg-telefono","Telefono",5],["reg-codigo","Codigo de tu vendedor o revendedor"],["reg-cobro","Alias o CBU",1],
   ])) return;
-
   const cuerpo = {
     usuario: document.getElementById("reg-usuario").value.trim(),
     password: document.getElementById("reg-password").value,
@@ -401,36 +397,19 @@ async function registrarJugador() {
     datos_cobro: document.getElementById("reg-cobro").value.trim(),
     cobro_transferencia: document.getElementById("reg-transferencia").checked,
   };
-
   try {
-    const r = await fetch("/auth/registro-jugador", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(cuerpo),
-    });
-
+    const r = await fetch("/auth/registro-jugador", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(cuerpo) });
     const d = await r.json().catch(() => ({}));
-
     if (!r.ok) {
       let det;
-      if (Array.isArray(d.detail)) {
-        det = "Revisá los campos marcados en rojo.";
-      } else {
-        det = typeof d.detail === "string" ? d.detail : JSON.stringify(d.detail);
-      }
-
-      if (det.includes("ya existe")) {
-        regMsg("El usuario ya existe, elegí otro.", true);
-      } else {
-        regMsg(det || "Error de registro", true);
-      }
+      if (Array.isArray(d.detail)) det = "Llena los datos marcados en rojo.";
+      else det = typeof d.detail === "string" ? d.detail : JSON.stringify(d.detail);
+      if (det.includes("ya existe")) regMsg("El usuario ya existe, elegi otro.", true);
+      else regMsg(det || "Error de registro", true);
       return;
     }
-
-    regMsg("Registro listo: ya podés ingresar con tu usuario y contraseña. Tus premios se acreditan en tu alias/CBU.");
-  } catch (e) {
-    regMsg(e.message, true);
-  }
+    regMsg("Registro listo: ya podes ingresar con tu usuario y contrasenia. Tus premios se acreditan en tu alias/CBU.");
+  } catch (e) { regMsg(e.message, true); }
 }
 
 function salir() {
@@ -662,7 +641,7 @@ function resultadosColumnaHTML(resultados) {
   return html;
 }
 
-// ---------- VALIDACION INLINE DE CAMPOS OBLIGATORIOS ----------
+// ---------- VALIDACION INLINE (unica fuente de verdad, nombre unico sin colision) ----------
 function _limpiarErr(id){
   const el=document.getElementById(id); if(el) el.style.borderColor="";
   const s=document.querySelector('.err-campo-auto[data-for="'+id+'"]'); if(s) s.remove();
@@ -677,8 +656,8 @@ function _pintarErr(id,msg){
   d.textContent=msg;
   el.insertAdjacentElement("beforebegin",d);
 }
-// campos: [id, etiqueta, minLen?, maxLen?, [minNum,maxNum]?]
-function validarRequeridos(campos){
+// campos: [id, etiqueta, minLen?, maxLen?, [minNum,maxNum]?] -> true si todo ok
+function validarCamposInline(campos){
   campos.forEach(c=>_limpiarErr(c[0]));
   let ok=true;
   campos.forEach(c=>{
