@@ -1,3 +1,5 @@
+let VCUPOS_CACHE = {};
+
 // ---------- VENDEDOR: RESUMEN Y JUGADAS ----------
 async function cargarVResumen() {
   try {
@@ -32,7 +34,36 @@ async function cargarVJugadoresCache() {
   } catch (e) { /* ignora */ }
 }
 
-// ---------- VENDEDOR: MIS JUGADAS DISPONIBLES ----------
+// ---------- VENDEDOR: VENTA DE JUGADAS ----------
+function pintarBloqueCupoElegidoV() {
+  const sel = document.getElementById("v-cupo-sorteo");
+  if (!sel) return;
+  let caja = document.getElementById("v-cupo-elegido");
+  if (!caja) {
+    caja = document.createElement("div");
+    caja.id = "v-cupo-elegido";
+    caja.className = "reglas-box";
+    caja.style.margin = "8px 0";
+    sel.insertAdjacentElement("afterend", caja);
+  }
+  const sid = sel.value;
+  if (!sid) { caja.innerHTML = "<span class='chico'>Elegí un sorteo para ver tu cupo de ese sorteo.</span>"; return; }
+  const s = (SORTEOS_ABIERTOS_CACHE["v-cupo-sorteo"] || {})[sid] || {};
+  const c = VCUPOS_CACHE[sid];
+  const precio = s.precio_jugada ?? 0;
+  let html = "<b>Sorteo #" + sid + " - " + (s.titulo || s.modalidad || "") + "</b> " + (s.horario || "") + " " + (s.fecha ? fmtFecha(s.fecha) : "") + "<br>";
+  html += "<span class='chico'>Precio de la jugada: $" + precio + "</span>";
+  if (!c) {
+    html += "<p class='chico' style='margin-top:6px'>Sin cupo asignado por el admin en este sorteo: podés vender sin límite.</p>";
+  } else {
+    const disp = c.disponibles;
+    html += "<table style='margin-top:6px'><tr><th>Entregadas</th><th>Usadas</th><th>Disponibles</th></tr>";
+    html += "<tr><td>" + c.cupo_total + "</td><td>" + c.cupo_usado + "</td><td><b style='color:" + (disp > 0 ? "#22c55e" : "#ef4444") + "'>" + disp + "</b></td></tr></table>";
+    if (disp <= 0) html += "<p class='mensaje error' style='margin-top:6px'>Sin jugadas disponibles en este sorteo. Pedí más al administrador.</p>";
+  }
+  caja.innerHTML = html;
+}
+
 async function cargarVMisCupos() {
   let caja = document.getElementById("v-mis-cupos");
   if (!caja) {
@@ -44,21 +75,25 @@ async function cargarVMisCupos() {
     caja.style.marginBottom = "10px";
     seccion.insertBefore(caja, seccion.children[1] || null);
   }
+  const sel = document.getElementById("v-cupo-sorteo");
+  if (sel) sel.onchange = () => { pintarBloqueCupoElegidoV(); updateCupoResumen(); };
   try {
     const cs = await api("/vendedor/mis-cupos", "GET");
+    VCUPOS_CACHE = {};
+    cs.forEach(c => { VCUPOS_CACHE[c.sorteo_id] = c; });
     if (!cs.length) {
       caja.innerHTML = "<b>Mis jugadas disponibles:</b> el admin aun no te asigno jugadas; podes vender sin limite hasta que te asigne.";
-      return;
+    } else {
+      let html = "<b>Mis jugadas disponibles por sorteo:</b><table><tr><th>Sorteo</th><th>Entregadas</th><th>Usadas</th><th>Disponibles</th></tr>";
+      cs.forEach(c => {
+        html += "<tr><td>#" + c.sorteo_id + " " + c.sorteo_titulo + "</td><td>" + c.cupo_total + "</td><td>" + c.cupo_usado + "</td><td><b style='color:" + (c.disponibles > 0 ? "#22c55e" : "#ef4444") + "'>" + c.disponibles + "</b></td></tr>";
+      });
+      caja.innerHTML = html + "</table>";
     }
-    let html = "<b>Mis jugadas disponibles por sorteo:</b><table><tr><th>Sorteo</th><th>Entregadas</th><th>Usadas</th><th>Disponibles</th></tr>";
-    cs.forEach(c => {
-      html += "<tr><td>#" + c.sorteo_id + " " + c.sorteo_titulo + "</td><td>" + c.cupo_total + "</td><td>" + c.cupo_usado + "</td><td><b style='color:" + (c.disponibles > 0 ? "#22c55e" : "#ef4444") + "'>" + c.disponibles + "</b></td></tr>";
-    });
-    caja.innerHTML = html + "</table>";
   } catch (e) { caja.innerHTML = ""; }
+  pintarBloqueCupoElegidoV();
 }
 
-// ---------- VENDEDOR: VENTA DE JUGADAS ----------
 function llenarSelectJugadorCupo() {
   const sel = document.getElementById("v-cupo-jugador");
   if (!sel) return;
