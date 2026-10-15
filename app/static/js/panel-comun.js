@@ -636,3 +636,37 @@ function resultadosColumnaHTML(resultados) {
   html += "</table>";
   return html;
 }
+
+// ---------- VALIDACION INLINE DE CAMPOS OBLIGATORIOS ----------
+function _limpiarErr(id){
+  const el=document.getElementById(id); if(el) el.style.borderColor="";
+  const s=document.querySelector('.err-campo-auto[data-for="'+id+'"]'); if(s) s.remove();
+}
+function _pintarErr(id,msg){
+  _limpiarErr(id);
+  const el=document.getElementById(id); if(!el) return;
+  el.style.borderColor="#ef4444";
+  const d=document.createElement("div");
+  d.className="err-campo-auto"; d.setAttribute("data-for",id);
+  d.style.cssText="color:#ef4444;font-size:12px;display:block;margin:2px 0";
+  d.textContent=msg;
+  el.insertAdjacentElement("beforebegin",d);
+}
+// campos: [id, etiqueta, minLen?, maxLen?, [minNum,maxNum]?]
+function validarRequeridos(campos){
+  campos.forEach(c=>_limpiarErr(c[0]));
+  let ok=true;
+  campos.forEach(c=>{
+    const id=c[0],minLen=c[2],maxLen=c[3],numRange=c[4];
+    const el=document.getElementById(id); if(!el) return;
+    const v=String(el.value==null?"":el.value).trim();
+    if(!v){ _pintarErr(id,"Campo obligatorio"); ok=false; return; }
+    if(minLen && v.length<minLen){ _pintarErr(id,"Minimo "+minLen+" caracteres"); ok=false; return; }
+    if(maxLen && v.length>maxLen){ _pintarErr(id,"Maximo "+maxLen+" caracteres"); ok=false; return; }
+    if(numRange){
+      const n=parseFloat(v);
+      if(isNaN(n)||n<numRange[0]||n>numRange[1]){ _pintarErr(id,"Numero entre "+numRange[0]+" y "+numRange[1]); ok=false; }
+    }
+  });
+  return ok;
+}
