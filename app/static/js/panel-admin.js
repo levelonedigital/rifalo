@@ -1,4 +1,5 @@
 let CUENTA_SORT_CACHE = {};
+let admin_jug_edit_id = null;
 let LIQ_CACHE = {};
 let imagen_data_pending = null;
 let reprog_id = null;
@@ -1010,6 +1011,127 @@ async function cargarAuditoria() {
   } catch (e) { aviso(e.message, true); }
 }
 
+// ---------- ADMIN: JUGADORES (vision global) ----------
+let JUG_ADMIN_CACHE = {};
+
+function asegurarSeccionJugadores() {
+  let sec = document.getElementById("seccion-jugadores");
+  if (sec) return sec;
+  const cont = document.getElementById("contenedor-secciones");
+  sec = document.createElement("div");
+  sec.id = "seccion-jugadores";
+  sec.className = "tarjeta";
+  sec.innerHTML =
+    "<h2>Jugadores</h2>" +
+    "<p class='chico'>Todos los jugadores de la app, con su vendedor y revendedor. Filtra o buscá; editá con el boton Editar (la contrasenia se resetea, no se puede ver).</p>" +
+    "<div class='grilla' style='margin:8px 0'>" +
+    "<div><label>Buscar (usuario / nombre / telefono)</label><input id='jadmin-q' onkeydown=\"if(event.key==='Enter')cargarJugadoresAdmin()\"></div>" +
+    "<div><label>Vendedor</label><select id='jadmin-vend'></select></div>" +
+    "<div><label>Revendedor</label><select id='jadmin-rev'></select></div>" +
+    "</div>" +
+    "<button onclick='cargarJugadoresAdmin()'>Buscar</button> <button class='secundario' onclick='limpiarFiltrosJugadores()'>Limpiar</button>" +
+    "<div id='jugged-edit-bar' class='modo-box' style='display:none'></div>" +
+    "<div id='lista-jugadores-admin'></div>";
+  cont.appendChild(sec);
+  sec.style.display = "block";
+  return sec;
+}
+
+function limpiarFiltrosJugadores() {
+  const q = document.getElementById("jadmin-q"); if (q) q.value = "";
+  const v = document.getElementById("jadmin-vend"); if (v) v.value = "";
+  const r = document.getElementById("jadmin-rev"); if (r) r.value = "";
+  cargarJugadoresAdmin();
+}
+
+async function cargarJugadoresAdmin() {
+  asegurarSeccionJugadores();
+  // fills de filtro (una sola vez basta, pero es barato refrescarlos)
+  try {
+    const vs = await api("/admin/vendedores", "GET");
+    document.getElementById("jadmin-vend").innerHTML = "<option value=''>Todos</option>" + vs.map(v => "<option value='" + v.id + "'>" + v.nombre + " (" + v.usuario + ")</option>").join("");
+  } catch (e) {}
+  try {
+    const rs = await api("/admin/revendedores", "GET");
+    document.getElementById("jadmin-rev").innerHTML = "<option value=''>Todos</option>" + rs.map(r => "<option value='" + r.id + "'>" + r.nombre + " (" + r.usuario + ") · " + r.vendedor + "</option>").join("");
+  } catch (e) {}
+  const q = (document.getElementById("jadmin-q").value || "").trim();
+  const vid = document.getElementById("jadmin-vend").value;
+  const rid = document.getElementById("jadmin-rev").value;
+  let ruta = "/admin/jugadores?";
+  if (q) ruta += "q=" + encodeURIComponent(q) + "&";
+  if (vid) ruta += "vendedor_id=" + vid + "&";
+  if (rid) ruta += "revendedor_id=" + rid + "&";
+  const caja = document.getElementById("lista-jugadores-admin");
+  try {
+    const js = await api(ruta, "GET");
+    JUG_ADMIN_CACHE = {};
+    js.forEach(j => { JUG_ADMIN_CACHE[j.id] = j; });
+    if (!js.length) { caja.innerHTML = "<p class='chico'>No hay jugadores con ese filtro.</p>"; return; }
+    let html = "<table><tr><th>#</th><th>Usuario</th><th>Nombre</th><th>Telefono</th><th>Via</th><th>Vendedor</th><th>Revendedor</th><th>Alias/CBU</th><th>Transf.</th><th>Jugadas</th><th>Apostado</th><th>Activo</th><th>Acciones</th></tr>";
+    js.forEach(j => {
+      html += "<tr><td>" + j.id + "</td><td>" + j.usuario + "</td><td>" + (j.nombre || "-") + "</td><td>" + (j.telefono || "-") + "</td><td>" + (j.via === "revendedor" ? j.revendedor_usuario : "directo") + "</td><td>" + j.vendedor + " (" + j.vendedor_usuario + ")</td><td>" + (j.revendedor ? j.revendedor + " (" + j.revendedor_usuario + ")" : "-") + "</td><td>" + (j.datos_cobro || "-") + "</td><td>" + (j.cobro_transferencia ? "si" : "no") + "</td><td>" + j.jugadas + "</td><td>$" + j.apostado + "</td><td>" + (j.activo ? "si" : "no") + "</td><td><button class='secundario' onclick='empezarEdicionAdminJugador(" + j.id + ")'>Editar</button></td></tr>";
+    });
+    caja.innerHTML = html + "</table><p class='chico'>Total: " + js.length + " jugador(es).</p>";
+  } catch (e) { caja.innerHTML = "<p class='mensaje error'>" + e.message + "</p>"; }
+}
+
+function empezarEdicionAdminJugador(id) {
+  const j = JUG_ADMIN_CACHE[id];
+  if (!j) return;
+  admin_jug_edit_id = id;
+  const bar = document.getElementById("jugged-edit-bar");
+  bar.style.display = "block";
+  bar.innerHTML =
+    "Editando jugador " + j.usuario + " (linea: " + j.vendedor + (j.revendedor ? " / " + j.revendedor_usuario : " / directo") + "). La linea no se reasigna aca." +
+    "<div class='grilla'>" +
+    "<div><label>Usuario</label><input id='aje-usuario'></div>" +
+    "<div><label>Nombre y apellido</label><input id='aje-nombre'></div>" +
+    "<div><label>Telefono</label><input id='aje-telefono'></div>" +
+    "<div><label>Alias o CBU</label><input id='aje-cobro'></div>" +
+    "<div><label>Nueva contrasenia (vacio = no cambiar)</label><input id='aje-password' type='password'></div>" +
+    "</div>" +
+    "<div class='check-linea'><input type='checkbox' id='aje-transferencia'><span>Cobra por transferencia</span></div>" +
+    "<div class='check-linea'><input type='checkbox' id='aje-activo'><span>Jugador activo</span></div>" +
+    "<button onclick='guardarEdicionAdminJugador()'>Guardar cambios</button><button class='peligro' onclick='cancelarEdicionAdminJugador()'>Cancelar</button>";
+  document.getElementById("aje-usuario").value = j.usuario || "";
+  document.getElementById("aje-nombre").value = j.nombre || "";
+  document.getElementById("aje-telefono").value = j.telefono || "";
+  document.getElementById("aje-cobro").value = j.datos_cobro || "";
+  document.getElementById("aje-password").value = "";
+  document.getElementById("aje-transferencia").checked = Boolean(j.cobro_transferencia);
+  document.getElementById("aje-activo").checked = Boolean(j.activo);
+  bar.scrollIntoView({ behavior: "smooth" });
+}
+
+function cancelarEdicionAdminJugador() {
+  admin_jug_edit_id = null;
+  document.getElementById("jugged-edit-bar").style.display = "none";
+}
+
+async function guardarEdicionAdminJugador() {
+  if (!validarCamposInline([
+    ["aje-usuario","Usuario"],["aje-nombre","Nombre y apellido"],
+    ["aje-telefono","Telefono",5],["aje-cobro","Alias o CBU",1],
+  ])) return;
+  const cuerpo = {
+    usuario: document.getElementById("aje-usuario").value.trim(),
+    nombre: document.getElementById("aje-nombre").value.trim(),
+    telefono: document.getElementById("aje-telefono").value.trim() || null,
+    datos_cobro: document.getElementById("aje-cobro").value.trim(),
+    cobro_transferencia: document.getElementById("aje-transferencia").checked,
+    activo: document.getElementById("aje-activo").checked,
+  };
+  const pass = document.getElementById("aje-password").value;
+  if (pass) cuerpo.password = pass;
+  try {
+    await api("/admin/jugadores/" + admin_jug_edit_id, "PUT", cuerpo);
+    aviso("Jugador actualizado");
+    cancelarEdicionAdminJugador();
+    cargarJugadoresAdmin();
+  } catch (e) { aviso(e.message, true); }
+}
+
 // ---------- REGISTRO DE PESTANAS DEL ADMIN ----------
 window.ACCIONES = window.ACCIONES || {};
 ACCIONES.sorteos = iniciarSorteos;
@@ -1020,3 +1142,4 @@ ACCIONES.jugadas = iniciarJugadas;
 ACCIONES.resumen = cargarResumen;
 ACCIONES.balance = cargarBalance;
 ACCIONES.auditoria = cargarAuditoria;
+ACCIONES.jugadores = cargarJugadoresAdmin;
