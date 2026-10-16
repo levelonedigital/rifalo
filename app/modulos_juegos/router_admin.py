@@ -211,6 +211,14 @@ class VendedorEditar(BaseModel):
     password: str | None = None
     activo: bool | None = None
 
+class JugadorEditarAdmin(BaseModel):
+    usuario: str | None = None
+    password: str | None = None
+    nombre: str | None = None
+    telefono: str | None = None
+    datos_cobro: str | None = None
+    cobro_transferencia: bool | None = None
+    activo: bool | None = None
 
 class PozoVacanteCrear(BaseModel):
     fecha: datetime
@@ -1209,3 +1217,92 @@ def sincronizar_cupos_vendedor(vendedor_id: int, sesion: Session = Depends(obten
     auditoria.registrar(sesion, "CUPOS_SYNCRONIZADOS", detalle=f"vendedor={vendedor.usuario} corregidos={corregidos}/{len(regs)}", usuario=admin)
     sesion.commit()
     return {"corregidos": corregidos, "total": len(regs)}
+
+# ---------- JUGADORES (vision global del admin) ----------
+
+@router.get("/revendedores")
+def listar_revendedores_admin(sesion: Session = Depends(obtener_sesion), admin: Usuario = admin_dep):
+    revs = sesion.query(Usuario).filter(Usuario.rol == RolUsuario.REVENDEDOR).order_by(Usuario.nombre).all()
+    salida = []
+    for r in revs:
+        v = sesion.get(Usuario, r.padre_id) if r.padre_id else None
+        salida.append({
+            "id": r.id, "usuario": r.usuario, "nombre": r.nombre,
+            "vendedor_id": (v.id if v else None), "vendedor": (v.nombre if v else "-"),
+        })
+    return salida
+
+
+def _fila_jugador(j: Usuario, sesion: Session, js_count=None, js_sum=None):
+    if js_count is None:
+        from sqlalchemy import func
+        row = (
+            sesion.query(func.count(Jugada.id), func.sum(Jugada.precio))
+            .filter(Jugada.jugador_id == j.id, Jugada.estado.in_(ESTADOS_VENDIDOS))
+            .one()
+        )
+        js_count, js_sum = row[0] or 0, float(row[1] or 0.0)
+    v = sesion.get(Usuario, j.padre_id) if j.padre_id else None
+    rev = sesion.get(Usuario, j.revendedor_padre_id) if j.revendedor_padre_id else None
+    return {
+        "id": j.id, "usuario": j.usuario, "nombre": j.nombre, "telefono": j.telefono,
+        "datos_cobro": j.datos_cobro, "cobro_transferencia": bool(j.cobro_transferencia),
+        "activo": bool(j.activo),
+        "vendedor_id": (v.id if v else None), "vendedor": (v.nombre if v else "-"),
+        "vendedor_usuario": (v.usuario if v else "-"),
+        "revendedor_id": (rev.id if rev else None), "revendedor": (rev.nombre if rev else None),
+        "revendedor_usuario": (rev.usuario if rev else None),
+        "via": ("revendedor" if rev else "directo"),
+        "jugadas": js_count, "apostado": round(js_sum, 2),
+    }
+
+
+@router.get("/jugadores")
+def listar_jugadores_admin(
+    q: str | None = None,
+    vendedor_id: int | None = None,
+    revendedor_id: int | None = None,
+    sesion: Session = Depends(obtener_sesion),
+    admin: Usuario = admin_dep,
+):
+    from sqlalchemy import func, or_
+    consulta = sesion.query(Usuario).filter(Usuario.rol == RolUsuario.JUGADOR)
+    if q:
+        like = f"%{q.strip()}%"
+        consulta = consulta.filter(or_(Usuario.usuario.ilike(like), Usuario.nombre.ilike(like), Usuario.telefono.ilike(like)))
+    if vendedor_id is not None:
+        consulta = consulta.filter(Usuario.padre_id == vendedor_id)
+    if revendedor_id is not None:
+        consulta = consulta.filter(Usuario.revendedor_padre_id == revendedor_id)
+    jugadores = consulta.order_by(Usuario.nombre).all()
+    ids = [j.id for j in jugadores]
+    mapa = {}
+    if ids:
+        rows = (
+            sesion.query(Jugada.jugador_id, func.count(Jugada.id), func.sum(Jugada.precio))
+            .filter(Jugada.jugador_id.in_(ids), Jugada.estado.in_(ESTADOS_VENDIDOS))
+            .group_by(Jugada.jugador_id).all()
+        )
+        mapa = {r[0]: (r[1] or 0, float(r[2] or 0.0)) for r in rows}
+    return [_fila_jugador(j, sesion, *(mapa.get(j.id, (0, 0.0)))) for j in jugadores]
+
+
+@router.put("/jugadores/{jugador_id}")
+def editar_jugador_admin(jugador_id: int, datos: JugadorEditarAdmin, sesion: Session = Depends(obtener_sesion), admin: Usuario = admin_dep):
+    jugador = sesion.get(Usuario, jugador_id)
+    if jugador is None or jugador.rol != RolUsuario.JUGADOR:
+        raise HTTPException(status_code=404, detail="Jugador no encontrado")
+    if datos.usuario is not None and datos.usuario != jugador.usuario:
+        if sesion.query(Usuario).filter(Usuario.usuario == datos.usuario, Usuario.id != jugador_id).first():
+            raise HTTPException(status_code=400, detail="El nombre de usuario ya existe")
+        jugador.usuario = datos.usuario
+    if datos.password:
+        jugador.password_hash = hash_password(datos.password)
+    for campo in ("nombre", "telefono", "datos_cobro", "cobro_transferencia", "activo"):
+        valor = getattr(datos, campo)
+        if valor is not None:
+            setattr(jugador, campo, valor)
+    sesion.commit()
+    auditoria.registrar(sesion, "JUGADOR_EDITADO_ADMIN", detalle=jugador.usuario, usuario=admin)
+    sesion.commit()
+    return _fila_jugador(jugador, sesion)
