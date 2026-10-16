@@ -77,7 +77,7 @@ async function cargarJSorteos() {
       const cuposTxt = s.cupos_disponibles > 0
         ? "<b style='color:#22c55e'>" + s.cupos_disponibles + " disponible(s)</b>"
         : "<span class='chico' style='color:#ef4444'>Sin cupos</span>";
-      const botonPozo = "<button class='secundario' onclick='elegirSorteoJugador(" + s.id + ")'>Ver pozo/Premio</button>";
+      const botonPozo = "<button class='btn-ver' onclick='elegirSorteoJugador(" + s.id + ")'>Ver pozo/Premio</button>";
       const botonJugar = s.puedo_jugar && s.cupos_disponibles > 0
         ? "<button onclick='jugarSorteo(" + s.id + ")'>Jugar</button>"
         : (s.cupos_disponibles === 0 ? "<span class='chico'>Compra cupos a tu vendedor</span>" : "<span class='chico'>no habilitado</span>");
