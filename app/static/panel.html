@@ -6,10 +6,11 @@
 <title>RIFALO - Panel</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: Arial, sans-serif; background: #0f172a; color: #e2e8f0; }
+  body { font-family: Arial, sans-serif; background: #0b0718; color: #e2e8f0; }
   .contenedor { max-width: 1050px; margin: 0 auto; padding: 16px; }
   h1 { color: #22c55e; margin-bottom: 8px; }
   h2 { margin: 16px 0 8px; color: #93c5fd; }
+  h3 { margin: 12px 0 6px; color: #93c5fd; }
   .tarjeta { background: #1e293b; border-radius: 10px; padding: 16px; margin-bottom: 16px; }
   label { display: block; margin: 6px 0 2px; font-size: 14px; color: #94a3b8; }
   input, select, textarea { width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #334155; background: #0f172a; color: #e2e8f0; }
@@ -55,114 +56,176 @@
     button { padding: 6px 8px; font-size: 12px; margin: 3px 2px 0 0; }
     .tabs button { font-size: 12px; padding: 6px 8px; }
     .tabs { gap: 4px; }
-    .pozo-grande { font-size: 16px; padding: 10px; }
-    .pozo-grande span { font-size: 20px; }
+    .pozo-grande, .cartel-pozo { font-size: 16px; padding: 10px; }
+    .pozo-grande span, .cartel-pozo .monto { font-size: 20px; }
     .grilla { grid-template-columns: 1fr; }
     input, select, textarea { font-size: 14px; }
     .reglas-box, .buscador-box { font-size: 12px; }
+    .cabecera-marca img { width: min(260px, 80%); }
   }
 
-  /* ---------- MARCA RIFALO (solo jugador) - estilo casino ---------- */
-  .marca-jugador {
+  /* ---------- MARCA RIFALO (todos los roles) - estilo casino ---------- */
+  .marca-app {
     background:
       radial-gradient(circle at 15% 20%, rgba(217,70,239,0.35), transparent 40%),
       radial-gradient(circle at 85% 15%, rgba(59,130,246,0.35), transparent 40%),
       radial-gradient(circle at 50% 90%, rgba(34,197,94,0.25), transparent 45%),
       linear-gradient(160deg, #1a0b2e 0%, #2d1b4e 40%, #14143c 100%);
     border-radius: 16px;
-    padding: 12px;
+    padding: 14px;
     border: 1px solid rgba(255,255,255,0.12);
     box-shadow: 0 0 40px rgba(168,85,247,0.25) inset;
   }
-  .marca-logo { text-align: center; margin: 4px 0 12px; }
-  .marca-logo img { width: min(340px, 88%); height: auto; filter: drop-shadow(0 4px 18px rgba(255,193,7,0.45)); }
-  .marca-jugador .tarjeta {
+  .cabecera-marca { text-align: center; margin: 2px 0 14px; }
+  .cabecera-marca img { width: min(340px, 88%); height: auto; filter: drop-shadow(0 4px 18px rgba(255,193,7,0.45)); }
+  .cabecera-sub { margin-top: 6px; font-size: 13px; color: #d8c9f5; letter-spacing: .3px; }
+
+  .marca-app .tarjeta {
     background: rgba(12, 8, 32, 0.65);
     border: 1px solid rgba(255,193,7,0.35);
     border-radius: 14px;
     box-shadow: 0 6px 24px rgba(0,0,0,0.45), 0 0 18px rgba(168,85,247,0.15);
     backdrop-filter: blur(4px);
   }
-  .marca-jugador h2 {
-    color: #FFC107;
-    text-shadow: 0 0 12px rgba(255,193,7,0.5);
-    letter-spacing: 0.5px;
-  }
-  .marca-jugador .chico { color: #d8c9f5; }
-  .marca-jugador label { color: #d8c9f5; }
-  .marca-jugador input, .marca-jugador select, .marca-jugador textarea {
+  .marca-app h2 { color: #FFC107; text-shadow: 0 0 12px rgba(255,193,7,0.5); letter-spacing: 0.5px; }
+  .marca-app h3 { color: #a5b4fc; }
+  .marca-app .chico { color: #d8c9f5; }
+  .marca-app label { color: #d8c9f5; }
+  .marca-app input, .marca-app select, .marca-app textarea {
     background: rgba(8,5,24,0.8);
     border: 1px solid rgba(255,193,7,0.3);
     color: #fff;
     border-radius: 8px;
   }
-  .marca-jugador button {
+  .marca-app input:focus, .marca-app select:focus, .marca-app textarea:focus {
+    outline: none; border-color: #FFC107; box-shadow: 0 0 0 2px rgba(255,193,7,0.25);
+  }
+  .marca-app input[readonly] { color: #94a3b8; border-style: dashed; }
+  .marca-app button {
     background: linear-gradient(180deg, #ffd54f, #FFC107);
     color: #1a0b2e;
     box-shadow: 0 3px 10px rgba(255,193,7,0.4);
     border-radius: 8px;
   }
-  .marca-jugador button.secundario { background: rgba(255,255,255,0.14); color: #fff; box-shadow: none; }
-  .marca-jugador button.peligro { background: #ef4444; color: #fff; }
-  .marca-jugador table th { color: #FFC107; }
-  .marca-jugador table td { color: #f0e9ff; }
-  .marca-jugador .reglas-box {
+  .marca-app button:hover { filter: brightness(1.06); }
+  .marca-app button.secundario { background: rgba(255,255,255,0.14); color: #fff; box-shadow: none; border: 1px solid rgba(255,255,255,0.18); }
+  .marca-app button.peligro { background: #ef4444; color: #fff; }
+  .marca-app button.wa { background: #25D366; color: #fff; }
+  .marca-app table th { color: #FFC107; border-bottom: 1px solid rgba(255,193,7,0.3); }
+  .marca-app table td { color: #f0e9ff; border-bottom: 1px solid rgba(255,255,255,0.08); }
+  .marca-app .reglas-box {
     background: rgba(8,5,24,0.7);
     border: 1px solid rgba(255,193,7,0.4);
     color: #ffd76a;
     border-radius: 8px;
   }
-  .marca-jugador .pozo-grande {
+  .marca-app .modo-box {
+    background: rgba(76,29,149,0.45);
+    border: 1px solid rgba(167,139,250,0.5);
+    color: #ede9fe;
+    border-radius: 10px;
+  }
+  .marca-app .buscador-box {
+    background: rgba(8,5,24,0.7);
+    border: 1px solid rgba(167,139,250,0.35);
+    border-radius: 10px;
+    color: #e9e2ff;
+  }
+  .marca-app .buscador-box .nums { color: #FFC107; }
+  .marca-app .buscador-box .ok { color: #4ade80; }
+  .marca-app .buscador-box .warn { color: #fbbf24; }
+  .marca-app .cobro-box {
+    background: rgba(6,78,59,0.55);
+    border: 1px solid rgba(34,197,94,0.55);
+    color: #d1fae5;
+    border-radius: 10px;
+  }
+  .marca-app .aviso-box {
+    background: rgba(113,63,18,0.6);
+    border: 1px solid #fbbf24;
+    color: #fef3c7;
+    border-radius: 10px;
+  }
+  .marca-app .wa-links { background: rgba(8,5,24,0.7); border: 1px solid rgba(37,211,102,0.5); border-radius: 10px; }
+  .marca-app .wa-links a { color: #4ade80; }
+  .marca-app .mensaje.ok { background: rgba(6,78,59,0.7); border: 1px solid rgba(34,197,94,0.5); color: #d1fae5; }
+  .marca-app .mensaje.error { background: rgba(127,29,29,0.7); border: 1px solid rgba(239,68,68,0.6); color: #fecaca; }
+  .marca-app .tabs button { background: rgba(255,255,255,0.10); color: #e9e2ff; border: 1px solid rgba(255,255,255,0.12); }
+  .marca-app .tabs button.activa { background: linear-gradient(180deg, #ffd54f, #FFC107); color: #1a0b2e; border-color: transparent; box-shadow: 0 0 12px rgba(255,193,7,0.5); }
+  .marca-app .check-linea { color: #e9e2ff; }
+
+  /* pozo/premio: verde esmeralda glassy (usos secundarios, ej. contador admin) */
+  .marca-app .pozo-grande {
     background: linear-gradient(160deg, #064e3b, #065f46 50%, #047857);
     border: 2px solid #22c55e;
     color: #ffffff;
     border-radius: 14px;
-    box-shadow: 0 0 22px rgba(34,197,94,0.55), 0 6px 18px rgba(0,0,0,0.4);
+    box-shadow: 0 0 18px rgba(34,197,94,0.45), 0 6px 18px rgba(0,0,0,0.4);
+  }
+  .marca-app .pozo-grande span { color: #a7f3d0; text-shadow: 0 0 14px rgba(74,222,128,0.8); }
+
+  /* CARTEL POZO / PREMIO: dorado llamativo con pulso */
+  .cartel-pozo {
+    background: linear-gradient(160deg, #78350f 0%, #b45309 45%, #f59e0b 100%);
+    border: 2px solid #fcd34d;
+    color: #fff;
+    border-radius: 14px;
+    padding: 14px;
+    margin: 10px 0;
+    text-align: center;
+    box-shadow: 0 0 22px rgba(245,158,11,0.55), 0 6px 18px rgba(0,0,0,0.4);
     animation: pulsoPozo 2.2s ease-in-out infinite;
   }
-  .marca-jugador .pozo-grande span {
-    color: #a7f3d0;
-    text-shadow: 0 0 14px rgba(74,222,128,0.8);
-  }
+  .cartel-pozo .titulo { font-size: 14px; letter-spacing: 1px; color: #fde68a; text-transform: uppercase; }
+  .cartel-pozo .monto { font-size: 30px; font-weight: 800; color: #fff; text-shadow: 0 0 16px rgba(255,213,79,0.85); line-height: 1.1; }
+  .cartel-pozo .meta { font-size: 12px; color: #fef3c7; margin-top: 4px; }
   @keyframes pulsoPozo {
-    0%,100% { box-shadow: 0 0 14px rgba(34,197,94,0.4), 0 6px 18px rgba(0,0,0,0.4); }
-    50% { box-shadow: 0 0 30px rgba(34,197,94,0.75), 0 6px 18px rgba(0,0,0,0.4); }
+    0%,100% { box-shadow: 0 0 14px rgba(245,158,11,0.45), 0 6px 18px rgba(0,0,0,0.4); }
+    50% { box-shadow: 0 0 32px rgba(245,158,11,0.8), 0 6px 18px rgba(0,0,0,0.4); }
   }
 </style>
 </head>
 <body>
 <div class="contenedor">
 
-  <!-- LOGIN -->
-  <div id="zona-login" class="tarjeta">
-    <h1>RIFALO</h1>
-    <div id="bloque-login">
-      <p class="chico">Ingreso por rol: admin, vendedor, revendedor o jugador</p>
-      <label>Usuario</label><input id="login-usuario">
-      <label>Contrasenia</label><input id="login-password" type="password">
-      <label>Codigo 2FA (solo si lo tenes activado)</label><input id="login-2fa">
-      <button onclick="login()">Entrar</button>
-      <button class="secundario" onclick="mostrarRegistro()">Soy jugador: registrarme</button>
+  <!-- LOGIN / REGISTRO (portada con marca) -->
+  <div id="zona-login" class="marca-app">
+    <div class="cabecera-marca">
+      <img src="/static/img/logo.png" alt="Rifalo - Sorteos Online">
+      <div class="cabecera-sub">Sorteos online · jugá, vendé y ganá</div>
     </div>
-    <div id="login-error" class="mensaje error"></div>
-    <div id="login-msg" class="mensaje"></div>
-    <div id="form-registro" style="display:none; margin-top:14px">
-      <h2>Registro de jugador</h2>
-      <label>Usuario</label><input id="reg-usuario">
-      <label>Contrasenia</label><input id="reg-password" type="password">
-      <label>Nombre y apellido</label><input id="reg-nombre">
-      <label>Telefono (con prefijo, ej: 5491123456789)</label><input id="reg-telefono">
-      <label>Codigo de tu vendedor o revendedor</label><input id="reg-codigo">
-      <label>Alias o CBU (para cobrarte tus premios)</label><input id="reg-cobro" placeholder="tu.alias o CBU de 22 digitos">
-      <div class="check-linea"><input type="checkbox" id="reg-transferencia" checked><span>Cobrar mis premios por transferencia</span></div>
-      <button onclick="registrarJugador()">Registrarme</button>
-      <div id="reg-msg" class="mensaje"></div>
+    <div class="tarjeta">
+      <div id="bloque-login">
+        <p class="chico">Ingreso por rol: admin, vendedor, revendedor o jugador</p>
+        <label>Usuario</label><input id="login-usuario">
+        <label>Contrasenia</label><input id="login-password" type="password">
+        <label>Codigo 2FA (solo si lo tenes activado)</label><input id="login-2fa">
+        <button onclick="login()">Entrar</button>
+        <button class="secundario" onclick="mostrarRegistro()">Soy jugador: registrarme</button>
+      </div>
+      <div id="login-error" class="mensaje error"></div>
+      <div id="login-msg" class="mensaje"></div>
+      <div id="form-registro" style="display:none; margin-top:14px">
+        <h2>Registro de jugador</h2>
+        <label>Usuario</label><input id="reg-usuario">
+        <label>Contrasenia</label><input id="reg-password" type="password">
+        <label>Nombre y apellido</label><input id="reg-nombre">
+        <label>Telefono (con prefijo, ej: 5491123456789)</label><input id="reg-telefono">
+        <label>Codigo de tu vendedor o revendedor</label><input id="reg-codigo">
+        <label>Alias o CBU (para cobrarte tus premios)</label><input id="reg-cobro" placeholder="tu.alias o CBU de 22 digitos">
+        <div class="check-linea"><input type="checkbox" id="reg-transferencia" checked><span>Cobrar mis premios por transferencia</span></div>
+        <button onclick="registrarJugador()">Registrarme</button>
+        <div id="reg-msg" class="mensaje"></div>
+      </div>
     </div>
   </div>
 
-  <!-- PANEL (casco): las secciones de cada rol se inyectan en contenedor-secciones -->
-  <div id="zona-panel" style="display:none">
-    <h1>RIFALO <span class="chico" id="panel-usuario"></span></h1>
+  <!-- PANEL (casco): logo arriba, pestañas debajo; secciones por rol se inyectan en contenedor-secciones -->
+  <div id="zona-panel" class="marca-app" style="display:none">
+    <div class="cabecera-marca">
+      <img src="/static/img/logo.png" alt="Rifalo - Sorteos Online">
+      <div class="cabecera-sub"><span id="panel-usuario"></span></div>
+    </div>
     <div class="tabs" id="barra-tabs"></div>
     <div id="zona-modo" class="modo-box" style="display:none"></div>
     <div id="zona-avisos"></div>
