@@ -22,8 +22,8 @@ let refrescoTimer = null;
 window.ACCIONES = window.ACCIONES || {};
 
 const TABS_POR_ROL = {
-  admin_principal: [["sorteos","Sorteos"],["buscador","Buscador"],["vendedores","Vendedores"],["pagos","Pagos a vendedores"],["jugadas","Jugadas"],["resumen","Resumen"],["balance","Balance"],["auditoria","Auditoria"]],
-  admin: [["sorteos","Sorteos"],["buscador","Buscador"],["pagos","Pagos a vendedores"],["jugadas","Jugadas"],["resumen","Resumen"],["balance","Balance"],["auditoria","Auditoria"]],
+    admin_principal: [["sorteos","Sorteos"],["buscador","Buscador"],["vendedores","Vendedores"],["jugadores","Jugadores"],["pagos","Pagos a vendedores"],["jugadas","Jugadas"],["resumen","Resumen"],["balance","Balance"],["auditoria","Auditoria"]],
+  admin: [["sorteos","Sorteos"],["buscador","Buscador"],["jugadores","Jugadores"],["pagos","Pagos a vendedores"],["jugadas","Jugadas"],["resumen","Resumen"],["balance","Balance"],["auditoria","Auditoria"]],
   vendedor: [["vresumen","Mi resumen"],["vcupos","Vender jugadas"],["vcargar","Cargar jugada"],["vjugadas","Mis jugadas"],["vrevendedores","Mis revendedores"],["vpagos-rev","Pagos a revendedores"],["vjugadores","Mis jugadores"],["resultados","Resultados"],["cobros","Mis cobros"]],
   revendedor: [["rsorteos","Sorteos"],["rcupos","Vender jugadas"],["rcargar","Cargar jugada"],["rjugadas","Mis jugadas"],["rresumen","Mi resumen"],["rcobros","Mis cobros"],["rjugadores","Mis jugadores"],["resultados","Resultados"]],
   jugador: [["jsorteos","Sorteos"],["jcargar","Mi jugada"],["resultados","Resultados"]],
