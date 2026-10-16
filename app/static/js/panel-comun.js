@@ -97,25 +97,21 @@ function etiquetaPozo(s) {
 
 // ---------- CARTEL LLAMATIVO (titulo grande + pozo o premio) ----------
 function cartelSorteoHtml(s) {
-  if (!s) return "Seleccioná un sorteo para ver el pozo actual";
+  if (!s) return "<div class='titulo'>Seleccioná un sorteo</div><div class='meta'>para ver el pozo actual</div>";
   const titulo = nombreSorteo(s) || (s.modalidad || "");
   if (s.premio_nombre) {
     return (
-      "<div style='font-size:22px;font-weight:bold;color:#fbbf24;line-height:1.1'>" + titulo + "</div>" +
-      "<div style='font-size:13px;color:#94a3b8;margin-top:6px'>PREMIO</div>" +
-      "<div style='font-size:26px;font-weight:bold;color:#22c55e'>" + s.premio_nombre + "</div>" +
-      "<div style='font-size:12px;color:#cbd5e1;margin-top:4px'>Sorteo #" + s.id + " · " + s.horario + " · " + fmtFecha(s.fecha) + "</div>"
+      "<div class='titulo'>" + titulo + "</div>" +
+      "<div class='monto'>" + s.premio_nombre + "</div>" +
+      "<div class='meta'>PREMIO · Sorteo #" + s.id + " · " + s.horario + " · " + fmtFecha(s.fecha) + "</div>"
     );
   }
   const esVacante = Boolean(s.solo_participantes);
   const rotulo = esVacante ? "POZO VACANTE" : "POZO";
-  const colorPozo = esVacante ? "#22c55e" : "#FFC107";
-  const arranque = esVacante ? "<div style='font-size:13px;color:#86efac;margin-top:2px'>Arranca en $" + (s.pozo_inicial ?? s.pozo) + "</div>" : "";
   return (
-    "<div style='font-size:22px;font-weight:bold;color:#fbbf24;line-height:1.1'>" + titulo + "</div>" +
-    "<div style='font-size:30px;font-weight:bold;color:" + colorPozo + ";margin:4px 0'>$" + s.pozo + "</div>" +
-    "<div style='font-size:12px;color:#cbd5e1'>" + rotulo + " · Sorteo #" + s.id + " · " + s.horario + " · " + fmtFecha(s.fecha) + "</div>" +
-    arranque
+    "<div class='titulo'>" + titulo + "</div>" +
+    "<div class='monto'>$" + s.pozo + "</div>" +
+    "<div class='meta'>" + rotulo + " · Sorteo #" + s.id + " · " + s.horario + " · " + fmtFecha(s.fecha) + "</div>"
   );
 }
 
