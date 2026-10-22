@@ -1,6 +1,7 @@
 import threading
 import time
 import unicodedata
+import re
 from datetime import datetime, timedelta, timezone
 
 import requests
@@ -63,35 +64,70 @@ def _duracion_min(sorteo, reglas):
 
 
 def obtener_resultado_oficial(nombre_horario: str, fecha: datetime):
-    """Lee los 20 numeros COMPLETOS (4 cifras) del horario, en orden de premio."""
+    """Lee los 20 numeros de 4 cifras del horario desde el HTML de la Caja Popular."""
     tipo = TIPOS_QUINIELA.get(nombre_horario)
     if tipo is None:
         return None
-    dia = fecha.strftime("%Y-%m-%d")
+    
+    # Mapeo de nombres de horario a texto en la web
+    nombres_web = {
+        "matutina": "MATUTINO",
+        "vespertina": "VESPERTINO",
+        "siesta": "SIESTA",
+        "tarde": "TARDE",
+        "nocturna": "NOCTURNO",
+    }
+    nombre_web = nombres_web.get(nombre_horario)
+    if not nombre_web:
+        return None
+    
+    dia = fecha.strftime("%d/%m/%Y")
     cabeceras = {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64)"}
+    
     try:
-        r1 = requests.get(_URL_API + "extracto/", params={"fecha_sorteo": dia}, timeout=10, headers=cabeceras)
-        r1.raise_for_status()
-        extractos = r1.json()
-        id_extracto = None
-        for ex in extractos:
-            if ex.get("tipo") == tipo and ex.get("fecha_sorteo") == dia:
-                id_extracto = ex.get("id")
-                break
-        if id_extracto is None:
+        # URL de la Caja Popular de Tucumán
+        url = "https://resultadosquiniela.cajapopular.gov.ar"
+        params = {"fecha": dia}
+        
+        r = requests.get(url, params=params, timeout=10, headers=cabeceras)
+        r.raise_for_status()
+        
+        html = r.text
+        
+        # Buscar el sorteo del horario específico
+        # La página tiene secciones como "SORTEO MATUTINO", "SORTEO VESPERTINO", etc.
+        patron_sorteo = rf'SORTEO\s+{nombre_web}.*?(?=SORTEO\s+[A-Z]+|$)'
+        match_sorteo = re.search(patron_sorteo, html, re.DOTALL | re.IGNORECASE)
+        
+        if not match_sorteo:
             return None
-        r2 = requests.get(_URL_API + "extracto-registro/", params={"id": id_extracto}, timeout=10, headers=cabeceras)
-        r2.raise_for_status()
-        registros = r2.json()
-        if not registros or len(registros) < 20:
+        
+        seccion_sorteo = match_sorteo.group(0)
+        
+        # Extraer los 20 números de 4 dígitos en orden
+        # Buscamos patrones como "1° Premio 6348" o celdas de tabla con números
+        numeros = []
+        for i in range(1, 21):
+            patron_num = rf'{i}[°º]?\s*Premio\s*[:\s]*?(\d{4})'
+            match = re.search(patron_num, seccion_sorteo, re.IGNORECASE)
+            if match:
+                numeros.append(int(match.group(1)))
+            else:
+                # Fallback: buscar todos los números de 4 dígitos en orden
+                patron_alt = rf'(\d{{4}})'
+                matches = re.findall(patron_alt, seccion_sorteo)
+                if len(matches) >= 20:
+                    numeros = [int(m) for m in matches[:20]]
+                    break
+        
+        if len(numeros) < 20:
             return None
-        registros = sorted(registros, key=lambda x: x.get("posicion", 0))
-        # 4 cifras completas, sin truncar
-        nums = [int(x.get("numero", 0)) for x in registros[:20]]
-        if len(nums) < 20:
-            return None
-        return nums
-    except Exception:
+        
+        return numeros[:20]
+    
+    except Exception as e:
+        import logging
+        logging.getLogger("rifalo.buscador").error(f"Error leyendo HTML de la Caja: {e}")
         return None
 
 
