@@ -499,19 +499,25 @@ function pintarReglasSelect(idSelect, idCaja, idImagen) {
   if (idSelect === "v-sorteo") filtrarJugadoresSorteo("v", s);
   if (idSelect === "r-sorteo") filtrarJugadoresSorteo("r", s);
   refrescarGrillaRifa(idSelect, s);
-  // Pintar cartel de pozo para vendedor y revendedor
-  if (idSelect === "v-cupo-sorteo") {
-    const divPozoV = document.getElementById("v-cupo-pozo");
-    if (divPozoV) {
-      divPozoV.style.display = s ? "block" : "none";
-      if (s) divPozoV.innerHTML = cartelSorteoHtml(s);
-    }
-  }
-  if (idSelect === "r-cupo-sorteo") {
-    const divPozoR = document.getElementById("r-cupo-pozo");
-    if (divPozoR) {
-      divPozoR.style.display = s ? "block" : "none";
-      if (s) divPozoR.innerHTML = cartelSorteoHtml(s);
+   // Pintar cartel de pozo para vendedor y revendedor con diagnóstico
+  if (idSelect === "v-cupo-sorteo" || idSelect === "r-cupo-sorteo") {
+    const divId = idSelect === "v-cupo-sorteo" ? "v-cupo-pozo" : "r-cupo-pozo";
+    const divPozo = document.getElementById(divId);
+    if (divPozo) {
+      if (s) {
+        divPozo.style.display = "block";
+        // Fallback por si el campo pozo viene como undefined
+        const montoPozo = s.pozo !== undefined ? s.pozo : (s.pozo_actual || 0);
+        
+        // Reemplazamos temporalmente s.pozo para que cartelSorteoHtml lo use bien
+        const sClon = { ...s, pozo: montoPozo };
+        divPozo.innerHTML = cartelSorteoHtml(sClon);
+        
+        console.log("✅ Pozo renderizado:", idSelect, "| Sorteo ID:", s.id, "| Monto:", montoPozo);
+      } else {
+        divPozo.style.display = "none";
+        console.log("⚠️ Sorteo no encontrado en caché para", idSelect);
+      }
     }
   }
 }
