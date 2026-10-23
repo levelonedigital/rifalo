@@ -499,7 +499,7 @@ function pintarReglasSelect(idSelect, idCaja, idImagen) {
   if (idSelect === "v-sorteo") filtrarJugadoresSorteo("v", s);
   if (idSelect === "r-sorteo") filtrarJugadoresSorteo("r", s);
   refrescarGrillaRifa(idSelect, s);
-    // Pintar cartel de pozo para vendedor y revendedor (forzando actualización)
+  // Pintar cartel de pozo para vendedor y revendedor (forzando actualización)
   if (idSelect === "v-cupo-sorteo" || idSelect === "r-cupo-sorteo") {
     const divId = idSelect === "v-cupo-sorteo" ? "v-cupo-pozo" : "r-cupo-pozo";
     const divPozo = document.getElementById(divId);
