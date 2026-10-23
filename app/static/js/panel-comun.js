@@ -499,6 +499,21 @@ function pintarReglasSelect(idSelect, idCaja, idImagen) {
   if (idSelect === "v-sorteo") filtrarJugadoresSorteo("v", s);
   if (idSelect === "r-sorteo") filtrarJugadoresSorteo("r", s);
   refrescarGrillaRifa(idSelect, s);
+  // Pintar cartel de pozo para vendedor y revendedor
+  if (idSelect === "v-cupo-sorteo") {
+    const divPozoV = document.getElementById("v-cupo-pozo");
+    if (divPozoV) {
+      divPozoV.style.display = s ? "block" : "none";
+      if (s) divPozoV.innerHTML = cartelSorteoHtml(s);
+    }
+  }
+  if (idSelect === "r-cupo-sorteo") {
+    const divPozoR = document.getElementById("r-cupo-pozo");
+    if (divPozoR) {
+      divPozoR.style.display = s ? "block" : "none";
+      if (s) divPozoR.innerHTML = cartelSorteoHtml(s);
+    }
+  }
 }
 
 async function cargarSelectJugadores(pref) {
