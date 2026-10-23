@@ -65,17 +65,14 @@ def _duracion_min(sorteo, reglas):
 
 def obtener_resultado_oficial(nombre_horario: str, fecha: datetime):
     """Lee los 20 numeros de 4 cifras del horario desde el HTML de la Caja Popular."""
+    import re
     tipo = TIPOS_QUINIELA.get(nombre_horario)
     if tipo is None:
         return None
     
-    # Mapeo de nombres de horario a texto en la web
     nombres_web = {
-        "matutina": "MATUTINO",
-        "vespertina": "VESPERTINO",
-        "siesta": "SIESTA",
-        "tarde": "TARDE",
-        "nocturna": "NOCTURNO",
+        "matutina": "MATUTINO", "vespertina": "VESPERTINO", 
+        "siesta": "SIESTA", "tarde": "TARDE", "nocturna": "NOCTURNO"
     }
     nombre_web = nombres_web.get(nombre_horario)
     if not nombre_web:
@@ -85,49 +82,41 @@ def obtener_resultado_oficial(nombre_horario: str, fecha: datetime):
     cabeceras = {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64)"}
     
     try:
-        # URL de la Caja Popular de Tucumán
         url = "https://resultadosquiniela.cajapopular.gov.ar"
         params = {"fecha": dia}
-        
         r = requests.get(url, params=params, timeout=10, headers=cabeceras)
         r.raise_for_status()
-        
         html = r.text
         
-        # Buscar el sorteo del horario específico
-        # La página tiene secciones como "SORTEO MATUTINO", "SORTEO VESPERTINO", etc.
+        # Buscar la sección del sorteo (ej: "SORTEO NOCTURNO")
         patron_sorteo = rf'SORTEO\s+{nombre_web}.*?(?=SORTEO\s+[A-Z]+|$)'
         match_sorteo = re.search(patron_sorteo, html, re.DOTALL | re.IGNORECASE)
-        
         if not match_sorteo:
             return None
         
-        seccion_sorteo = match_sorteo.group(0)
-        
-        # Extraer los 20 números de 4 dígitos en orden
-        # Buscamos patrones como "1° Premio 6348" o celdas de tabla con números
+        seccion = match_sorteo.group(0)
         numeros = []
+        
+        # Extraer 20 números de 4 dígitos
         for i in range(1, 21):
             patron_num = rf'{i}[°º]?\s*Premio\s*[:\s]*?(\d{4})'
-            match = re.search(patron_num, seccion_sorteo, re.IGNORECASE)
+            match = re.search(patron_num, seccion, re.IGNORECASE)
             if match:
                 numeros.append(int(match.group(1)))
             else:
-                # Fallback: buscar todos los números de 4 dígitos en orden
-                patron_alt = rf'(\d{{4}})'
-                matches = re.findall(patron_alt, seccion_sorteo)
+                # Fallback si el formato cambia
+                patron_alt = rf'(\d{4})'
+                matches = re.findall(patron_alt, seccion)
                 if len(matches) >= 20:
                     numeros = [int(m) for m in matches[:20]]
                     break
         
         if len(numeros) < 20:
             return None
-        
         return numeros[:20]
-    
     except Exception as e:
         import logging
-        logging.getLogger("rifalo.buscador").error(f"Error leyendo HTML de la Caja: {e}")
+        logging.getLogger("rifalo.buscador").error(f"Error leyendo HTML: {e}")
         return None
 
 
