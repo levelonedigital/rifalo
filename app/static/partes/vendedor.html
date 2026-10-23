@@ -12,6 +12,7 @@
       <label>Sorteo</label><select id="v-cupo-sorteo" onchange="pintarReglasSelect('v-cupo-sorteo','v-cupo-reglas','v-cupo-imagen'); llenarSelectJugadorCupo(); updateCupoResumen()"></select>
       <img id="v-cupo-imagen" style="display:none; max-width:220px; border-radius:6px; margin:6px 0">
       <div id="v-cupo-reglas" class="reglas-box"></div>
+      <div id="v-cupo-pozo" class="cartel-pozo" style="display:none"></div>
       <label>Jugador de tu linea</label><select id="v-cupo-jugador"></select>
       <label>Cantidad de jugadas</label><input id="v-cupo-cantidad" type="number" min="1" max="50" value="1" oninput="updateCupoResumen()">
       <div id="v-cupo-resumen" class="reglas-box"></div>
