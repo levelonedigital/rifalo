@@ -364,14 +364,22 @@ def editar_sorteo(sorteo_id: int, datos: SorteoEditar, sesion: Session = Depends
 
 @router.delete("/sorteos/{sorteo_id}")
 def borrar_sorteo(sorteo_id: int, sesion: Session = Depends(obtener_sesion), admin: Usuario = Depends(requerir_permiso("configurar_sorteos"))):
+    from app.modelos.juegos import CupoVendedor, CupoRevendedor
+    
     sorteo = sesion.get(Sorteo, sorteo_id)
     if sorteo is None:
         raise HTTPException(status_code=404, detail="Sorteo no encontrado")
     if sorteo.estado == EstadoSorteo.LIQUIDADO:
         raise HTTPException(status_code=400, detail="Un sorteo liquidado no se puede borrar")
+    
     jugadas = sesion.query(Jugada).filter(Jugada.sorteo_id == sorteo.id).count()
     if jugadas > 0:
         raise HTTPException(status_code=400, detail=f"El sorteo tiene {jugadas} jugadas: no se puede borrar. Usa Cancelar horario o Reprogramar.")
+    
+    # FIX: Eliminar cupos asociados primero para evitar el error de clave foránea
+    sesion.query(CupoVendedor).filter(CupoVendedor.sorteo_id == sorteo.id).delete()
+    sesion.query(CupoRevendedor).filter(CupoRevendedor.sorteo_id == sorteo.id).delete()
+    
     sesion.delete(sorteo)
     sesion.commit()
     auditoria.registrar(sesion, "SORTEO_BORRADO", detalle=f"sorteo={sorteo_id}", usuario=admin)
