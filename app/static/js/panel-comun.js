@@ -483,6 +483,18 @@ async function llenarSelectSorteos(ruta, idSelect) {
 }
 
 function pintarReglasSelect(idSelect, idCaja, idImagen) {
+  // --- INICIO DEBUG ---
+  const selectEl = document.getElementById(idSelect);
+  const id = selectEl ? selectEl.value : "SIN_ELEMENTO";
+  const cacheKeys = SORTEOS_ABIERTOS_CACHE[idSelect] ? Object.keys(SORTEOS_ABIERTOS_CACHE[idSelect]) : "VACIO";
+  console.log("🔍 DEBUG SELECT:", idSelect, "| Valor seleccionado:", id, "| Sorteos en caché:", cacheKeys);
+  // --- FIN DEBUG ---
+
+  const s = SORTEOS_ABIERTOS_CACHE[idSelect] && SORTEOS_ABIERTOS_CACHE[idSelect][id];
+  const caja = document.getElementById(idCaja);
+  // ... (el resto de la función sigue igual)
+
+function pintarReglasSelect(idSelect, idCaja, idImagen) {
   const id = document.getElementById(idSelect).value;
   const s = SORTEOS_ABIERTOS_CACHE[idSelect] && SORTEOS_ABIERTOS_CACHE[idSelect][id];
   const caja = document.getElementById(idCaja);
