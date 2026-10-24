@@ -424,20 +424,38 @@ function irTab(nombre) {
 
 async function llenarSelectSorteos(ruta, idSelect) {
   try {
-    const previo = document.getElementById(idSelect).value;
+    const selectEl = document.getElementById(idSelect);
+    const previo = selectEl.value;
     const sorteos = await api(ruta, "GET");
     SORTEOS_ABIERTOS_CACHE[idSelect] = {};
     sorteos.forEach(s => { SORTEOS_ABIERTOS_CACHE[idSelect][s.id] = s; });
-    document.getElementById(idSelect).innerHTML = sorteos.map(s =>
+    
+    selectEl.innerHTML = sorteos.map(s =>
       "<option value='" + s.id + "'>#" + s.id + " " + nombreSorteo(s) + " " + s.horario + " " + fmtFecha(s.fecha) + " - $" + s.precio_jugada + " - " + etiquetaPozo(s) + " - " + s.estado + " - cierre " + (s.hora_cierre || "sin limite") + (s.solo_participantes ? " (VACANTE)" : "") + (s.reprogramando ? " (REPROGRAMANDO)" : "") + "</option>"
     ).join("") || "<option value=''>No hay sorteos abiertos</option>";
-    if (previo) document.getElementById(idSelect).value = previo;
-    document.getElementById(idSelect).onchange = () => {
+    
+    // Solo restaurar el valor previo si existe en la nueva lista
+    if (previo && SORTEOS_ABIERTOS_CACHE[idSelect][previo]) {
+      selectEl.value = previo;
+    } else if (sorteos.length > 0) {
+      selectEl.value = sorteos[0].id; // Forzar el primero si el previo no existe
+    }
+
+    // Usar addEventListener en lugar de sobreescribir onchange
+    selectEl.addEventListener('change', function(e) {
+      console.log("🚀 CHANGE EVENT: Nuevo valor seleccionado =", e.target.value);
       pintarReglasSelect(idSelect, idSelect.replace("-sorteo", "-reglas"), idSelect.replace("-sorteo", "-imagen"));
-    };
+      // Llamar a las funciones originales del HTML si existen
+      if (typeof llenarSelectJugadorCupo === 'function') llenarSelectJugadorCupo();
+      if (typeof updateCupoResumen === 'function') updateCupoResumen();
+    });
+
     const idImg = idSelect.replace("-sorteo", "-imagen");
     pintarReglasSelect(idSelect, idSelect.replace("-sorteo", "-reglas"), idImg);
-  } catch (e) { aviso(e.message, true); }
+  } catch (e) { 
+    console.error("Error llenando select:", e);
+    aviso(e.message, true); 
+  }
 }
 
 function pintarReglasSelect(idSelect, idCaja, idImagen) {
