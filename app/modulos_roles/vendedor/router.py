@@ -401,13 +401,19 @@ def cargar_jugada(datos: JugadaCrear, sesion: Session = Depends(obtener_sesion),
         nombre = pj.nombre
         revendedor_id = pj.revendedor_padre_id
     
-    # 3. Validar números (sin consumir cupo)
+    # 3. Validar rango de números (0-99) ANTES de consumir cupo
+    from app.modulos_juegos.jugadas_core import validar_numeros
+    error_rango = validar_numeros(sorteo, datos.numeros)
+    if error_rango:
+        raise HTTPException(status_code=400, detail=error_rango)
+    
+    # 4. Validar que no esté ocupado (rifa)
     try:
         motor.validar_numeros_rifa(sesion, sorteo, datos.numeros)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     
-    # 4. Consumir cupo y crear jugada (todo en un solo try con rollback)
+    # 5. Consumir cupo y crear jugada
     try:
         if not motor.consumir_cupo_vendedor(sesion, sorteo, vendedor):
             raise ValueError("Sin jugadas disponibles para vender en este sorteo")
@@ -416,11 +422,12 @@ def cargar_jugada(datos: JugadaCrear, sesion: Session = Depends(obtener_sesion),
         aprobar_jugada(sesion, jugada, reglas)
         sesion.commit()
     except ValueError as e:
-        sesion.rollback()  # ← FIX: si falla, revertimos el consumo de cupo
+        sesion.rollback()
         raise HTTPException(status_code=400, detail=str(e))
     
     aviso_iguales = motor.info_premio_compartido(sesion, sorteo, jugada.numeros, incluir_pendiente=False)
     return {"id": jugada.id, "numeros": jugada.numeros, "precio": jugada.precio, "estado": jugada.estado.value, "aviso_iguales": aviso_iguales}
+
 
 # ---------- VENTA DE JUGADAS (autorizaciones) ----------
 
