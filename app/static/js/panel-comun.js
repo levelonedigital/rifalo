@@ -22,7 +22,7 @@ let refrescoTimer = null;
 window.ACCIONES = window.ACCIONES || {};
 
 const TABS_POR_ROL = {
-    admin_principal: [["sorteos","Sorteos"],["buscador","Buscador"],["vendedores","Vendedores"],["jugadores","Jugadores"],["pagos","Pagos a vendedores"],["jugadas","Jugadas"],["resumen","Resumen"],["balance","Balance"],["auditoria","Auditoria"]],
+  admin_principal: [["sorteos","Sorteos"],["buscador","Buscador"],["vendedores","Vendedores"],["jugadores","Jugadores"],["pagos","Pagos a vendedores"],["jugadas","Jugadas"],["resumen","Resumen"],["balance","Balance"],["auditoria","Auditoria"]],
   admin: [["sorteos","Sorteos"],["buscador","Buscador"],["jugadores","Jugadores"],["pagos","Pagos a vendedores"],["jugadas","Jugadas"],["resumen","Resumen"],["balance","Balance"],["auditoria","Auditoria"]],
   vendedor: [["vresumen","Mi resumen"],["vcupos","Vender jugadas"],["vcargar","Cargar jugada"],["vjugadas","Mis jugadas"],["vrevendedores","Mis revendedores"],["vpagos-rev","Pagos a revendedores"],["vjugadores","Mis jugadores"],["resultados","Resultados"],["cobros","Mis cobros"]],
   revendedor: [["rsorteos","Sorteos"],["rcupos","Vender jugadas"],["rcargar","Cargar jugada"],["rjugadas","Mis jugadas"],["rresumen","Mi resumen"],["rcobros","Mis cobros"],["rjugadores","Mis jugadores"],["resultados","Resultados"]],
@@ -85,7 +85,6 @@ function nombreSorteo(s) {
   return (s.titulo || s.nombre_modalidad || s.modalidad || "");
 }
 
-// ---------- PREMIO CON NOMBRE (oculta el monto interno cuando hay premio_nombre) ----------
 function tienePremioNombre(s) { return !!(s && s.premio_nombre); }
 
 function etiquetaPozo(s) {
@@ -95,7 +94,6 @@ function etiquetaPozo(s) {
   return (esVacante ? "Pozo vacante $" : "$") + s.pozo;
 }
 
-// ---------- CARTEL LLAMATIVO (titulo grande + pozo o premio) ----------
 function cartelSorteoHtml(s) {
   if (!s) return "<div class='titulo'>Seleccioná un sorteo</div><div class='meta'>para ver el pozo actual</div>";
   const titulo = nombreSorteo(s) || (s.modalidad || "");
@@ -122,7 +120,6 @@ function pintarPozo(divId, s) {
   c.innerHTML = cartelSorteoHtml(s);
 }
 
-// ---------- SUBIR IMAGEN (comprime antes de mandar al backend) ----------
 function comprimirImagen(file, maxDim, calidad) {
   maxDim = maxDim || 900;
   calidad = calidad || 0.82;
@@ -153,7 +150,6 @@ function comprimirImagen(file, maxDim, calidad) {
   });
 }
 
-// ---------- GRILLA DE RIFA (numeros 00-99, libres/ocupados) ----------
 function rutaOcupados() {
   if (rol === "jugador") return "/jugador/sorteos/";
   if (rol === "vendedor") return "/vendedor/sorteos/";
@@ -180,17 +176,10 @@ function inyectarCssGrillaJugador() {
     .grilla-rifa-jugador { display:grid; grid-template-columns:repeat(10,1fr); gap:6px; }
     .grilla-rifa-jugador .libre {
       background: linear-gradient(135deg,#22c55e,#15803d);
-      color:#ffffff;
-      font-weight:800;
-      border:2px solid #86efac;
+      color:#ffffff; font-weight:800; border:2px solid #86efac;
       box-shadow:0 4px 12px rgba(34,197,94,.35);
       transition:transform .12s ease, box-shadow .12s ease, background .12s ease;
-      cursor:pointer;
-      padding:10px 0;
-      border-radius:9px;
-      text-align:center;
-      font-size:14px;
-      user-select:none;
+      cursor:pointer; padding:10px 0; border-radius:9px; text-align:center; font-size:14px; user-select:none;
     }
     .grilla-rifa-jugador .libre:hover {
       transform:translateY(-2px) scale(1.07);
@@ -200,22 +189,13 @@ function inyectarCssGrillaJugador() {
     .grilla-rifa-jugador .libre:active { transform:scale(.95); }
     .grilla-rifa-jugador .libre.elegido {
       background: linear-gradient(135deg,#fbbf24,#f59e0b) !important;
-      color:#111827 !important;
-      border-color:#fde68a !important;
+      color:#111827 !important; border-color:#fde68a !important;
       box-shadow:0 0 0 3px rgba(251,191,36,.45), 0 8px 18px rgba(245,158,11,.45) !important;
     }
     .grilla-rifa-jugador .ocupado {
       background: repeating-linear-gradient(45deg,#334155,#334155 6px,#1e293b 6px,#1e293b 12px);
-      color:#94a3b8;
-      text-decoration:line-through;
-      font-weight:700;
-      border:2px solid #475569;
-      padding:10px 0;
-      border-radius:9px;
-      text-align:center;
-      font-size:14px;
-      cursor:not-allowed;
-      user-select:none;
+      color:#94a3b8; text-decoration:line-through; font-weight:700; border:2px solid #475569;
+      padding:10px 0; border-radius:9px; text-align:center; font-size:14px; cursor:not-allowed; user-select:none;
     }
   `;
   const st = document.createElement("style");
@@ -232,21 +212,12 @@ async function refrescarGrillaRifa(idSelect, s) {
   const objetivo = actual || s;
   const esRifaUnico = objetivo && objetivo.modalidad === "rifa" && objetivo.cantidad_numeros === 1;
   
-  // DEBUG: loguear qué sorteo estamos procesando
-  console.log("refrescarGrillaRifa:", { idSelect, idActual, modalidad: objetivo?.modalidad, esRifaUnico });
-  
   const divExistente = document.getElementById(pref + "-grilla");
-  
   if (!esRifaUnico) {
-    // Si NO es rifa, destruir el div completamente
-    if (divExistente) {
-      console.log("Destruyendo grilla porque no es rifa");
-      divExistente.remove();
-    }
+    if (divExistente) divExistente.remove();
     return;
   }
   
-  // Si ES rifa, asegurar que el div existe
   const div = asegurarDivGrilla(pref);
   if (!div) return;
   
@@ -263,17 +234,11 @@ async function refrescarGrillaRifa(idSelect, s) {
     for (let n = 0; n < 100; n++) {
       const lab = String(n).padStart(2, "0");
       if (ocupados.has(n)) {
-        if (esJugador) {
-          html += "<div class='ocupado'>" + lab + "</div>";
-        } else {
-          html += "<div style='background:#7f1d1d;color:#fca5a5;text-align:center;padding:6px 0;border-radius:4px;font-size:12px;cursor:not-allowed'>" + lab + "</div>";
-        }
+        if (esJugador) html += "<div class='ocupado'>" + lab + "</div>";
+        else html += "<div style='background:#7f1d1d;color:#fca5a5;text-align:center;padding:6px 0;border-radius:4px;font-size:12px;cursor:not-allowed'>" + lab + "</div>";
       } else {
-        if (esJugador) {
-          html += "<div class='libre' onclick=\"tocarNumeroRifa('" + pref + "'," + n + ",event)\">" + lab + "</div>";
-        } else {
-          html += "<div onclick=\"tocarNumeroRifa('" + pref + "'," + n + ",event)\" style='background:#14532d;color:#bbf7d0;text-align:center;padding:6px 0;border-radius:4px;font-size:12px;cursor:pointer'>" + lab + "</div>";
-        }
+        if (esJugador) html += "<div class='libre' onclick=\"tocarNumeroRifa('" + pref + "'," + n + ",event)\">" + lab + "</div>";
+        else html += "<div onclick=\"tocarNumeroRifa('" + pref + "'," + n + ",event)\" style='background:#14532d;color:#bbf7d0;text-align:center;padding:6px 0;border-radius:4px;font-size:12px;cursor:pointer'>" + lab + "</div>";
       }
     }
     html += "</div>";
@@ -293,7 +258,6 @@ function tocarNumeroRifa(pref, n, ev) {
   if (btn) btn.classList.add("elegido");
 }
 
-// ---------- MODO SORTEO (ficha admin) ----------
 function pintarModo() {
   const caja = document.getElementById("zona-modo");
   if (!SORT_ACTUAL) { caja.style.display = "none"; caja.innerHTML = ""; return; }
@@ -339,7 +303,6 @@ function salirSorteo() {
   if (TAB_ACTUAL) irTab(TAB_ACTUAL);
 }
 
-// ---------- AVISOS ----------
 async function cargarAvisos() {
   try {
     const as = await api("/admin/avisos", "GET");
@@ -355,7 +318,6 @@ async function borrarAviso(id) {
   catch (e) { aviso(e.message, true); }
 }
 
-// ---------- SESION ----------
 async function login() {
   if (!validarCamposInline([["login-usuario","Usuario"],["login-password","Contrasenia"]])) return;
   const cuerpo = { usuario: document.getElementById("login-usuario").value.trim(), password: document.getElementById("login-password").value };
@@ -397,9 +359,7 @@ async function registrarJugador() {
     const r = await fetch("/auth/registro-jugador", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(cuerpo) });
     const d = await r.json().catch(() => ({}));
     if (!r.ok) {
-      let det;
-      if (Array.isArray(d.detail)) det = "Llena los datos marcados en rojo.";
-      else det = typeof d.detail === "string" ? d.detail : JSON.stringify(d.detail);
+      let det = Array.isArray(d.detail) ? "Llena los datos marcados en rojo." : (typeof d.detail === "string" ? d.detail : JSON.stringify(d.detail));
       if (det.includes("ya existe")) regMsg("El usuario ya existe, elegi otro.", true);
       else regMsg(det || "Error de registro", true);
       return;
@@ -415,7 +375,6 @@ function salir() {
   document.getElementById("zona-login").style.display = "block";
 }
 
-// ---------- CARGA DE SECCIONES POR ROL ----------
 async function cargarSeccionesRol() {
   const cont = document.getElementById("contenedor-secciones");
   const mapa = { admin_principal: "admin", admin: "admin", vendedor: "vendedor", revendedor: "revendedor", jugador: "jugador" };
@@ -463,7 +422,6 @@ function irTab(nombre) {
   if (acc) acc();
 }
 
-// ---------- SELECTS COMPARTIDOS ----------
 async function llenarSelectSorteos(ruta, idSelect) {
   try {
     const previo = document.getElementById(idSelect).value;
@@ -533,7 +491,6 @@ function pintarReglasSelect(idSelect, idCaja, idImagen) {
     }
   }
 }
-}
 
 async function cargarSelectJugadores(pref) {
   const ruta = pref === "v" ? "/vendedor/jugadores" : "/revendedor/jugadores";
@@ -573,7 +530,6 @@ function toggleJugadorManual(pref) {
   }
 }
 
-// ---------- LINKS DE REGISTRO Y WHATSAPP ----------
 async function cargarLinkVendedor() {
   try {
     const me = await api("/auth/me", "GET");
@@ -616,7 +572,6 @@ function mostrarTodosWhatsApp(pref) {
   cont.innerHTML = html;
 }
 
-// ---------- DISPATCH DE RESULTADOS Y COBROS POR ROL ----------
 function cargarResultados() {
   if (rol === "jugador") return cargarResultadosJugador();
   if (rol === "vendedor") return cargarResultadosVendedor();
@@ -629,7 +584,6 @@ window.ACCIONES = window.ACCIONES || {};
 ACCIONES.resultados = cargarResultados;
 ACCIONES.cobros = cargarCobros;
 
-// ---------- ARRANQUE ----------
 const _params = new URLSearchParams(window.location.search);
 const _cod = _params.get("codigo");
 if (_cod) {
@@ -643,7 +597,6 @@ if (_cod) {
 
 if (token) { mostrarPanel(); }
 
-// ---------- DISPLAY DE RESULTADOS EN 2 COLUMNAS (1º a 10º / 11º a 20º) ----------
 function etiquetaPremio(indice, numero) {
   if (numero === undefined || numero === null) return "";
   const puesto = indice + 1;
@@ -671,7 +624,6 @@ function resultadosColumnaHTML(resultados) {
   return html;
 }
 
-// ---------- VALIDACION INLINE (unica fuente de verdad, nombre unico sin colision) ----------
 function _limpiarErr(id){
   const el=document.getElementById(id); if(el) el.style.borderColor="";
   const s=document.querySelector('.err-campo-auto[data-for="'+id+'"]'); if(s) s.remove();
@@ -686,7 +638,7 @@ function _pintarErr(id,msg){
   d.textContent=msg;
   el.insertAdjacentElement("beforebegin",d);
 }
-// campos: [id, etiqueta, minLen?, maxLen?, [minNum,maxNum]?] -> true si todo ok
+
 function validarCamposInline(campos){
   campos.forEach(c=>_limpiarErr(c[0]));
   let ok=true;
