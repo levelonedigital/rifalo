@@ -211,12 +211,15 @@ def numeros_ocupados(sorteo_id: int, sesion: Session = Depends(obtener_sesion), 
 
 @router.post("/jugadas")
 def cargar_jugada(datos: JugadaCrear, sesion: Session = Depends(obtener_sesion), rev: Usuario = rev_dep):
+    """Venta directa del revendedor: valida todo primero, luego consume cupo y crea la jugada."""
     vendedor = sesion.get(Usuario, rev.padre_id) if rev.padre_id else None
     if vendedor is None or not vendedor.activo:
         raise HTTPException(status_code=403, detail="Tu vendedor duenio no esta activo")
     sorteo = sesion.get(Sorteo, datos.sorteo_id)
     if sorteo is None:
         raise HTTPException(status_code=404, detail="Sorteo no encontrado")
+    
+    # 1. Validar disponibilidad de cupos (sin consumir)
     tiene_cupo_rev, disp_rev = motor.cupo_revendedor_disponible(sesion, sorteo, rev)
     if tiene_cupo_rev and (disp_rev is None or disp_rev < 1):
         raise HTTPException(status_code=400, detail="Sin jugadas disponibles para este sorteo. Pedi mas a tu vendedor.")
@@ -224,6 +227,8 @@ def cargar_jugada(datos: JugadaCrear, sesion: Session = Depends(obtener_sesion),
         tiene_reg, disp = motor.cupo_vendedor_disponible(sesion, sorteo, vendedor)
         if tiene_reg and (disp is None or disp < 1):
             raise HTTPException(status_code=400, detail="Tu vendedor no tiene jugadas disponibles para este sorteo.")
+    
+    # 2. Resolver jugador
     jugador_id = None
     nombre = datos.jugador_nombre
     if datos.jugador_id is not None:
@@ -232,8 +237,21 @@ def cargar_jugada(datos: JugadaCrear, sesion: Session = Depends(obtener_sesion),
             raise HTTPException(status_code=400, detail="Jugador invalido para tu linea")
         jugador_id = pj.id
         nombre = pj.nombre
+    
+    # 3. Validar rango de números (0-99) ANTES de consumir cupo
+    from app.modulos_juegos.jugadas_core import validar_numeros
+    error_rango = validar_numeros(sorteo, datos.numeros)
+    if error_rango:
+        raise HTTPException(status_code=400, detail=error_rango)
+    
+    # 4. Validar que no esté ocupado (rifa)
     try:
         motor.validar_numeros_rifa(sesion, sorteo, datos.numeros)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    
+    # 5. Consumir cupo y crear jugada (con rollback si falla)
+    try:
         if tiene_cupo_rev:
             if not motor.consumir_cupo_revendedor(sesion, sorteo, rev):
                 raise ValueError("Sin jugadas disponibles para este sorteo")
@@ -245,10 +263,11 @@ def cargar_jugada(datos: JugadaCrear, sesion: Session = Depends(obtener_sesion),
         aprobar_jugada(sesion, jugada, reglas)
         sesion.commit()
     except ValueError as e:
+        sesion.rollback()  # ← FIX: revertir consumo de cupo si falla
         raise HTTPException(status_code=400, detail=str(e))
+    
     aviso_iguales = motor.info_premio_compartido(sesion, sorteo, jugada.numeros, incluir_pendiente=False)
     return {"id": jugada.id, "numeros": jugada.numeros, "precio": jugada.precio, "estado": jugada.estado.value, "aviso_iguales": aviso_iguales}
-
 
 @router.post("/cupos")
 def vender_cupos(datos: CuposVender, sesion: Session = Depends(obtener_sesion), rev: Usuario = rev_dep):
