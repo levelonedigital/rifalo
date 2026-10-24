@@ -492,26 +492,29 @@ function pintarReglasSelect(idSelect, idCaja, idImagen) {
 
   const s = SORTEOS_ABIERTOS_CACHE[idSelect] && SORTEOS_ABIERTOS_CACHE[idSelect][id];
   const caja = document.getElementById(idCaja);
-  // ... (el resto de la función sigue igual)
-
-function pintarReglasSelect(idSelect, idCaja, idImagen) {
-  const id = document.getElementById(idSelect).value;
-  const s = SORTEOS_ABIERTOS_CACHE[idSelect] && SORTEOS_ABIERTOS_CACHE[idSelect][id];
-  const caja = document.getElementById(idCaja);
-  if (caja) caja.textContent = s ? (nombreSorteo(s) + ": " + (s.detalle || s.reglas) + " | Precio jugada: $" + s.precio_jugada + " | " + etiquetaPozo(s) + " | Estado: " + s.estado + " | Cierre para anotarse: " + (s.hora_cierre || "sin limite") + (s.reprogramando ? " | REPROGRAMANDO: aguarda nuevo horario" : "")) : "";
+  
+  if (caja) {
+    caja.textContent = s ? (nombreSorteo(s) + ": " + (s.detalle || s.reglas) + " | Precio jugada: $" + s.precio_jugada + " | " + etiquetaPozo(s) + " | Estado: " + s.estado + " | Cierre para anotarse: " + (s.hora_cierre || "sin limite") + (s.reprogramando ? " | REPROGRAMANDO: aguarda nuevo horario" : "")) : "";
+  }
+  
   const img = document.getElementById(idImagen);
   if (img) {
-    if (s && s.imagen_url) { img.src = s.imagen_url; img.style.display = "block"; }
-    else { img.style.display = "none"; }
+    if (s && s.imagen_url) { 
+      img.src = s.imagen_url; 
+      img.style.display = "block"; 
+    } else { 
+      img.style.display = "none"; 
+    }
   }
+  
   if (idSelect === "j-sorteo") {
-    // NOTA: ya NO actualizamos JUGADOR_SORTEO_ELEGIDO aca. Solo pintamos el pozo.
     pintarPozo("pozo-jugador", s || null);
   }
   if (idSelect === "v-sorteo") filtrarJugadoresSorteo("v", s);
   if (idSelect === "r-sorteo") filtrarJugadoresSorteo("r", s);
   refrescarGrillaRifa(idSelect, s);
-  // Pintar cartel de pozo para vendedor y revendedor (forzando actualización)
+
+  // Pintar cartel de pozo para vendedor y revendedor
   if (idSelect === "v-cupo-sorteo" || idSelect === "r-cupo-sorteo") {
     const divId = idSelect === "v-cupo-sorteo" ? "v-cupo-pozo" : "r-cupo-pozo";
     const divPozo = document.getElementById(divId);
@@ -529,6 +532,7 @@ function pintarReglasSelect(idSelect, idCaja, idImagen) {
       }
     }
   }
+}
 }
 
 async function cargarSelectJugadores(pref) {
