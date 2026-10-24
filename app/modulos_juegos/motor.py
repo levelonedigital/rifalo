@@ -189,6 +189,7 @@ def consumir_cupo_vendedor(sesion: Session, sorteo: Sorteo, vendedor: Usuario) -
 
     True si pudo descontar (o si no hay registro = sin limite). False si el vendedor
     ya no tiene cupos para este sorteo.
+    NOTA: No hace commit. El llamador debe hacer commit/rollback segun corresponda.
     """
     reg = (
         sesion.query(CupoVendedor)
@@ -200,7 +201,7 @@ def consumir_cupo_vendedor(sesion: Session, sorteo: Sorteo, vendedor: Usuario) -
     if (reg.cupo_usado or 0) >= (reg.cupo_total or 0):
         return False
     reg.cupo_usado = (reg.cupo_usado or 0) + 1
-    sesion.commit()
+    # FIX: quitado sesion.commit() - el commit lo hace el llamador
     return True
 
 # ---------- CUPOS DE VENTA POR REVENDEDOR Y SORTEO ----------
@@ -222,7 +223,9 @@ def cupo_revendedor_disponible(sesion: Session, sorteo: Sorteo, rev: Usuario):
     return True, max((reg.cupo_total or 0) - (reg.cupo_usado or 0), 0)
 
 def consumir_cupo_revendedor(sesion: Session, sorteo: Sorteo, rev: Usuario) -> bool:
-    """Descuenta 1 cupo del revendedor. True si pudo (o si no hay registro). False si sin cupo."""
+    """Descuenta 1 cupo del revendedor. True si pudo (o si no hay registro). False si sin cupo.
+    NOTA: No hace commit. El llamador debe hacer commit/rollback segun corresponda.
+    """
     from app.modelos.juegos import CupoRevendedor
     reg = (
         sesion.query(CupoRevendedor)
@@ -234,5 +237,5 @@ def consumir_cupo_revendedor(sesion: Session, sorteo: Sorteo, rev: Usuario) -> b
     if (reg.cupo_usado or 0) >= (reg.cupo_total or 0):
         return False
     reg.cupo_usado = (reg.cupo_usado or 0) + 1
-    sesion.commit()
+    # FIX: quitado sesion.commit() - el commit lo hace el llamador
     return True
