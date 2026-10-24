@@ -623,16 +623,22 @@ function etiquetaPremio(indice, numero) {
 }
 
 function resultadosColumnaHTML(resultados) {
-  if (!resultados || !resultados.length) return "";
-  const filas = Math.ceil(resultados.length / 2);
+  if (!resultados) return "";
+  
+  // Si viene como string (ej: "0067,0027,..."), lo convertimos a array de números
+  let arr = typeof resultados === "string" ? resultados.split(",").map(x => parseInt(x.trim(), 10)) : resultados;
+  
+  if (!arr || !arr.length) return "";
+  
+  const filas = Math.ceil(arr.length / 2);
   let html = "<table style='border-collapse:collapse;margin:8px 0;'>";
   for (let i = 0; i < filas; i++) {
     const izquierda = i;
     const derecha = i + filas;
     html += "<tr>";
-    html += "<td style='padding:3px 16px 3px 0;white-space:nowrap'>" + etiquetaPremio(izquierda, resultados[izquierda]) + "</td>";
-    if (derecha < resultados.length) {
-      html += "<td style='padding:3px 0;white-space:nowrap'>" + etiquetaPremio(derecha, resultados[derecha]) + "</td>";
+    html += "<td style='padding:3px 16px 3px 0;white-space:nowrap'>" + etiquetaPremio(izquierda, arr[izquierda]) + "</td>";
+    if (derecha < arr.length) {
+      html += "<td style='padding:3px 0;white-space:nowrap'>" + etiquetaPremio(derecha, arr[derecha]) + "</td>";
     } else {
       html += "<td></td>";
     }
